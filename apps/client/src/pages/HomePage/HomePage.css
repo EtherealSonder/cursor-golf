@@ -10,4 +10,10 @@
     width: 1000px;
     height: 600px;
     border: 2px solid white;
+    /*
+     * The golf club becomes the player's cursor.
+     * Hide the operating system cursor only while
+     * the mouse is inside the game area.
+     */
+    cursor: none;
 }

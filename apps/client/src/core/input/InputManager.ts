@@ -58,14 +58,12 @@ export class InputManager {
             event.clientY - rect.top,
         );
 
-        console.log(this.getMouseX(), this.getMouseY());
     };
 
     private onMouseDown = (): void => {
         if (!this.mouseDown) {
             this.mousePressed = true;
         }
-        console.log("Mouse Down");
         this.mouseDown = true;
     };
 
