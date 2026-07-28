@@ -1,140 +1,142 @@
+import type {
+    ClubDefinition,
+} from "../config/ClubDefinition";
+
 import { Club } from "../entities/Club";
 
 export class ShotPreparation {
 
     // -------------------------------------------------------
-    // Club
+    // Club Definition
     // -------------------------------------------------------
 
-    /**
-     * The active club supplies gameplay configuration
-     * such as maximum drag distance, oscillation angle,
-     * and oscillation speed range.
-     */
-    private readonly club: Club;
+    private readonly clubDefinition:
+        ClubDefinition;
 
     // -------------------------------------------------------
     // Drag Data
     // -------------------------------------------------------
 
-    /**
-     * Actual distance between the mouse
-     * and the golf ball.
-     */
     private dragDistance = 0;
 
-    /**
-     * Shot power represented as a value
-     * between 0 and 1.
-     */
     private normalizedPower = 0;
 
     // -------------------------------------------------------
     // Aim Data
     // -------------------------------------------------------
 
-    /**
-     * Direction from the ball toward
-     * the dragged mouse position.
-     */
     private dragAngle = 0;
 
-    /**
-     * Intended shot direction before
-     * oscillation is applied.
-     */
     private baseAimAngle = 0;
 
-    /**
-     * Final shot direction after
-     * oscillation is applied.
-     */
     private currentAimAngle = 0;
 
     // -------------------------------------------------------
     // Oscillation
     // -------------------------------------------------------
 
-    /**
-     * Accumulated time used by the
-     * sine-wave oscillation.
-     */
     private oscillationTime = 0;
 
-    /**
-     * Current angular offset produced
-     * by the sine wave.
-     */
+    private oscillationPhase = 0;
+
+    private rawOscillationWave = 0;
+
+    private shapedOscillationWave = 0;
+
     private oscillationOffset = 0;
 
-    /**
-     * Current oscillation speed.
-     *
-     * This is calculated from:
-     *
-     * Club minimum speed
-     * Club maximum speed
-     * Normalized shot power
-     */
     private oscillationSpeed = 0;
+
+    // -------------------------------------------------------
+    // Accuracy
+    // -------------------------------------------------------
+
+    /**
+     * Maximum absolute oscillation offset that
+     * remains inside the club's optimal zone.
+     */
+    private readonly optimalAccuracyTolerance:
+        number;
+
+    /**
+     * Current quality of the aim timing.
+     *
+     * 1:
+     * inside the complete optimal zone
+     *
+     * 0:
+     * at the maximum oscillation edge
+     */
+    private accuracyQuality = 1;
+
+    /**
+     * Whether the current oscillation offset
+     * remains inside the optimal tolerance.
+     */
+    private insideOptimalAccuracyRange = true;
 
     constructor(
         club: Club,
     ) {
 
-        this.club = club;
+        this.clubDefinition =
+            club.getDefinition();
 
-        /*
-         * Begin at the club's minimum
-         * oscillation speed.
-         */
         this.oscillationSpeed =
-            this.club
-                .getMinimumOscillationSpeed();
+            this.clubDefinition
+                .minimumOscillationSpeed;
+
+        this.optimalAccuracyTolerance =
+            this.clubDefinition
+                .oscillationAngle *
+            this.clubDefinition
+                .optimalAccuracyRatio;
+
+        this.validateAccuracyConfiguration();
     }
 
     // -------------------------------------------------------
     // Update
     // -------------------------------------------------------
 
-    /**
-     * Updates values that change
-     * continuously over time.
-     */
     public update(
         deltaTime: number,
     ): void {
 
+        if (deltaTime < 0) {
+            throw new Error(
+                "ShotPreparation deltaTime cannot be negative.",
+            );
+        }
+
         this.oscillationTime +=
             deltaTime;
+
+        this.oscillationPhase +=
+            this.oscillationSpeed *
+            deltaTime;
+
+        this.updateOscillationOffset();
+
+        this.updateCurrentAimAngle();
+
+        this.updateAccuracy();
     }
 
-    /**
-     * Updates gameplay values derived
-     * from the current drag vector.
-     */
     public updateDrag(
         deltaX: number,
         deltaY: number,
     ): void {
 
-        // -----------------------------
-        // Drag Distance
-        // -----------------------------
-
         this.dragDistance =
-            Math.sqrt(
-                deltaX * deltaX +
-                deltaY * deltaY,
+            Math.hypot(
+                deltaX,
+                deltaY,
             );
 
-        // -----------------------------
-        // Maximum Drag Distance
-        // -----------------------------
-
         const maximumDragDistance =
-            this.club
-                .getMaximumDragDistance();
+            this.clubDefinition
+                .maximumDragDistance;
 
         if (maximumDragDistance <= 0) {
 
@@ -145,27 +147,15 @@ export class ShotPreparation {
             );
         }
 
-        // -----------------------------
-        // Clamp Power Distance
-        // -----------------------------
-
         const clampedDistance =
             Math.min(
                 this.dragDistance,
                 maximumDragDistance,
             );
 
-        // -----------------------------
-        // Normalized Power
-        // -----------------------------
-
         this.normalizedPower =
             clampedDistance /
             maximumDragDistance;
-
-        // -----------------------------
-        // Drag Angle
-        // -----------------------------
 
         this.dragAngle =
             Math.atan2(
@@ -173,71 +163,26 @@ export class ShotPreparation {
                 deltaX,
             );
 
-        // -----------------------------
-        // Base Aim Angle
-        // -----------------------------
-
-        /*
-         * The shot travels in the opposite
-         * direction from the mouse drag.
-         */
         this.baseAimAngle =
             this.dragAngle +
             Math.PI;
 
-        // -----------------------------
-        // Dynamic Oscillation Speed
-        // -----------------------------
-
         this.updateOscillationSpeed();
-
-        // -----------------------------
-        // Oscillation Offset
-        // -----------------------------
-
-        const maximumOscillationAngle =
-            this.club
-                .getOscillationAngle();
-
-        this.oscillationOffset =
-            Math.sin(
-                this.oscillationTime *
-                this.oscillationSpeed,
-            ) *
-            maximumOscillationAngle;
-
-        // -----------------------------
-        // Current Aim Angle
-        // -----------------------------
-
-        this.currentAimAngle =
-            this.baseAimAngle +
-            this.oscillationOffset;
     }
 
     // -------------------------------------------------------
     // Oscillation Calculation
     // -------------------------------------------------------
 
-    /**
-     * Calculates the current oscillation speed
-     * using linear interpolation.
-     *
-     * Power 0:
-     * minimum club oscillation speed
-     *
-     * Power 1:
-     * maximum club oscillation speed
-     */
     private updateOscillationSpeed(): void {
 
         const minimumSpeed =
-            this.club
-                .getMinimumOscillationSpeed();
+            this.clubDefinition
+                .minimumOscillationSpeed;
 
         const maximumSpeed =
-            this.club
-                .getMaximumOscillationSpeed();
+            this.clubDefinition
+                .maximumOscillationSpeed;
 
         if (minimumSpeed < 0) {
             throw new Error(
@@ -261,14 +206,177 @@ export class ShotPreparation {
             speedRange;
     }
 
+    private updateOscillationOffset(): void {
+
+        this.rawOscillationWave =
+            Math.sin(
+                this.oscillationPhase,
+            );
+
+        this.shapedOscillationWave =
+            this.calculateShapedOscillationWave(
+                this.oscillationPhase,
+            );
+
+        this.oscillationOffset =
+            this.shapedOscillationWave *
+            this.clubDefinition
+                .oscillationAngle;
+    }
+
+    private calculateShapedOscillationWave(
+        phase: number,
+    ): number {
+
+        const strength =
+            this.clubDefinition
+                .oscillationCurveStrength;
+
+        if (strength < 0) {
+            throw new Error(
+                "Club oscillation curve strength cannot be negative.",
+            );
+        }
+
+        if (strength >= 1 / 3) {
+            throw new Error(
+                "Club oscillation curve strength must be lower than one third.",
+            );
+        }
+
+        const primaryWave =
+            Math.sin(
+                phase,
+            );
+
+        const thirdHarmonic =
+            Math.sin(
+                phase * 3,
+            );
+
+        const shapedWave =
+            (
+                primaryWave -
+                strength *
+                thirdHarmonic
+            ) /
+            (
+                1 +
+                strength
+            );
+
+        return Math.max(
+            -1,
+            Math.min(
+                shapedWave,
+                1,
+            ),
+        );
+    }
+
+    private updateCurrentAimAngle(): void {
+
+        this.currentAimAngle =
+            this.baseAimAngle +
+            this.oscillationOffset;
+    }
+
+    // -------------------------------------------------------
+    // Accuracy Calculation
+    // -------------------------------------------------------
+
+    private validateAccuracyConfiguration(): void {
+
+        const ratio =
+            this.clubDefinition
+                .optimalAccuracyRatio;
+
+        if (
+            ratio < 0 ||
+            ratio > 1
+        ) {
+            throw new Error(
+                "Club optimal accuracy ratio must remain between zero and one.",
+            );
+        }
+
+        if (
+            this.optimalAccuracyTolerance <
+            0
+        ) {
+            throw new Error(
+                "Club optimal accuracy tolerance cannot be negative.",
+            );
+        }
+    }
+
+    /**
+     * Calculates the current accuracy quality.
+     *
+     * The complete optimal tolerance remains at
+     * quality 1.
+     *
+     * Outside that range, quality falls linearly
+     * toward 0 at the maximum oscillation edge.
+     */
+    private updateAccuracy(): void {
+
+        const absoluteOffset =
+            Math.abs(
+                this.oscillationOffset,
+            );
+
+        const maximumOffset =
+            this.clubDefinition
+                .oscillationAngle;
+
+        this.insideOptimalAccuracyRange =
+            absoluteOffset <=
+            this.optimalAccuracyTolerance;
+
+        if (
+            this.insideOptimalAccuracyRange
+        ) {
+            this.accuracyQuality = 1;
+
+            return;
+        }
+
+        const fadeRange =
+            maximumOffset -
+            this.optimalAccuracyTolerance;
+
+        /*
+         * This can occur only when the optimal
+         * ratio equals one or oscillation angle
+         * equals zero.
+         */
+        if (fadeRange <= 0) {
+            this.accuracyQuality = 1;
+
+            return;
+        }
+
+        const distanceOutsideOptimalRange =
+            absoluteOffset -
+            this.optimalAccuracyTolerance;
+
+        this.accuracyQuality =
+            Math.max(
+                0,
+                Math.min(
+                    1 -
+                    distanceOutsideOptimalRange /
+                    fadeRange,
+                    1,
+                ),
+            );
+    }
+
     // -------------------------------------------------------
     // Reset
     // -------------------------------------------------------
 
-    /**
-     * Clears all temporary shot
-     * preparation data.
-     */
     public reset(): void {
 
         this.dragDistance = 0;
@@ -279,15 +387,21 @@ export class ShotPreparation {
         this.currentAimAngle = 0;
 
         this.oscillationTime = 0;
+        this.oscillationPhase = 0;
+
+        this.rawOscillationWave = 0;
+        this.shapedOscillationWave = 0;
+
         this.oscillationOffset = 0;
 
-        /*
-         * A new shot begins at the club's
-         * minimum oscillation speed.
-         */
         this.oscillationSpeed =
-            this.club
-                .getMinimumOscillationSpeed();
+            this.clubDefinition
+                .minimumOscillationSpeed;
+
+        this.accuracyQuality = 1;
+
+        this.insideOptimalAccuracyRange =
+            true;
     }
 
     // -------------------------------------------------------
@@ -326,11 +440,42 @@ export class ShotPreparation {
         return this.oscillationTime;
     }
 
+    public getOscillationPhase(): number {
+        return this.oscillationPhase;
+    }
+
+    public getRawOscillationWave(): number {
+        return this.rawOscillationWave;
+    }
+
+    public getShapedOscillationWave(): number {
+        return this.shapedOscillationWave;
+    }
+
     public getOscillationOffset(): number {
         return this.oscillationOffset;
     }
 
     public getOscillationSpeed(): number {
         return this.oscillationSpeed;
+    }
+
+    // -------------------------------------------------------
+    // Accuracy Getters
+    // -------------------------------------------------------
+
+    public getOptimalAccuracyTolerance(): number {
+
+        return this.optimalAccuracyTolerance;
+    }
+
+    public getAccuracyQuality(): number {
+
+        return this.accuracyQuality;
+    }
+
+    public isInsideOptimalAccuracyRange(): boolean {
+
+        return this.insideOptimalAccuracyRange;
     }
 }

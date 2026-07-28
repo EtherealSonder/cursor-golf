@@ -1,35 +1,31 @@
 ﻿import {
-    Graphics,
     Sprite,
 } from "pixi.js";
+
+import {
+    BASIC_CLUB_DEFINITION,
+    MAXIMUM_CLUB_DRAG_DISTANCE,
+    MINIMUM_CLUB_DRAG_DISTANCE,
+} from "../config/ClubDefinition";
+
+import type {
+    ClubDefinition,
+} from "../config/ClubDefinition";
 
 import { AssetLoader } from "../../rendering/AssetLoader";
 import { Entity } from "./Entity";
 
 export class Club extends Entity {
 
-    private clubSprite: Sprite | null = null;
-
-    /**
-     * Connector rendered between
-     * the ball and the club.
-     */
-    private connector: Graphics | null = null;
+    private clubSprite:
+        Sprite | null = null;
 
     // -------------------------------------------------------
-    // Club Identity
+    // Club Definition
     // -------------------------------------------------------
 
-    /**
-     * Human-readable name of the
-     * currently equipped club.
-     *
-     * This will later allow release data,
-     * club selection, and shot records
-     * to identify which club was used.
-     */
-    private readonly clubName =
-        "Basic Club";
+    private readonly definition:
+        ClubDefinition;
 
     // -------------------------------------------------------
     // Club Visual Configuration
@@ -37,24 +33,11 @@ export class Club extends Entity {
 
     private readonly ballRadius = 10;
 
-    /**
-     * Gap between the ball and
-     * the club head.
-     */
     private readonly headOffset = 10;
 
     private readonly minDistance =
         this.ballRadius +
         this.headOffset;
-
-    /**
-     * Maximum visual distance between
-     * the ball and club.
-     *
-     * This is separate from the maximum
-     * drag distance used to calculate power.
-     */
-    private readonly maxDistance = 120;
 
     private currentAngle = 0;
 
@@ -62,69 +45,26 @@ export class Club extends Entity {
         this.minDistance;
 
     // -------------------------------------------------------
-    // Gameplay Configuration
-    // -------------------------------------------------------
-
-    /**
-     * Maximum drag distance representing
-     * full shot power.
-     */
-    private readonly maximumDragDistance =
-        200;
-
-    /**
-     * Length of the aiming guide.
-     */
-    private readonly aimIndicatorLength =
-        70;
-
-    /**
-     * Maximum angle by which the aim
-     * indicator can oscillate around
-     * the base shot direction.
-     *
-     * Math.PI / 4 = 45 degrees.
-     */
-    private readonly oscillationAngle =
-        Math.PI / 4;
-
-    /**
-     * Oscillation speed at minimum power.
-     */
-    private readonly minimumOscillationSpeed =
-        3.0;
-
-    /**
-     * Oscillation speed at maximum power.
-     */
-    private readonly maximumOscillationSpeed =
-        8.0;
-
-    // -------------------------------------------------------
     // Current Shot Visual Data
     // -------------------------------------------------------
 
-    /**
-     * Ball position is stored so the
-     * connector can redraw itself.
-     */
-    private currentBallX = 0;
-    private currentBallY = 0;
-
-    /**
-     * Current shot power.
-     *
-     * Expected range:
-     * 0 to 1.
-     */
     private normalizedPower = 0;
 
-    /**
-     * Human-readable connector
-     * colour used by debugging.
-     */
-    private currentColorName =
-        "Yellow";
+    private shotVisualActive = false;
+
+    constructor(
+        definition:
+            ClubDefinition =
+            BASIC_CLUB_DEFINITION,
+    ) {
+
+        super();
+
+        this.definition =
+            definition;
+
+        this.validateDefinition();
+    }
 
     // -------------------------------------------------------
     // Lifecycle
@@ -132,28 +72,12 @@ export class Club extends Entity {
 
     protected onInitialize(): void {
 
-        /*
-         * The connector is inserted first,
-         * so it renders behind the club.
-         */
-
-        this.connector =
-            new Graphics();
-
-        this.container.addChild(
-            this.connector,
-        );
-
         this.clubSprite =
             new Sprite(
                 AssetLoader.getTexture(
                     "golfClub",
                 ),
             );
-
-        /*
-         * Temporary sprite settings.
-         */
 
         this.clubSprite.anchor.set(
             0.138,
@@ -182,10 +106,8 @@ export class Club extends Entity {
 
     protected onDestroy(): void {
 
-        this.connector?.destroy();
         this.clubSprite?.destroy();
 
-        this.connector = null;
         this.clubSprite = null;
 
         this.container.destroy({
@@ -194,15 +116,222 @@ export class Club extends Entity {
     }
 
     // -------------------------------------------------------
+    // Definition Validation
+    // -------------------------------------------------------
+
+    private validateDefinition(): void {
+
+        if (
+            this.definition
+                .maximumDragDistance <
+            MINIMUM_CLUB_DRAG_DISTANCE
+        ) {
+            throw new Error(
+                `Club maximum drag distance must be at least ${MINIMUM_CLUB_DRAG_DISTANCE} pixels.`,
+            );
+        }
+
+        if (
+            this.definition
+                .maximumDragDistance >
+            MAXIMUM_CLUB_DRAG_DISTANCE
+        ) {
+            throw new Error(
+                `Club maximum drag distance cannot exceed ${MAXIMUM_CLUB_DRAG_DISTANCE} pixels.`,
+            );
+        }
+
+        if (
+            this.definition
+                .maximumDragDistance <=
+            this.minDistance
+        ) {
+            throw new Error(
+                "Club maximum drag distance must be greater than its minimum visual distance.",
+            );
+        }
+
+        if (
+            this.definition
+                .oscillationAngle <
+            0
+        ) {
+            throw new Error(
+                "Club oscillation angle cannot be negative.",
+            );
+        }
+
+        if (
+            this.definition
+                .optimalAccuracyRatio <
+            0 ||
+            this.definition
+                .optimalAccuracyRatio >
+            1
+        ) {
+            throw new Error(
+                "Club optimal accuracy ratio must remain between zero and one.",
+            );
+        }
+
+        if (
+            this.definition
+                .minimumOscillationSpeed <
+            0
+        ) {
+            throw new Error(
+                "Club minimum oscillation speed cannot be negative.",
+            );
+        }
+
+        if (
+            this.definition
+                .maximumOscillationSpeed <
+            this.definition
+                .minimumOscillationSpeed
+        ) {
+            throw new Error(
+                "Club maximum oscillation speed cannot be lower than its minimum oscillation speed.",
+            );
+        }
+
+        if (
+            this.definition
+                .oscillationCurveStrength <
+            0
+        ) {
+            throw new Error(
+                "Club oscillation curve strength cannot be negative.",
+            );
+        }
+
+        if (
+            this.definition
+                .oscillationCurveStrength >=
+            1 / 3
+        ) {
+            throw new Error(
+                "Club oscillation curve strength must be lower than one third.",
+            );
+        }
+
+        const aimGuide =
+            this.definition.aimGuide;
+
+        if (
+            aimGuide.startDistance <
+            0
+        ) {
+            throw new Error(
+                "Aim-guide start distance cannot be negative.",
+            );
+        }
+
+        if (
+            aimGuide.dotSpacing <=
+            0
+        ) {
+            throw new Error(
+                "Aim-guide dot spacing must be greater than zero.",
+            );
+        }
+
+        if (
+            aimGuide.maximumDotRadius <=
+            0
+        ) {
+            throw new Error(
+                "Aim-guide maximum dot radius must be greater than zero.",
+            );
+        }
+
+        if (
+            aimGuide.minimumDotRadius <=
+            0
+        ) {
+            throw new Error(
+                "Aim-guide minimum dot radius must be greater than zero.",
+            );
+        }
+
+        if (
+            aimGuide.minimumDotRadius >
+            aimGuide.maximumDotRadius
+        ) {
+            throw new Error(
+                "Aim-guide minimum dot radius cannot exceed its maximum dot radius.",
+            );
+        }
+
+        if (
+            aimGuide.minimumDots <
+            1
+        ) {
+            throw new Error(
+                "Aim guide must contain at least one minimum dot.",
+            );
+        }
+
+        if (
+            aimGuide.maximumDots <
+            aimGuide.minimumDots
+        ) {
+            throw new Error(
+                "Aim-guide maximum dots cannot be lower than its minimum dots.",
+            );
+        }
+
+        this.validateNormalizedValue(
+            aimGuide.optimalAlpha,
+            "Aim-guide optimal alpha",
+        );
+
+        this.validateNormalizedValue(
+            aimGuide.edgeAlpha,
+            "Aim-guide edge alpha",
+        );
+
+        if (
+            aimGuide.edgeAlpha >
+            aimGuide.optimalAlpha
+        ) {
+            throw new Error(
+                "Aim-guide edge alpha cannot exceed its optimal alpha.",
+            );
+        }
+    }
+
+    private validateNormalizedValue(
+        value: number,
+        label: string,
+    ): void {
+
+        if (
+            value < 0 ||
+            value > 1
+        ) {
+            throw new Error(
+                `${label} must remain between zero and one.`,
+            );
+        }
+    }
+
+    // -------------------------------------------------------
     // Visibility
     // -------------------------------------------------------
 
     public show(): void {
-        this.setVisible(true);
+
+        this.setVisible(
+            true,
+        );
     }
 
     public hide(): void {
-        this.setVisible(false);
+
+        this.setVisible(
+            false,
+        );
     }
 
     // -------------------------------------------------------
@@ -235,21 +364,22 @@ export class Club extends Entity {
         requestedDistance: number,
     ): void {
 
-        this.currentBallX =
-            ballX;
-
-        this.currentBallY =
-            ballY;
+        this.shotVisualActive =
+            true;
 
         this.currentAngle =
             angleRadians;
+
+        const maximumDistance =
+            this.definition
+                .maximumDragDistance;
 
         this.currentDistance =
             Math.max(
                 this.minDistance,
                 Math.min(
                     requestedDistance,
-                    this.maxDistance,
+                    maximumDistance,
                 ),
             );
 
@@ -275,14 +405,8 @@ export class Club extends Entity {
         if (this.clubSprite) {
             this.clubSprite.rotation = 0;
         }
-
-        this.updateConnector();
     }
 
-    /**
-     * Receives normalized gameplay power
-     * from ShotController.
-     */
     public setPower(
         normalizedPower: number,
     ): void {
@@ -295,216 +419,6 @@ export class Club extends Entity {
                     1,
                 ),
             );
-
-        this.updateConnector();
-    }
-
-    // -------------------------------------------------------
-    // Connector Rendering
-    // -------------------------------------------------------
-
-    private updateConnector(): void {
-
-        if (!this.connector) {
-            return;
-        }
-
-        this.connector.clear();
-
-        const color =
-            this.calculateConnectorColor();
-
-        /*
-         * The connector belongs to the club
-         * container, so the ball's world-space
-         * position must be converted into the
-         * club's local coordinate space.
-         */
-
-        const localBallX =
-            this.currentBallX -
-            this.getX();
-
-        const localBallY =
-            this.currentBallY -
-            this.getY();
-
-        this.connector
-            .moveTo(
-                localBallX,
-                localBallY,
-            )
-            .lineTo(
-                0,
-                0,
-            )
-            .stroke({
-                width: 4,
-                color,
-            });
-    }
-
-    /**
-     * Creates a smooth colour transition:
-     *
-     * Yellow
-     *   ↓
-     * Orange
-     *   ↓
-     * Red
-     *
-     * Rendering uses smooth interpolation.
-     * Debug names use three thresholds.
-     */
-    private calculateConnectorColor(): number {
-
-        // -----------------------------
-        // Debug Colour Name
-        // -----------------------------
-
-        if (
-            this.normalizedPower <
-            0.33
-        ) {
-            this.currentColorName =
-                "Yellow";
-        }
-        else if (
-            this.normalizedPower <
-            0.66
-        ) {
-            this.currentColorName =
-                "Orange";
-        }
-        else {
-            this.currentColorName =
-                "Red";
-        }
-
-        // -----------------------------
-        // Yellow to Orange
-        // -----------------------------
-
-        if (
-            this.normalizedPower <=
-            0.5
-        ) {
-
-            const t =
-                this.normalizedPower /
-                0.5;
-
-            return this.interpolateColor(
-                0xffff00,
-                0xffa500,
-                t,
-            );
-        }
-
-        // -----------------------------
-        // Orange to Red
-        // -----------------------------
-
-        const t =
-            (
-                this.normalizedPower -
-                0.5
-            ) /
-            0.5;
-
-        return this.interpolateColor(
-            0xffa500,
-            0xff0000,
-            t,
-        );
-    }
-
-    /**
-     * Linear RGB interpolation.
-     */
-    private interpolateColor(
-        startColor: number,
-        endColor: number,
-        t: number,
-    ): number {
-
-        const r1 =
-            (
-                startColor >>
-                16
-            ) &
-            0xff;
-
-        const g1 =
-            (
-                startColor >>
-                8
-            ) &
-            0xff;
-
-        const b1 =
-            startColor &
-            0xff;
-
-        const r2 =
-            (
-                endColor >>
-                16
-            ) &
-            0xff;
-
-        const g2 =
-            (
-                endColor >>
-                8
-            ) &
-            0xff;
-
-        const b2 =
-            endColor &
-            0xff;
-
-        const r =
-            Math.round(
-                r1 +
-                (
-                    r2 -
-                    r1
-                ) *
-                t,
-            );
-
-        const g =
-            Math.round(
-                g1 +
-                (
-                    g2 -
-                    g1
-                ) *
-                t,
-            );
-
-        const b =
-            Math.round(
-                b1 +
-                (
-                    b2 -
-                    b1
-                ) *
-                t,
-            );
-
-        return (
-            (
-                r <<
-                16
-            ) |
-            (
-                g <<
-                8
-            ) |
-            b
-        );
     }
 
     // -------------------------------------------------------
@@ -515,26 +429,33 @@ export class Club extends Entity {
 
         this.normalizedPower = 0;
 
-        this.currentBallX = 0;
-        this.currentBallY = 0;
-
         this.currentDistance =
             this.minDistance;
 
         this.currentAngle = 0;
 
-        this.currentColorName =
-            "Yellow";
+        this.shotVisualActive =
+            false;
+    }
 
-        this.connector?.clear();
+    // -------------------------------------------------------
+    // Club Definition
+    // -------------------------------------------------------
+
+    public getDefinition(): ClubDefinition {
+        return this.definition;
     }
 
     // -------------------------------------------------------
     // Club Identity
     // -------------------------------------------------------
 
+    public getClubId(): string {
+        return this.definition.id;
+    }
+
     public getClubName(): string {
-        return this.clubName;
+        return this.definition.name;
     }
 
     // -------------------------------------------------------
@@ -553,8 +474,8 @@ export class Club extends Entity {
         return this.normalizedPower;
     }
 
-    public getConnectorColorName(): string {
-        return this.currentColorName;
+    public isShotVisualActive(): boolean {
+        return this.shotVisualActive;
     }
 
     // -------------------------------------------------------
@@ -566,11 +487,9 @@ export class Club extends Entity {
     }
 
     public getMaximumDistance(): number {
-        return this.maxDistance;
-    }
 
-    public getAimIndicatorLength(): number {
-        return this.aimIndicatorLength;
+        return this.definition
+            .maximumDragDistance;
     }
 
     // -------------------------------------------------------
@@ -578,18 +497,48 @@ export class Club extends Entity {
     // -------------------------------------------------------
 
     public getMaximumDragDistance(): number {
-        return this.maximumDragDistance;
+
+        return this.definition
+            .maximumDragDistance;
     }
 
     public getOscillationAngle(): number {
-        return this.oscillationAngle;
+
+        return this.definition
+            .oscillationAngle;
+    }
+
+    public getOptimalAccuracyRatio(): number {
+
+        return this.definition
+            .optimalAccuracyRatio;
+    }
+
+    public getOptimalAccuracyTolerance(): number {
+
+        return (
+            this.definition
+                .oscillationAngle *
+            this.definition
+                .optimalAccuracyRatio
+        );
     }
 
     public getMinimumOscillationSpeed(): number {
-        return this.minimumOscillationSpeed;
+
+        return this.definition
+            .minimumOscillationSpeed;
     }
 
     public getMaximumOscillationSpeed(): number {
-        return this.maximumOscillationSpeed;
+
+        return this.definition
+            .maximumOscillationSpeed;
+    }
+
+    public getOscillationCurveStrength(): number {
+
+        return this.definition
+            .oscillationCurveStrength;
     }
 }

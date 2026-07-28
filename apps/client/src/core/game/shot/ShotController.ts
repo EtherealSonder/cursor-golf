@@ -31,12 +31,6 @@ export class ShotController {
         this.inputManager =
             inputManager;
 
-        /*
-         * ShotPreparation receives its
-         * gameplay configuration from
-         * the currently equipped club.
-         */
-
         const club =
             this.world.getClub();
 
@@ -73,24 +67,20 @@ export class ShotController {
         const club =
             this.world.getClub();
 
+        const connector =
+            this.world.getConnector();
+
         const aimIndicator =
             this.world.getAimIndicator();
 
         if (
             !ball ||
             !club ||
+            !connector ||
             !aimIndicator
         ) {
             return;
         }
-
-        // -----------------------------
-        // Time-Based Values
-        // -----------------------------
-
-        this.shotPreparation.update(
-            deltaTime,
-        );
 
         // -----------------------------
         // Current Drag Vector
@@ -118,6 +108,14 @@ export class ShotController {
         );
 
         // -----------------------------
+        // Time-Based Values
+        // -----------------------------
+
+        this.shotPreparation.update(
+            deltaTime,
+        );
+
+        // -----------------------------
         // Prepared Shot Data
         // -----------------------------
 
@@ -137,15 +135,33 @@ export class ShotController {
             this.shotPreparation
                 .getCurrentAimAngle();
 
+        const oscillationOffset =
+            this.shotPreparation
+                .getOscillationOffset();
+
+        const accuracyQuality =
+            this.shotPreparation
+                .getAccuracyQuality();
+
+        const optimalAccuracyTolerance =
+            this.shotPreparation
+                .getOptimalAccuracyTolerance();
+
+        const insideOptimalAccuracyRange =
+            this.shotPreparation
+                .isInsideOptimalAccuracyRange();
+
+        // -----------------------------
+        // Ball Tension Feedback
+        // -----------------------------
+
+        ball.setTensionPower(
+            normalizedPower,
+        );
+
         // -----------------------------
         // Club Position
         // -----------------------------
-
-        /*
-         * The club uses the base aim angle,
-         * so it remains fixed while the aim
-         * indicator oscillates independently.
-         */
 
         club.setPose(
             ball.getX(),
@@ -172,7 +188,8 @@ export class ShotController {
             ball.getX(),
             ball.getY(),
             currentAimAngle,
-            club.getAimIndicatorLength(),
+            normalizedPower,
+            accuracyQuality,
         );
 
         // -----------------------------
@@ -223,8 +240,17 @@ export class ShotController {
         console.log(
             "Current Oscillation Offset:",
             this.radiansToDegrees(
-                this.shotPreparation
-                    .getOscillationOffset(),
+                oscillationOffset,
+            ).toFixed(2),
+            "degrees",
+        );
+
+        console.log(
+            "Absolute Oscillation Offset:",
+            this.radiansToDegrees(
+                Math.abs(
+                    oscillationOffset,
+                ),
             ).toFixed(2),
             "degrees",
         );
@@ -238,6 +264,35 @@ export class ShotController {
         );
 
         console.log(
+            "Optimal Accuracy Ratio:",
+            (
+                club
+                    .getOptimalAccuracyRatio() *
+                100
+            ).toFixed(2),
+            "%",
+        );
+
+        console.log(
+            "Optimal Accuracy Tolerance:",
+            "±" +
+            this.radiansToDegrees(
+                optimalAccuracyTolerance,
+            ).toFixed(2),
+            "degrees",
+        );
+
+        console.log(
+            "Inside Optimal Range:",
+            insideOptimalAccuracyRange,
+        );
+
+        console.log(
+            "Accuracy Quality:",
+            accuracyQuality.toFixed(3),
+        );
+
+        console.log(
             "Current Oscillation Speed:",
             this.shotPreparation
                 .getOscillationSpeed()
@@ -245,16 +300,67 @@ export class ShotController {
         );
 
         console.log(
-            "Aim Indicator Length:",
+            "Oscillation Phase:",
+            this.shotPreparation
+                .getOscillationPhase()
+                .toFixed(2),
+            "radians",
+        );
+
+        console.log(
+            "Raw Oscillation Wave:",
+            this.shotPreparation
+                .getRawOscillationWave()
+                .toFixed(3),
+        );
+
+        console.log(
+            "Shaped Oscillation Wave:",
+            this.shotPreparation
+                .getShapedOscillationWave()
+                .toFixed(3),
+        );
+
+        console.log(
+            "Oscillation Curve Strength:",
             club
-                .getAimIndicatorLength()
+                .getOscillationCurveStrength()
+                .toFixed(2),
+        );
+
+        console.log(
+            "Aim Guide Dots:",
+            aimIndicator
+                .getDotCount(),
+        );
+
+        console.log(
+            "Aim Guide End Distance:",
+            aimIndicator
+                .getGuideEndDistance()
                 .toFixed(2),
             "px",
         );
 
         console.log(
+            "Aim Guide Alpha:",
+            aimIndicator
+                .getCurrentDotAlpha()
+                .toFixed(3),
+        );
+
+        console.log(
+            "Ball Tension Power:",
+            ball
+                .getTensionPower()
+                .toFixed(2),
+        );
+
+        console.log(
             "Connector Color:",
-            club.getConnectorColorName(),
+            connector.getColorName(
+                normalizedPower,
+            ),
         );
 
         console.log(
@@ -279,6 +385,12 @@ export class ShotController {
             ShotState.Preparing;
 
         this.shotPreparation.reset();
+
+        this.world
+            .getBall()
+            ?.setTensionPower(
+                0,
+            );
 
         this.world
             .getClub()
@@ -308,6 +420,12 @@ export class ShotController {
         this.shotPreparation.reset();
 
         this.world
+            .getBall()
+            ?.setTensionPower(
+                0,
+            );
+
+        this.world
             .getClub()
             ?.resetShotVisuals();
 
@@ -329,22 +447,32 @@ export class ShotController {
             return;
         }
 
+        const ball =
+            this.world.getBall();
+
         const club =
             this.world.getClub();
 
-        if (!club) {
+        if (
+            !ball ||
+            !club
+        ) {
 
             this.state =
                 ShotState.Idle;
 
             this.shotPreparation.reset();
 
+            ball?.setTensionPower(
+                0,
+            );
+
             this.world
                 .getAimIndicator()
                 ?.hide();
 
             console.error(
-                "Shot could not be released because the Club does not exist.",
+                "Shot could not be released because the Ball or Club does not exist.",
             );
 
             return;
@@ -352,12 +480,8 @@ export class ShotController {
 
         /*
          * Capture all release data before
-         * resetting ShotPreparation.
-         *
-         * These values will later be passed
-         * into the ball physics system.
+         * ShotPreparation is reset.
          */
-
         const releasedPower =
             this.shotPreparation
                 .getNormalizedPower();
@@ -374,24 +498,60 @@ export class ShotController {
             this.shotPreparation
                 .getOscillationSpeed();
 
+        const releasedAccuracyQuality =
+            this.shotPreparation
+                .getAccuracyQuality();
+
+        const releasedInsideOptimalRange =
+            this.shotPreparation
+                .isInsideOptimalAccuracyRange();
+
         this.logReleasedShot(
             releasedPower,
             releasedDirection,
             club.getClubName(),
             releasedOscillationOffset,
             releasedOscillationSpeed,
+            releasedAccuracyQuality,
+            releasedInsideOptimalRange,
         );
 
+        // -----------------------------
+        // Accurate Release Feedback
+        // -----------------------------
+
         /*
-         * No ball movement is performed yet.
-         * Milestone 5 only verifies that the
-         * correct release data is captured.
+         * Power determines which word tier is
+         * selected, but accuracy determines
+         * whether feedback appears at all.
+         *
+         * Every accurate release receives
+         * feedback regardless of shot power.
+         */
+        if (
+            releasedInsideOptimalRange
+        ) {
+            this.world
+                .getShotFeedback()
+                ?.spawn(
+                    ball.getX(),
+                    ball.getY(),
+                    releasedPower,
+                );
+        }
+
+        /*
+         * Ball movement is not performed yet.
          */
 
         this.state =
             ShotState.Idle;
 
         this.shotPreparation.reset();
+
+        ball.setTensionPower(
+            0,
+        );
 
         club.resetShotVisuals();
 
@@ -410,6 +570,8 @@ export class ShotController {
         clubName: string,
         oscillationOffsetRadians: number,
         oscillationSpeed: number,
+        accuracyQuality: number,
+        insideOptimalRange: boolean,
     ): void {
 
         console.clear();
@@ -451,6 +613,21 @@ export class ShotController {
         console.log(
             "Oscillation Speed:",
             oscillationSpeed.toFixed(2),
+        );
+
+        console.log(
+            "Accuracy Quality:",
+            accuracyQuality.toFixed(3),
+        );
+
+        console.log(
+            "Inside Optimal Range:",
+            insideOptimalRange,
+        );
+
+        console.log(
+            "Feedback Spawned:",
+            insideOptimalRange,
         );
 
         console.log(
