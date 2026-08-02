@@ -1,5 +1,9 @@
 import { Application } from "pixi.js";
 
+import {
+    DEFAULT_GAME_VIEWPORT_DEFINITION,
+} from "../game/config/GameViewportDefinition";
+
 export class Renderer {
     private app: Application | null = null;
 
@@ -10,12 +14,20 @@ export class Renderer {
         console.log("Renderer initialized.");
     }
 
-    public async initialize(container: HTMLDivElement): Promise<void> {
+    public async initialize(
+        container: HTMLDivElement,
+    ): Promise<void> {
         this.app = new Application();
 
         await this.app.init({
-            width: 1000,
-            height: 600,
+            width:
+                DEFAULT_GAME_VIEWPORT_DEFINITION
+                    .width,
+
+            height:
+                DEFAULT_GAME_VIEWPORT_DEFINITION
+                    .height,
+
             backgroundColor: 0x2f8f2f,
             antialias: true,
         });
@@ -26,11 +38,33 @@ export class Renderer {
             return;
         }
 
-        container.appendChild(this.app.canvas);
+        /*
+         * The canvas keeps its 1200 × 720 logical
+         * drawing buffer while CSS controls its
+         * responsive displayed size.
+         */
+        this.app.canvas.classList.add(
+            "game-canvas",
+        );
+
+        container.appendChild(
+            this.app.canvas,
+        );
 
         this.initialized = true;
 
-        console.log("Pixi Renderer ready.");
+        console.log(
+            "Pixi Renderer ready.",
+            {
+                width:
+                    DEFAULT_GAME_VIEWPORT_DEFINITION
+                        .width,
+
+                height:
+                    DEFAULT_GAME_VIEWPORT_DEFINITION
+                        .height,
+            },
+        );
     }
 
     public getApplication(): Application | null {

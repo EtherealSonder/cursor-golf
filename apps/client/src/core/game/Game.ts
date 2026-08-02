@@ -4,125 +4,406 @@ import { InputManager } from "../input/InputManager";
 import { Renderer } from "../rendering/Renderer";
 import { AssetLoader } from "../rendering/AssetLoader";
 import { PlayerController } from "./controllers/PlayerController";
+
+import type {
+    WindTuningState,
+    WindTuningStateListener,
+} from "./debug/WindTuningController";
+
+import type {
+    WindValidationState,
+    WindValidationStateListener,
+} from "./debug/WindValidationMetrics";
+
+import type {
+    WindState,
+    WindStateListener,
+} from "./environment/WindManager";
+
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
 
 export class Game {
-    private readonly container: HTMLDivElement;
 
-    private readonly renderer: Renderer;
-    private readonly engineLoop: EngineLoop;
-    private readonly inputManager: InputManager;
+    private readonly container:
+        HTMLDivElement;
 
-    private world: World | null = null;
-    private playerController: PlayerController | null = null;
-    private shotController: ShotController | null = null;
+    private readonly renderer:
+        Renderer;
 
-    private state: EngineState = EngineState.Stopped;
+    private readonly engineLoop:
+        EngineLoop;
 
-    constructor(container: HTMLDivElement) {
-        this.container = container;
+    private readonly inputManager:
+        InputManager;
 
-        this.renderer = new Renderer();
-        this.engineLoop = new EngineLoop();
-        this.inputManager = new InputManager(this.container);
+    private world:
+        World | null = null;
 
-        this.engineLoop.setUpdateCallback(this.update);
+    private playerController:
+        PlayerController | null = null;
 
-        console.log("Game initialized.");
+    private shotController:
+        ShotController | null = null;
+
+    private state:
+        EngineState =
+        EngineState.Stopped;
+
+    constructor(
+        container: HTMLDivElement,
+    ) {
+        this.container =
+            container;
+
+        this.renderer =
+            new Renderer();
+
+        this.engineLoop =
+            new EngineLoop();
+
+        this.inputManager =
+            new InputManager(
+                this.container,
+            );
+
+        this.engineLoop
+            .setUpdateCallback(
+                this.update,
+            );
+
+        console.log(
+            "Game initialized.",
+        );
     }
 
-    public async start(): Promise<void> {
-        if (this.state !== EngineState.Stopped) {
+    public async start():
+        Promise<void> {
+
+        if (
+            this.state !==
+            EngineState.Stopped
+        ) {
             return;
         }
 
-        this.state = EngineState.Initializing;
+        this.state =
+            EngineState.Initializing;
 
-        //
-        // Renderer
-        //
-        await this.renderer.initialize(this.container);
+        await this.renderer.initialize(
+            this.container,
+        );
 
-        //
-        // Load every game asset BEFORE creating the world.
-        //
         await AssetLoader.initialize();
 
-        const app = this.renderer.getApplication();
+        const app =
+            this.renderer
+                .getApplication();
 
         if (!app) {
-            this.state = EngineState.Stopped;
+            this.state =
+                EngineState.Stopped;
+
             return;
         }
 
-        //
-        // World
-        //
-        this.world = new World(app);
+        this.world =
+            new World(
+                app,
+            );
+
         this.world.initialize();
 
-        //
-        // Controllers
-        //
-        this.shotController = new ShotController(
-            this.world,
-            this.inputManager,
-        );
+        this.shotController =
+            new ShotController(
+                this.world,
+                this.inputManager,
+            );
 
-        this.playerController = new PlayerController(
-            this.inputManager,
-            this.world,
-            this.shotController,
-        );
+        this.playerController =
+            new PlayerController(
+                this.inputManager,
+                this.world,
+                this.shotController,
+            );
 
-        this.state = EngineState.Running;
+        this.state =
+            EngineState.Running;
 
         this.engineLoop.start();
 
-        console.log("Game started.");
+        console.log(
+            "Game started.",
+        );
     }
 
-    private update = (deltaTime: number): void => {
-        if (this.state !== EngineState.Running) {
+    // -------------------------------------------------------------------------
+    // Environmental UI Bridge
+    // -------------------------------------------------------------------------
+
+    public getWindState():
+        WindState | null {
+
+        if (!this.world) {
+            return null;
+        }
+
+        return this.world
+            .getWindManager()
+            .getState();
+    }
+
+    public subscribeToWindState(
+        listener: WindStateListener,
+    ): () => void {
+
+        if (!this.world) {
+            throw new Error(
+                "Cannot subscribe to wind state before the Game has started.",
+            );
+        }
+
+        return this.world
+            .getWindManager()
+            .subscribe(
+                listener,
+            );
+    }
+
+    // -------------------------------------------------------------------------
+    // C7 Wind-Tuning Bridge
+    // -------------------------------------------------------------------------
+
+    public getWindTuningState():
+        WindTuningState | null {
+
+        if (!this.world) {
+            return null;
+        }
+
+        return this.world
+            .getWindTuningController()
+            .getState();
+    }
+
+    public subscribeToWindTuningState(
+        listener:
+            WindTuningStateListener,
+    ): () => void {
+
+        if (!this.world) {
+            throw new Error(
+                "Cannot subscribe to wind tuning state before the Game has started.",
+            );
+        }
+
+        return this.world
+            .getWindTuningController()
+            .subscribe(
+                listener,
+            );
+    }
+
+    public applyPreviousWindPreset():
+        void {
+
+        if (!this.world) {
             return;
         }
 
-        this.playerController?.update(deltaTime);
+        const metrics =
+            this.world
+                .getWindValidationMetrics();
 
-        this.shotController?.update(deltaTime);
+        if (metrics.isMeasuring()) {
+            return;
+        }
 
-        this.world?.update(deltaTime);
+        metrics.clearLatestResult();
+
+        this.world
+            .getWindTuningController()
+            .applyPreviousPreset();
+    }
+
+    public applyNextWindPreset():
+        void {
+
+        if (!this.world) {
+            return;
+        }
+
+        const metrics =
+            this.world
+                .getWindValidationMetrics();
+
+        if (metrics.isMeasuring()) {
+            return;
+        }
+
+        metrics.clearLatestResult();
+
+        this.world
+            .getWindTuningController()
+            .applyNextPreset();
+    }
+
+    public applyRandomWind():
+        void {
+
+        if (!this.world) {
+            return;
+        }
+
+        const metrics =
+            this.world
+                .getWindValidationMetrics();
+
+        if (metrics.isMeasuring()) {
+            return;
+        }
+
+        metrics.clearLatestResult();
+
+        this.world
+            .getWindTuningController()
+            .applyRandomWind();
+    }
+
+    // -------------------------------------------------------------------------
+    // C7 Validation Metrics Bridge
+    // -------------------------------------------------------------------------
+
+    public getWindValidationState():
+        WindValidationState | null {
+
+        if (!this.world) {
+            return null;
+        }
+
+        return this.world
+            .getWindValidationMetrics()
+            .getState();
+    }
+
+    public subscribeToWindValidationState(
+        listener:
+            WindValidationStateListener,
+    ): () => void {
+
+        if (!this.world) {
+            throw new Error(
+                "Cannot subscribe to wind validation state before the Game has started.",
+            );
+        }
+
+        return this.world
+            .getWindValidationMetrics()
+            .subscribe(
+                listener,
+            );
+    }
+
+    // -------------------------------------------------------------------------
+    // C7 Ball Reset
+    // -------------------------------------------------------------------------
+
+    /**
+     * Cancels any active shot preparation and returns
+     * the Ball to its original visible start position.
+     */
+    public resetBall(): void {
+
+        if (!this.world) {
+            return;
+        }
+
+        if (this.playerController) {
+            this.playerController.reset();
+        } else {
+            this.shotController?.reset();
+        }
+
+        this.world.resetBall();
+    }
+
+    // -------------------------------------------------------------------------
+    // Frame Update
+    // -------------------------------------------------------------------------
+
+    private update = (
+        deltaTime: number,
+    ): void => {
+
+        if (
+            this.state !==
+            EngineState.Running
+        ) {
+            return;
+        }
+
+        this.playerController
+            ?.update(
+                deltaTime,
+            );
+
+        this.shotController
+            ?.update(
+                deltaTime,
+            );
+
+        this.world
+            ?.update(
+                deltaTime,
+            );
 
         this.renderer.render();
 
         this.inputManager.update();
     };
 
+    // -------------------------------------------------------------------------
+    // Shutdown
+    // -------------------------------------------------------------------------
+
     public stop(): void {
+
         if (
-            this.state === EngineState.Stopped ||
-            this.state === EngineState.Stopping
+            this.state ===
+            EngineState.Stopped ||
+            this.state ===
+            EngineState.Stopping
         ) {
             return;
         }
 
-        this.state = EngineState.Stopping;
+        this.state =
+            EngineState.Stopping;
 
         this.engineLoop.stop();
 
-        this.playerController = null;
-        this.shotController = null;
+        this.playerController =
+            null;
+
+        this.shotController =
+            null;
 
         this.world?.destroy();
-        this.world = null;
 
-        this.inputManager.destroy(this.container);
+        this.world =
+            null;
+
+        this.inputManager.destroy(
+            this.container,
+        );
 
         this.renderer.destroy();
 
-        this.state = EngineState.Stopped;
+        this.state =
+            EngineState.Stopped;
 
-        console.log("Game stopped.");
+        console.log(
+            "Game stopped.",
+        );
     }
 }

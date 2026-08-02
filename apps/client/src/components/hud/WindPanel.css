@@ -1,0 +1,237 @@
+/* ---------------------------------------------------------
+   Wind HUD Panel
+--------------------------------------------------------- */
+
+.wind-panel {
+    width: 100%;
+    padding: 15px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    background: linear-gradient( 180deg, rgba( 33, 35, 39, 0.97 ) 0%, rgba( 27, 29, 32, 0.97 ) 100% );
+    box-shadow: var(--shadow-panel);
+}
+
+.wind-panel__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.wind-panel__eyebrow {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--color-text-muted);
+    font-size: 0.61rem;
+    font-weight: 720;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.wind-panel__title {
+    color: var(--color-text-primary);
+    font-size: 0.98rem;
+    font-weight: 690;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+}
+
+.wind-panel__status-dot {
+    width: 7px;
+    height: 7px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: var(--color-status-active);
+    box-shadow: 0 0 8px rgba( 137, 194, 112, 0.4 );
+}
+
+.wind-panel__content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 134px;
+    margin-top: 14px;
+    padding: 14px 10px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-inner);
+    background: radial-gradient( circle at 50% 25%, rgba( 255, 255, 255, 0.05 ) 0%, rgba( 255, 255, 255, 0 ) 70% );
+    text-align: center;
+}
+
+.wind-panel__direction {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+}
+
+.wind-panel__arrow {
+    display: inline-block;
+    color: var(--color-text-primary);
+    font-size: 3rem;
+    font-weight: 400;
+    line-height: 1;
+    transform-origin: 50% 50%;
+    text-shadow: 0 0 14px rgba( 255, 255, 255, 0.12 );
+    transition: transform 220ms ease;
+}
+
+.wind-panel__reading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.wind-panel__speed-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+}
+
+.wind-panel__speed {
+    color: var(--color-text-primary);
+    font-size: 1.42rem;
+    font-weight: 740;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.wind-panel__unit {
+    margin-left: 5px;
+    color: var(--color-text-secondary);
+    font-size: 0.68rem;
+    font-weight: 650;
+    letter-spacing: 0.03em;
+}
+
+.wind-panel__intensity {
+    margin-top: 8px;
+    color: var(--color-text-muted);
+    font-size: 0.69rem;
+    font-weight: 680;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------
+   Medium Desktop
+--------------------------------------------------------- */
+
+@media ( max-width: 1180px ) {
+
+    .wind-panel {
+        padding: 13px;
+    }
+
+    .wind-panel__content {
+        min-height: 120px;
+    }
+
+    .wind-panel__arrow {
+        font-size: 2.7rem;
+    }
+}
+
+/* ---------------------------------------------------------
+   Narrow Desktop / Tablet
+--------------------------------------------------------- */
+
+@media ( max-width: 860px ) {
+
+    .wind-panel {
+        padding: 12px;
+    }
+
+    .wind-panel__content {
+        min-height: 105px;
+        padding: 10px 8px;
+    }
+
+    .wind-panel__direction {
+        width: 48px;
+        height: 48px;
+    }
+
+    .wind-panel__arrow {
+        font-size: 2.35rem;
+    }
+
+    .wind-panel__speed {
+        font-size: 1.25rem;
+    }
+}
+
+/* ---------------------------------------------------------
+   Small Screen Fallback
+--------------------------------------------------------- */
+
+@media ( max-width: 700px ) {
+
+    .wind-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        column-gap: 14px;
+    }
+
+    .wind-panel__header {
+        align-self: start;
+    }
+
+    .wind-panel__content {
+        flex-direction: row;
+        min-width: 190px;
+        min-height: 74px;
+        margin-top: 0;
+        padding: 8px 12px;
+    }
+
+    .wind-panel__direction {
+        width: 46px;
+        height: 46px;
+    }
+
+    .wind-panel__arrow {
+        font-size: 2.15rem;
+    }
+
+    .wind-panel__reading {
+        align-items: flex-start;
+        margin-top: 0;
+        margin-left: 10px;
+    }
+
+    .wind-panel__speed {
+        font-size: 1.1rem;
+    }
+
+    .wind-panel__intensity {
+        margin-top: 5px;
+    }
+}
+
+/* ---------------------------------------------------------
+   Very Small Screen Fallback
+--------------------------------------------------------- */
+
+@media ( max-width: 470px ) {
+
+    .wind-panel {
+        grid-template-columns: 1fr;
+        row-gap: 10px;
+    }
+
+    .wind-panel__content {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+
+    .wind-panel__arrow {
+        transition: none;
+    }
+}

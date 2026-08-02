@@ -200,14 +200,44 @@ export const BASIC_CLUB_DEFINITION: ClubDefinition = {
     oscillationCurveStrength: 0.20,
 
     aimGuide: {
-        startDistance: 24,
-        dotSpacing: 11,
+        /*
+         * The first dot begins slightly farther
+         * from the ball than before, creating a
+         * cleaner visual gap around the ball.
+         */
+        startDistance: 28,
+
+        /*
+         * Increased centre-to-centre spacing gives
+         * the guide more visible reach without
+         * making the dots feel tightly packed.
+         */
+        dotSpacing: 13,
 
         maximumDotRadius: 4,
         minimumDotRadius: 1.5,
 
-        maximumDots: 15,
-        minimumDots: 6,
+        /*
+         * Low-power guide:
+         *
+         * 24 dots
+         * Approximate end distance:
+         *
+         * 28 + (23 × 13) + 1.5
+         * = 328.5 pixels
+         */
+        maximumDots: 24,
+
+        /*
+         * Maximum-power guide:
+         *
+         * 12 dots
+         * Approximate end distance:
+         *
+         * 28 + (11 × 13) + 1.5
+         * = 172.5 pixels
+         */
+        minimumDots: 12,
 
         /*
          * The guide remains bright white inside

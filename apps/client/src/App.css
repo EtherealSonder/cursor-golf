@@ -1,8 +1,15 @@
-main {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+/* ---------------------------------------------------------
+   Application Root
+--------------------------------------------------------- */
+
+/*
+ * Page-specific layout belongs to the page stylesheet.
+ *
+ * The application root only establishes the dimensions
+ * required by the active page.
+ */
+
+#root {
+    width: 100%;
     min-height: 100vh;
-    text-align: center;
 }

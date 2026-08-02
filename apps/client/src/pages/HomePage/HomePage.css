@@ -1,19 +1,562 @@
+/* ---------------------------------------------------------
+   Home Page
+--------------------------------------------------------- */
+
 .home-page {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    padding: 2rem;
+    width: 100%;
+    min-height: 100vh;
+    padding: var(--space-page-y) var(--space-page-x);
 }
 
+.home-page__shell {
+    width: min( 100%, var(--page-max-width) );
+    margin: 0 auto;
+}
+
+/* ---------------------------------------------------------
+   Compact Header
+--------------------------------------------------------- */
+
+.game-header {
+    display: grid;
+    grid-template-columns: var(--hud-rail-width) minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--layout-gap);
+    min-height: 58px;
+    margin-bottom: var(--header-bottom-gap);
+}
+
+/* ---------------------------------------------------------
+   Wordmark
+--------------------------------------------------------- */
+
+.game-header__brand {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    min-width: 0;
+}
+
+.game-header__wordmark-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.game-header__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    color: var(--color-text-primary);
+    font-size: 0.58rem;
+    line-height: 1;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
+    background: var(--color-surface-raised);
+    box-shadow: 0 0 0 3px rgba( 255, 255, 255, 0.025 );
+}
+
+.game-header__wordmark {
+    color: var(--color-text-primary);
+    font-size: 1.42rem;
+    font-weight: 720;
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+}
+
+.game-header__status {
+    margin-top: 5px;
+    color: var(--color-text-muted);
+    font-size: 0.64rem;
+    font-weight: 650;
+    letter-spacing: 0.115em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------
+   Level Progress
+--------------------------------------------------------- */
+
+.level-progress {
+    justify-self: center;
+    width: min( 100%, 520px );
+    padding: 10px 13px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    background: linear-gradient( 180deg, rgba( 34, 36, 40, 0.96 ) 0%, rgba( 27, 29, 33, 0.96 ) 100% );
+    box-shadow: var(--shadow-panel);
+}
+
+.level-progress__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    min-width: 0;
+    margin-bottom: 8px;
+}
+
+.level-progress__identity {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+}
+
+.level-progress__eyebrow {
+    margin-right: 8px;
+    color: var(--color-text-muted);
+    font-size: 0.61rem;
+    font-weight: 700;
+    letter-spacing: 0.105em;
+    text-transform: uppercase;
+}
+
+.level-progress__level {
+    color: var(--color-text-primary);
+    font-size: 0.78rem;
+    font-weight: 720;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+}
+
+.level-progress__value {
+    margin-left: 12px;
+    color: var(--color-text-secondary);
+    font-size: 0.69rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.level-progress__track {
+    position: relative;
+    width: 100%;
+    height: 7px;
+    overflow: hidden;
+    border: 1px solid rgba( 255, 255, 255, 0.035 );
+    border-radius: 999px;
+    background: var(--color-track-background);
+    box-shadow: inset 0 1px 2px rgba( 0, 0, 0, 0.45 );
+}
+
+.level-progress__fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient( 90deg, #f0f2f4 0%, #ffffff 100% );
+    box-shadow: 0 0 8px rgba( 255, 255, 255, 0.18 );
+    transition: width 180ms ease;
+}
+
+/* ---------------------------------------------------------
+   Main Layout
+--------------------------------------------------------- */
+
+.game-layout {
+    display: grid;
+    grid-template-columns: var(--hud-rail-width) minmax(0, 1fr);
+    align-items: start;
+    column-gap: var(--layout-gap);
+    width: 100%;
+}
+
+/* ---------------------------------------------------------
+   Left HUD Rail
+--------------------------------------------------------- */
+
+.hud-rail {
+    align-self: stretch;
+    min-width: 0;
+}
+
+    .hud-rail > * + * {
+        margin-top: 12px;
+    }
+
+/* ---------------------------------------------------------
+   Temporary C7 Ball Reset
+--------------------------------------------------------- */
+
+.ball-reset-button {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 12px;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 720;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-inner);
+    background: linear-gradient( 180deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.045) 100% );
+    box-shadow: var(--shadow-panel);
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+    .ball-reset-button:hover:not(:disabled) {
+        border-color: rgba(255, 255, 255, 0.38);
+        background: rgba(255, 255, 255, 0.11);
+    }
+
+    .ball-reset-button:active:not(:disabled) {
+        transform: translateY(1px);
+    }
+
+    .ball-reset-button:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.65);
+        outline-offset: 2px;
+    }
+
+    .ball-reset-button:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+/* ---------------------------------------------------------
+   C7 Wind Tuning Panel
+--------------------------------------------------------- */
+
+.wind-tuning-panel {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    background: linear-gradient( 180deg, rgba( 33, 35, 39, 0.97 ) 0%, rgba( 27, 29, 32, 0.97 ) 100% );
+    box-shadow: var(--shadow-panel);
+}
+
+.wind-tuning-panel__header {
+    margin-bottom: 11px;
+}
+
+.wind-tuning-panel__eyebrow {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--color-text-muted);
+    font-size: 0.58rem;
+    font-weight: 720;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.wind-tuning-panel__title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.92rem;
+    font-weight: 690;
+    line-height: 1.2;
+}
+
+.wind-tuning-panel__current {
+    padding: 11px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-inner);
+    background: rgba( 255, 255, 255, 0.025 );
+}
+
+.wind-tuning-panel__mode {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--color-text-muted);
+    font-size: 0.58rem;
+    font-weight: 680;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.wind-tuning-panel__name {
+    display: block;
+    color: var(--color-text-primary);
+    font-size: 0.8rem;
+    font-weight: 720;
+    line-height: 1.25;
+}
+
+.wind-tuning-panel__description {
+    margin: 7px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 0.65rem;
+    line-height: 1.45;
+}
+
+.wind-tuning-panel__details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 10px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--color-border-subtle);
+    color: var(--color-text-muted);
+    font-size: 0.62rem;
+}
+
+    .wind-tuning-panel__details strong {
+        color: var(--color-text-primary);
+        font-weight: 680;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+
+.wind-tuning-panel__position {
+    display: block;
+    margin-top: 9px;
+    color: var(--color-text-muted);
+    font-size: 0.59rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-align: center;
+}
+
+.wind-tuning-panel__controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.wind-tuning-panel__button {
+    min-height: 34px;
+    padding: 7px 8px;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.63rem;
+    font-weight: 680;
+    line-height: 1.2;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 7px;
+    background: rgba( 255, 255, 255, 0.055 );
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+    .wind-tuning-panel__button:hover:not(:disabled) {
+        border-color: rgba( 255, 255, 255, 0.34 );
+        background: rgba( 255, 255, 255, 0.095 );
+    }
+
+    .wind-tuning-panel__button:active:not(:disabled) {
+        transform: translateY( 1px );
+    }
+
+    .wind-tuning-panel__button:focus-visible {
+        outline: 2px solid rgba( 255, 255, 255, 0.65 );
+        outline-offset: 2px;
+    }
+
+    .wind-tuning-panel__button:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+.wind-tuning-panel__button--wide {
+    grid-column: 1 / -1;
+}
+
+.wind-tuning-panel__reference {
+    margin: 9px 0 0;
+    color: var(--color-text-muted);
+    font-size: 0.56rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
+/* ---------------------------------------------------------
+   Game Column
+--------------------------------------------------------- */
+
+.game-column {
+    width: 100%;
+    min-width: 0;
+}
+
+/* ---------------------------------------------------------
+   Game Frame
+--------------------------------------------------------- */
+
+.game-frame {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: calc( var(--radius-panel) + 1px );
+    background: rgba( 255, 255, 255, 0.025 );
+    box-shadow: var(--shadow-game);
+}
+
+/* ---------------------------------------------------------
+   Game Viewport
+--------------------------------------------------------- */
+
 .game-container {
-    width: 1000px;
-    height: 600px;
-    border: 2px solid white;
-    /*
-     * The golf club becomes the player's cursor.
-     * Hide the operating system cursor only while
-     * the mouse is inside the game area.
-     */
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    aspect-ratio: 5 / 3;
+    overflow: hidden;
+    border: 1px solid rgba( 255, 255, 255, 0.32 );
+    border-radius: var(--radius-game);
+    background-color: #2f8f2f;
     cursor: none;
+}
+
+    .game-container::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        box-shadow: inset 0 0 0 1px rgba( 0, 0, 0, 0.12 );
+    }
+
+    .game-container .game-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+/* ---------------------------------------------------------
+   Medium Desktop
+--------------------------------------------------------- */
+
+@media ( max-width: 1180px ) {
+
+    :root {
+        --hud-rail-width: 170px;
+        --layout-gap: 14px;
+    }
+
+    .game-header__wordmark {
+        font-size: 1.28rem;
+    }
+
+    .wind-tuning-panel {
+        padding: 12px;
+    }
+}
+
+/* ---------------------------------------------------------
+   Narrow Desktop / Tablet
+--------------------------------------------------------- */
+
+@media ( max-width: 860px ) {
+
+    :root {
+        --space-page-x: 12px;
+        --space-page-y: 12px;
+    }
+
+    .game-header {
+        grid-template-columns: 1fr;
+        row-gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .game-header__brand {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+    }
+
+    .game-header__status {
+        margin-top: 0;
+    }
+
+    .level-progress {
+        justify-self: stretch;
+        width: 100%;
+    }
+
+    .game-layout {
+        grid-template-columns: 150px minmax(0, 1fr);
+        column-gap: 12px;
+    }
+
+    .wind-tuning-panel {
+        padding: 10px;
+    }
+
+    .wind-tuning-panel__controls {
+        grid-template-columns: 1fr;
+    }
+
+    .wind-tuning-panel__button--wide {
+        grid-column: auto;
+    }
+}
+
+/* ---------------------------------------------------------
+   Small Screen Fallback
+--------------------------------------------------------- */
+
+@media ( max-width: 700px ) {
+
+    .home-page {
+        padding: 10px;
+    }
+
+    .game-layout {
+        grid-template-columns: 1fr;
+        row-gap: 12px;
+    }
+
+    .game-column {
+        order: 1;
+    }
+
+    .hud-rail {
+        order: 2;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: start;
+        gap: 12px;
+    }
+
+        .hud-rail > * + * {
+            margin-top: 0;
+        }
+
+    .wind-tuning-panel__controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .wind-tuning-panel__button--wide {
+        grid-column: 1 / -1;
+    }
+}
+
+/* ---------------------------------------------------------
+   Very Small Screen Fallback
+--------------------------------------------------------- */
+
+@media ( max-width: 470px ) {
+
+    .game-header__brand {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .game-header__status {
+        margin-top: 4px;
+    }
+
+    .level-progress__eyebrow {
+        display: none;
+    }
+
+    .hud-rail {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+
+    .wind-tuning-panel__button,
+    .ball-reset-button {
+        transition: none;
+    }
 }

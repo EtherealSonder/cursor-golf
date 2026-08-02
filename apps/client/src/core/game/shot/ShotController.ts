@@ -9,7 +9,8 @@ export enum ShotState {
 
 export class ShotController {
 
-    private readonly world: World;
+    private readonly world:
+        World;
 
     private readonly inputManager:
         InputManager;
@@ -17,14 +18,21 @@ export class ShotController {
     private readonly shotPreparation:
         ShotPreparation;
 
-    private state: ShotState =
+    private state =
         ShotState.Idle;
+
+    /**
+     * Amount of time spent in the current
+     * preparation state.
+     *
+     * Measured in seconds.
+     */
+    private preparationElapsedTime = 0;
 
     constructor(
         world: World,
         inputManager: InputManager,
     ) {
-
         this.world =
             world;
 
@@ -82,6 +90,20 @@ export class ShotController {
             return;
         }
 
+        if (ball.isMoving()) {
+            this.cancelShot();
+            return;
+        }
+
+        const safeDeltaTime =
+            Math.max(
+                0,
+                deltaTime,
+            );
+
+        this.preparationElapsedTime +=
+            safeDeltaTime;
+
         // -----------------------------
         // Current Drag Vector
         // -----------------------------
@@ -108,11 +130,11 @@ export class ShotController {
         );
 
         // -----------------------------
-        // Time-Based Values
+        // Time-Based Shot Values
         // -----------------------------
 
         this.shotPreparation.update(
-            deltaTime,
+            safeDeltaTime,
         );
 
         // -----------------------------
@@ -150,6 +172,22 @@ export class ShotController {
         const insideOptimalAccuracyRange =
             this.shotPreparation
                 .isInsideOptimalAccuracyRange();
+
+        const hasMinimumPower =
+            ball.canLaunchWithPower(
+                normalizedPower,
+            );
+
+        const hasMinimumPreparationTime =
+            ball.hasMetMinimumPreparationTime(
+                this.preparationElapsedTime,
+            );
+
+        const shotCanLaunch =
+            ball.canLaunchShot(
+                normalizedPower,
+                this.preparationElapsedTime,
+            );
 
         // -----------------------------
         // Ball Tension Feedback
@@ -193,7 +231,7 @@ export class ShotController {
         );
 
         // -----------------------------
-        // Temporary Preparation Debug
+        // Temporary Debug Information
         // -----------------------------
 
         console.clear();
@@ -204,7 +242,61 @@ export class ShotController {
 
         console.log(
             "Power:",
-            normalizedPower.toFixed(2),
+            normalizedPower.toFixed(3),
+        );
+
+        console.log(
+            "Required Power:",
+            ball
+                .getMinimumLaunchPower()
+                .toFixed(3),
+        );
+
+        console.log(
+            "Power Requirement Met:",
+            hasMinimumPower,
+        );
+
+        console.log(
+            "Preparation Time:",
+            this.preparationElapsedTime
+                .toFixed(3),
+            "seconds",
+        );
+
+        console.log(
+            "Required Preparation Time:",
+            ball
+                .getMinimumShotPreparationTime()
+                .toFixed(3),
+            "seconds",
+        );
+
+        console.log(
+            "Time Requirement Met:",
+            hasMinimumPreparationTime,
+        );
+
+        console.log(
+            "Shot Can Launch:",
+            shotCanLaunch,
+        );
+
+        console.log(
+            "Predicted Launch Speed:",
+            ball
+                .getLaunchSpeedForPower(
+                    normalizedPower,
+                )
+                .toFixed(2),
+            "px/s",
+        );
+
+        console.log(
+            "Power Curve Exponent:",
+            ball
+                .getShotPowerExponent()
+                .toFixed(2),
         );
 
         console.log(
@@ -243,34 +335,6 @@ export class ShotController {
                 oscillationOffset,
             ).toFixed(2),
             "degrees",
-        );
-
-        console.log(
-            "Absolute Oscillation Offset:",
-            this.radiansToDegrees(
-                Math.abs(
-                    oscillationOffset,
-                ),
-            ).toFixed(2),
-            "degrees",
-        );
-
-        console.log(
-            "Maximum Oscillation Angle:",
-            this.radiansToDegrees(
-                club.getOscillationAngle(),
-            ).toFixed(2),
-            "degrees",
-        );
-
-        console.log(
-            "Optimal Accuracy Ratio:",
-            (
-                club
-                    .getOptimalAccuracyRatio() *
-                100
-            ).toFixed(2),
-            "%",
         );
 
         console.log(
@@ -319,13 +383,6 @@ export class ShotController {
             this.shotPreparation
                 .getShapedOscillationWave()
                 .toFixed(3),
-        );
-
-        console.log(
-            "Oscillation Curve Strength:",
-            club
-                .getOscillationCurveStrength()
-                .toFixed(2),
         );
 
         console.log(
@@ -381,16 +438,26 @@ export class ShotController {
             return;
         }
 
+        const ball =
+            this.world.getBall();
+
+        if (
+            !ball ||
+            ball.isMoving()
+        ) {
+            return;
+        }
+
         this.state =
             ShotState.Preparing;
 
+        this.preparationElapsedTime = 0;
+
         this.shotPreparation.reset();
 
-        this.world
-            .getBall()
-            ?.setTensionPower(
-                0,
-            );
+        ball.setTensionPower(
+            0,
+        );
 
         this.world
             .getClub()
@@ -416,6 +483,8 @@ export class ShotController {
 
         this.state =
             ShotState.Idle;
+
+        this.preparationElapsedTime = 0;
 
         this.shotPreparation.reset();
 
@@ -457,19 +526,7 @@ export class ShotController {
             !ball ||
             !club
         ) {
-
-            this.state =
-                ShotState.Idle;
-
-            this.shotPreparation.reset();
-
-            ball?.setTensionPower(
-                0,
-            );
-
-            this.world
-                .getAimIndicator()
-                ?.hide();
+            this.resetAfterShot();
 
             console.error(
                 "Shot could not be released because the Ball or Club does not exist.",
@@ -478,10 +535,10 @@ export class ShotController {
             return;
         }
 
-        /*
-         * Capture all release data before
-         * ShotPreparation is reset.
-         */
+        // -----------------------------
+        // Capture Release Snapshot
+        // -----------------------------
+
         const releasedPower =
             this.shotPreparation
                 .getNormalizedPower();
@@ -506,28 +563,54 @@ export class ShotController {
             this.shotPreparation
                 .isInsideOptimalAccuracyRange();
 
-        this.logReleasedShot(
-            releasedPower,
-            releasedDirection,
-            club.getClubName(),
-            releasedOscillationOffset,
-            releasedOscillationSpeed,
-            releasedAccuracyQuality,
-            releasedInsideOptimalRange,
-        );
+        const releasedPreparationTime =
+            this.preparationElapsedTime;
+
+        // -----------------------------
+        // Validate Launch
+        // -----------------------------
+
+        const hasMinimumPower =
+            ball.canLaunchWithPower(
+                releasedPower,
+            );
+
+        const hasMinimumPreparationTime =
+            ball.hasMetMinimumPreparationTime(
+                releasedPreparationTime,
+            );
+
+        const shotCanLaunch =
+            ball.canLaunchShot(
+                releasedPower,
+                releasedPreparationTime,
+            );
+
+        /*
+         * Invalid quick clicks and tiny drags
+         * cancel cleanly.
+         *
+         * They do not create release feedback
+         * and do not move the ball.
+         */
+        if (!shotCanLaunch) {
+
+            this.logRejectedShot(
+                releasedPower,
+                releasedPreparationTime,
+                hasMinimumPower,
+                hasMinimumPreparationTime,
+            );
+
+            this.resetAfterShot();
+
+            return;
+        }
 
         // -----------------------------
         // Accurate Release Feedback
         // -----------------------------
 
-        /*
-         * Power determines which word tier is
-         * selected, but accuracy determines
-         * whether feedback appears at all.
-         *
-         * Every accurate release receives
-         * feedback regardless of shot power.
-         */
         if (
             releasedInsideOptimalRange
         ) {
@@ -540,29 +623,120 @@ export class ShotController {
                 );
         }
 
-        /*
-         * Ball movement is not performed yet.
-         */
+        // -----------------------------
+        // Ball Launch
+        // -----------------------------
+
+        const launchSucceeded =
+            ball.launch(
+                releasedPower,
+                releasedDirection,
+            );
+
+        this.logReleasedShot(
+            releasedPower,
+            releasedDirection,
+            club.getClubName(),
+            releasedOscillationOffset,
+            releasedOscillationSpeed,
+            releasedAccuracyQuality,
+            releasedInsideOptimalRange,
+            releasedPreparationTime,
+            launchSucceeded,
+            ball.getVelocityX(),
+            ball.getVelocityY(),
+            ball.getSpeed(),
+        );
+
+        this.resetAfterShot();
+    }
+
+    private resetAfterShot(): void {
 
         this.state =
             ShotState.Idle;
 
+        this.preparationElapsedTime = 0;
+
         this.shotPreparation.reset();
 
-        ball.setTensionPower(
-            0,
-        );
+        this.world
+            .getBall()
+            ?.setTensionPower(
+                0,
+            );
 
-        club.resetShotVisuals();
+        this.world
+            .getClub()
+            ?.resetShotVisuals();
 
         this.world
             .getAimIndicator()
             ?.hide();
     }
 
+    /**
+     * Cancels any active preparation and restores all
+     * shot-facing visuals to their idle state.
+     *
+     * Used by the temporary C7 Ball reset control.
+     */
+    public reset(): void {
+
+        this.resetAfterShot();
+    }
+
     // -------------------------------------------------------
-    // Release Data
+    // Release Diagnostics
     // -------------------------------------------------------
+
+    private logRejectedShot(
+        power: number,
+        preparationTime: number,
+        hasMinimumPower: boolean,
+        hasMinimumPreparationTime: boolean,
+    ): void {
+
+        console.clear();
+
+        console.log(
+            "==============================",
+        );
+
+        console.log(
+            "SHOT REJECTED",
+        );
+
+        console.log(
+            "Power:",
+            power.toFixed(3),
+        );
+
+        console.log(
+            "Power Requirement Met:",
+            hasMinimumPower,
+        );
+
+        console.log(
+            "Preparation Time:",
+            preparationTime.toFixed(3),
+            "seconds",
+        );
+
+        console.log(
+            "Time Requirement Met:",
+            hasMinimumPreparationTime,
+        );
+
+        console.log(
+            "Ball Movement:",
+            "No launch",
+        );
+
+        console.log(
+            "==============================",
+        );
+    }
 
     private logReleasedShot(
         power: number,
@@ -572,6 +746,11 @@ export class ShotController {
         oscillationSpeed: number,
         accuracyQuality: number,
         insideOptimalRange: boolean,
+        preparationTime: number,
+        launchSucceeded: boolean,
+        velocityX: number,
+        velocityY: number,
+        speed: number,
     ): void {
 
         console.clear();
@@ -586,7 +765,13 @@ export class ShotController {
 
         console.log(
             "Power:",
-            power.toFixed(2),
+            power.toFixed(3),
+        );
+
+        console.log(
+            "Preparation Time:",
+            preparationTime.toFixed(3),
+            "seconds",
         );
 
         console.log(
@@ -631,12 +816,35 @@ export class ShotController {
         );
 
         console.log(
+            "Launch Succeeded:",
+            launchSucceeded,
+        );
+
+        console.log(
+            "Velocity X:",
+            velocityX.toFixed(2),
+            "px/s",
+        );
+
+        console.log(
+            "Velocity Y:",
+            velocityY.toFixed(2),
+            "px/s",
+        );
+
+        console.log(
+            "Launch Speed:",
+            speed.toFixed(2),
+            "px/s",
+        );
+
+        console.log(
             "==============================",
         );
     }
 
     // -------------------------------------------------------
-    // State
+    // State Queries
     // -------------------------------------------------------
 
     public getState(): ShotState {
@@ -649,6 +857,12 @@ export class ShotController {
             this.state ===
             ShotState.Preparing
         );
+    }
+
+    public getPreparationElapsedTime():
+        number {
+
+        return this.preparationElapsedTime;
     }
 
     // -------------------------------------------------------
