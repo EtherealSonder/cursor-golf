@@ -108,20 +108,31 @@ export class ShotController {
         // Current Drag Vector
         // -----------------------------
 
-        const mouseX =
-            this.inputManager
-                .getMouseX();
+        /*
+         * InputManager stores viewport coordinates.
+         *
+         * Shot preparation must use world coordinates
+         * because Ball position remains authoritative
+         * in world space after camera rendering is
+         * introduced.
+         */
+        const mouseWorldPosition =
+            this.world
+                .getCamera()
+                .viewportToWorld(
+                    this.inputManager
+                        .getMouseX(),
 
-        const mouseY =
-            this.inputManager
-                .getMouseY();
+                    this.inputManager
+                        .getMouseY(),
+                );
 
         const deltaX =
-            mouseX -
+            mouseWorldPosition.x -
             ball.getX();
 
         const deltaY =
-            mouseY -
+            mouseWorldPosition.y -
             ball.getY();
 
         this.shotPreparation.updateDrag(
@@ -590,8 +601,8 @@ export class ShotController {
          * Invalid quick clicks and tiny drags
          * cancel cleanly.
          *
-         * They do not create release feedback
-         * and do not move the ball.
+         * They do not create release feedback and
+         * do not move the Ball.
          */
         if (!shotCanLaunch) {
 
@@ -632,6 +643,16 @@ export class ShotController {
                 releasedPower,
                 releasedDirection,
             );
+
+        if (launchSucceeded) {
+            this.world
+                .getCameraFeedbackController()
+                .triggerShotRelease(
+                    releasedPower,
+                    releasedAccuracyQuality,
+                    releasedInsideOptimalRange,
+                );
+        }
 
         this.logReleasedShot(
             releasedPower,
@@ -848,6 +869,7 @@ export class ShotController {
     // -------------------------------------------------------
 
     public getState(): ShotState {
+
         return this.state;
     }
 

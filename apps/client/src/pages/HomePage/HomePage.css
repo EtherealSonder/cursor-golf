@@ -4,13 +4,23 @@
 
 .home-page {
     width: 100%;
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    min-width: 0;
+    min-height: 0;
     padding: var(--space-page-y) var(--space-page-x);
+    overflow: hidden;
 }
 
 .home-page__shell {
-    width: min( 100%, var(--page-max-width) );
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
     margin: 0 auto;
+    overflow: hidden;
 }
 
 /* ---------------------------------------------------------
@@ -22,7 +32,9 @@
     grid-template-columns: var(--hud-rail-width) minmax(0, 1fr);
     align-items: center;
     column-gap: var(--layout-gap);
-    min-height: 58px;
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
     margin-bottom: var(--header-bottom-gap);
 }
 
@@ -57,7 +69,7 @@
     border: 1px solid var(--color-border-strong);
     border-radius: 50%;
     background: var(--color-surface-raised);
-    box-shadow: 0 0 0 3px rgba( 255, 255, 255, 0.025 );
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.025);
 }
 
 .game-header__wordmark {
@@ -70,7 +82,7 @@
 }
 
 .game-header__status {
-    margin-top: 5px;
+    margin-top: 4px;
     color: var(--color-text-muted);
     font-size: 0.64rem;
     font-weight: 650;
@@ -85,11 +97,11 @@
 
 .level-progress {
     justify-self: center;
-    width: min( 100%, 520px );
-    padding: 10px 13px;
+    width: min(100%, 520px);
+    padding: 9px 13px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-panel);
-    background: linear-gradient( 180deg, rgba( 34, 36, 40, 0.96 ) 0%, rgba( 27, 29, 33, 0.96 ) 100% );
+    background: linear-gradient( 180deg, rgba(34, 36, 40, 0.96) 0%, rgba(27, 29, 33, 0.96) 100% );
     box-shadow: var(--shadow-panel);
 }
 
@@ -98,7 +110,7 @@
     justify-content: space-between;
     align-items: flex-end;
     min-width: 0;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .level-progress__identity {
@@ -138,30 +150,34 @@
     width: 100%;
     height: 7px;
     overflow: hidden;
-    border: 1px solid rgba( 255, 255, 255, 0.035 );
+    border: 1px solid rgba(255, 255, 255, 0.035);
     border-radius: 999px;
     background: var(--color-track-background);
-    box-shadow: inset 0 1px 2px rgba( 0, 0, 0, 0.45 );
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .level-progress__fill {
     height: 100%;
     border-radius: inherit;
     background: linear-gradient( 90deg, #f0f2f4 0%, #ffffff 100% );
-    box-shadow: 0 0 8px rgba( 255, 255, 255, 0.18 );
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.18);
     transition: width 180ms ease;
 }
 
 /* ---------------------------------------------------------
-   Main Layout
+   Main Gameplay Layout
 --------------------------------------------------------- */
 
 .game-layout {
     display: grid;
     grid-template-columns: var(--hud-rail-width) minmax(0, 1fr);
-    align-items: start;
+    align-items: stretch;
     column-gap: var(--layout-gap);
     width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* ---------------------------------------------------------
@@ -171,6 +187,8 @@
 .hud-rail {
     align-self: stretch;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
     .hud-rail > * + * {
@@ -178,18 +196,26 @@
     }
 
 /* ---------------------------------------------------------
-   Temporary C7 Ball Reset
+   Compact HUD Actions
 --------------------------------------------------------- */
 
-.ball-reset-button {
+.hud-rail__compact-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
+}
+
+.hud-action-button {
     width: 100%;
     min-height: 38px;
-    padding: 8px 12px;
+    padding: 8px 10px;
     color: var(--color-text-primary);
     font: inherit;
-    font-size: 0.68rem;
+    font-size: 0.64rem;
     font-weight: 720;
-    letter-spacing: 0.04em;
+    line-height: 1.25;
+    letter-spacing: 0.035em;
     text-transform: uppercase;
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-inner);
@@ -199,21 +225,21 @@
     transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
-    .ball-reset-button:hover:not(:disabled) {
+    .hud-action-button:hover:not(:disabled) {
         border-color: rgba(255, 255, 255, 0.38);
         background: rgba(255, 255, 255, 0.11);
     }
 
-    .ball-reset-button:active:not(:disabled) {
+    .hud-action-button:active:not(:disabled) {
         transform: translateY(1px);
     }
 
-    .ball-reset-button:focus-visible {
+    .hud-action-button:focus-visible {
         outline: 2px solid rgba(255, 255, 255, 0.65);
         outline-offset: 2px;
     }
 
-    .ball-reset-button:disabled {
+    .hud-action-button:disabled {
         opacity: 0.45;
         cursor: default;
     }
@@ -227,7 +253,7 @@
     padding: 14px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-panel);
-    background: linear-gradient( 180deg, rgba( 33, 35, 39, 0.97 ) 0%, rgba( 27, 29, 32, 0.97 ) 100% );
+    background: linear-gradient( 180deg, rgba(33, 35, 39, 0.97) 0%, rgba(27, 29, 32, 0.97) 100% );
     box-shadow: var(--shadow-panel);
 }
 
@@ -257,8 +283,13 @@
     padding: 11px;
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-inner);
-    background: rgba( 255, 255, 255, 0.025 );
+    background: rgba(255, 255, 255, 0.025);
 }
+
+    .wind-tuning-panel__current +
+    .wind-tuning-panel__current {
+        margin-top: 10px;
+    }
 
 .wind-tuning-panel__mode {
     display: block;
@@ -315,7 +346,7 @@
 
 .wind-tuning-panel__controls {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat( 2, minmax(0, 1fr) );
     gap: 7px;
     margin-top: 10px;
 }
@@ -330,22 +361,22 @@
     line-height: 1.2;
     border: 1px solid var(--color-border-strong);
     border-radius: 7px;
-    background: rgba( 255, 255, 255, 0.055 );
+    background: rgba(255, 255, 255, 0.055);
     cursor: pointer;
     transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
     .wind-tuning-panel__button:hover:not(:disabled) {
-        border-color: rgba( 255, 255, 255, 0.34 );
-        background: rgba( 255, 255, 255, 0.095 );
+        border-color: rgba(255, 255, 255, 0.34);
+        background: rgba(255, 255, 255, 0.095);
     }
 
     .wind-tuning-panel__button:active:not(:disabled) {
-        transform: translateY( 1px );
+        transform: translateY(1px);
     }
 
     .wind-tuning-panel__button:focus-visible {
-        outline: 2px solid rgba( 255, 255, 255, 0.65 );
+        outline: 2px solid rgba(255, 255, 255, 0.65);
         outline-offset: 2px;
     }
 
@@ -353,10 +384,6 @@
         opacity: 0.45;
         cursor: default;
     }
-
-.wind-tuning-panel__button--wide {
-    grid-column: 1 / -1;
-}
 
 .wind-tuning-panel__reference {
     margin: 9px 0 0;
@@ -372,7 +399,11 @@
 
 .game-column {
     width: 100%;
+    height: 100%;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    container-type: size;
 }
 
 /* ---------------------------------------------------------
@@ -380,11 +411,18 @@
 --------------------------------------------------------- */
 
 .game-frame {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
     padding: 3px;
+    overflow: hidden;
     border: 1px solid var(--color-border);
     border-radius: calc( var(--radius-panel) + 1px );
-    background: rgba( 255, 255, 255, 0.025 );
+    background: rgba(255, 255, 255, 0.025);
     box-shadow: var(--shadow-game);
 }
 
@@ -394,11 +432,14 @@
 
 .game-container {
     position: relative;
-    width: 100%;
-    max-width: 1200px;
+    width: min( 100cqw, calc( 100cqh * 5 / 3 ) );
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
     aspect-ratio: 5 / 3;
+    flex: none;
     overflow: hidden;
-    border: 1px solid rgba( 255, 255, 255, 0.32 );
+    border: 1px solid rgba(255, 255, 255, 0.32);
     border-radius: var(--radius-game);
     background-color: #2f8f2f;
     cursor: none;
@@ -409,24 +450,40 @@
         position: absolute;
         inset: 0;
         pointer-events: none;
-        box-shadow: inset 0 0 0 1px rgba( 0, 0, 0, 0.12 );
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
     }
 
     .game-container .game-canvas {
         display: block;
         width: 100%;
         height: 100%;
+        max-width: none;
+        max-height: none;
     }
+
+/* ---------------------------------------------------------
+   Wide Desktop
+--------------------------------------------------------- */
+
+@media (min-width: 1500px) {
+
+    :root {
+        --hud-rail-width: 190px;
+        --layout-gap: 16px;
+        --space-page-x: 18px;
+    }
+}
 
 /* ---------------------------------------------------------
    Medium Desktop
 --------------------------------------------------------- */
 
-@media ( max-width: 1180px ) {
+@media (max-width: 1180px) {
 
     :root {
         --hud-rail-width: 170px;
-        --layout-gap: 14px;
+        --layout-gap: 12px;
+        --space-page-x: 10px;
     }
 
     .game-header__wordmark {
@@ -439,20 +496,72 @@
 }
 
 /* ---------------------------------------------------------
+   Short Desktop Height
+--------------------------------------------------------- */
+
+@media (max-height: 820px) and (min-width: 701px) {
+
+    :root {
+        --space-page-y: 6px;
+        --header-bottom-gap: 6px;
+    }
+
+    .game-header {
+        min-height: 48px;
+    }
+
+    .level-progress {
+        padding: 7px 11px;
+    }
+
+    .level-progress__header {
+        margin-bottom: 5px;
+    }
+
+    .game-header__status {
+        margin-top: 2px;
+    }
+}
+
+/* ---------------------------------------------------------
+   Very Short Desktop Height
+--------------------------------------------------------- */
+
+@media (max-height: 700px) and (min-width: 701px) {
+
+    :root {
+        --space-page-y: 4px;
+        --header-bottom-gap: 4px;
+    }
+
+    .game-header {
+        min-height: 44px;
+    }
+
+    .game-header__status {
+        display: none;
+    }
+
+    .level-progress {
+        padding: 6px 10px;
+    }
+}
+
+/* ---------------------------------------------------------
    Narrow Desktop / Tablet
 --------------------------------------------------------- */
 
-@media ( max-width: 860px ) {
+@media (max-width: 860px) {
 
     :root {
-        --space-page-x: 12px;
-        --space-page-y: 12px;
+        --space-page-x: 8px;
+        --space-page-y: 8px;
     }
 
     .game-header {
         grid-template-columns: 1fr;
-        row-gap: 12px;
-        margin-bottom: 12px;
+        row-gap: 10px;
+        margin-bottom: 8px;
     }
 
     .game-header__brand {
@@ -473,7 +582,7 @@
 
     .game-layout {
         grid-template-columns: 150px minmax(0, 1fr);
-        column-gap: 12px;
+        column-gap: 10px;
     }
 
     .wind-tuning-panel {
@@ -483,25 +592,22 @@
     .wind-tuning-panel__controls {
         grid-template-columns: 1fr;
     }
-
-    .wind-tuning-panel__button--wide {
-        grid-column: auto;
-    }
 }
 
 /* ---------------------------------------------------------
    Small Screen Fallback
 --------------------------------------------------------- */
 
-@media ( max-width: 700px ) {
+@media (max-width: 700px) {
 
     .home-page {
-        padding: 10px;
+        padding: 8px;
     }
 
     .game-layout {
         grid-template-columns: 1fr;
-        row-gap: 12px;
+        grid-template-rows: minmax(0, 1fr) auto;
+        row-gap: 10px;
     }
 
     .game-column {
@@ -513,19 +619,25 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         align-items: start;
-        gap: 12px;
+        gap: 10px;
+        max-height: 170px;
     }
 
         .hud-rail > * + * {
             margin-top: 0;
         }
 
-    .wind-tuning-panel__controls {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .hud-rail__compact-actions {
+        gap: 8px;
     }
 
-    .wind-tuning-panel__button--wide {
-        grid-column: 1 / -1;
+    .wind-tuning-panel {
+        max-height: 170px;
+        overflow: hidden;
+    }
+
+    .wind-tuning-panel__controls {
+        grid-template-columns: repeat( 2, minmax(0, 1fr) );
     }
 }
 
@@ -533,7 +645,7 @@
    Very Small Screen Fallback
 --------------------------------------------------------- */
 
-@media ( max-width: 470px ) {
+@media (max-width: 470px) {
 
     .game-header__brand {
         flex-direction: column;
@@ -553,10 +665,14 @@
     }
 }
 
-@media ( prefers-reduced-motion: reduce ) {
+/* ---------------------------------------------------------
+   Reduced Motion
+--------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
 
     .wind-tuning-panel__button,
-    .ball-reset-button {
+    .hud-action-button {
         transition: none;
     }
 }

@@ -3,6 +3,7 @@ import { EngineState } from "../engine/EngineState";
 import { InputManager } from "../input/InputManager";
 import { Renderer } from "../rendering/Renderer";
 import { AssetLoader } from "../rendering/AssetLoader";
+import { CameraController } from "./controllers/CameraController";
 import { PlayerController } from "./controllers/PlayerController";
 
 import type {
@@ -40,6 +41,9 @@ export class Game {
     private world:
         World | null = null;
 
+    private cameraController:
+        CameraController | null = null;
+
     private playerController:
         PlayerController | null = null;
 
@@ -65,6 +69,11 @@ export class Game {
         this.inputManager =
             new InputManager(
                 this.container,
+            );
+
+        this.renderer
+            .setResizeListener(
+                this.handleRendererResize,
             );
 
         this.engineLoop
@@ -107,9 +116,27 @@ export class Game {
             return;
         }
 
+        this.inputManager
+            .setViewportSize(
+                this.renderer
+                    .getViewportWidth(),
+
+                this.renderer
+                    .getViewportHeight(),
+            );
+
         this.world =
             new World(
                 app,
+            );
+
+        this.world
+            .resizeViewport(
+                this.renderer
+                    .getViewportWidth(),
+
+                this.renderer
+                    .getViewportHeight(),
             );
 
         this.world.initialize();
@@ -118,6 +145,12 @@ export class Game {
             new ShotController(
                 this.world,
                 this.inputManager,
+            );
+
+        this.cameraController =
+            new CameraController(
+                this.inputManager,
+                this.world.getCamera(),
             );
 
         this.playerController =
@@ -328,6 +361,28 @@ export class Game {
     }
 
     // -------------------------------------------------------------------------
+    // Responsive Viewport
+    // -------------------------------------------------------------------------
+
+    private handleRendererResize = (
+        width: number,
+        height: number,
+    ): void => {
+
+        this.inputManager
+            .setViewportSize(
+                width,
+                height,
+            );
+
+        this.world
+            ?.resizeViewport(
+                width,
+                height,
+            );
+    };
+
+    // -------------------------------------------------------------------------
     // Frame Update
     // -------------------------------------------------------------------------
 
@@ -341,6 +396,20 @@ export class Game {
         ) {
             return;
         }
+
+        this.cameraController
+            ?.setEnabled(
+                !(this.shotController
+                    ?.isPreparingShot() ?? false),
+            );
+
+        this.cameraController
+            ?.update();
+
+        this.world
+            ?.updateCamera(
+                deltaTime,
+            );
 
         this.playerController
             ?.update(
@@ -382,6 +451,9 @@ export class Game {
 
         this.engineLoop.stop();
 
+        this.cameraController =
+            null;
+
         this.playerController =
             null;
 
@@ -396,6 +468,11 @@ export class Game {
         this.inputManager.destroy(
             this.container,
         );
+
+        this.renderer
+            .setResizeListener(
+                null,
+            );
 
         this.renderer.destroy();
 

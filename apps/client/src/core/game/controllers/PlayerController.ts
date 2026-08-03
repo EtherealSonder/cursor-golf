@@ -57,16 +57,35 @@ export class PlayerController {
             return;
         }
 
+        /*
+         * InputManager owns logical viewport
+         * coordinates.
+         *
+         * Camera converts those values into the
+         * corresponding world position used by all
+         * gameplay interactions.
+         */
+        const mouseWorldPosition =
+            this.world
+                .getCamera()
+                .viewportToWorld(
+                    this.inputManager
+                        .getMouseX(),
+
+                    this.inputManager
+                        .getMouseY(),
+                );
+
         // ---------------------------------------------------
         // Right-Click Cancellation
         // ---------------------------------------------------
 
         /*
-         * Cancellation is processed before
-         * normal left-button release handling.
+         * Cancellation is processed before normal
+         * left-button release handling.
          *
-         * This guarantees that a right-click
-         * cannot finish or launch the shot.
+         * This guarantees that a right-click cannot
+         * finish or launch the shot.
          */
         if (
             this.dragging &&
@@ -93,11 +112,16 @@ export class PlayerController {
 
         if (!this.dragging) {
 
+            /*
+             * Club receives world coordinates.
+             *
+             * The world-container camera transform
+             * places the Club back beneath the
+             * viewport cursor.
+             */
             club.setCursorPosition(
-                this.inputManager
-                    .getMouseX(),
-                this.inputManager
-                    .getMouseY(),
+                mouseWorldPosition.x,
+                mouseWorldPosition.y,
             );
         }
 
@@ -126,6 +150,8 @@ export class PlayerController {
         const hovered =
             this.isBallHovered(
                 ball,
+                mouseWorldPosition.x,
+                mouseWorldPosition.y,
             );
 
         // ---------------------------------------------------
@@ -173,13 +199,11 @@ export class PlayerController {
         if (this.dragging) {
 
             const dx =
-                this.inputManager
-                    .getMouseX() -
+                mouseWorldPosition.x -
                 ball.getX();
 
             const dy =
-                this.inputManager
-                    .getMouseY() -
+                mouseWorldPosition.y -
                 ball.getY();
 
             ball.setInteractionState(
@@ -207,8 +231,9 @@ export class PlayerController {
     }
 
     /**
-     * Clears local drag ownership and returns the shot
-     * controller and Ball interaction state to idle.
+     * Clears local drag ownership and returns the
+     * shot controller and Ball interaction state
+     * to idle.
      */
     public reset(): void {
 
@@ -230,26 +255,20 @@ export class PlayerController {
 
     private isBallHovered(
         ball: Ball,
+        mouseWorldX: number,
+        mouseWorldY: number,
     ): boolean {
 
         if (ball.isMoving()) {
             return false;
         }
 
-        const mouseX =
-            this.inputManager
-                .getMouseX();
-
-        const mouseY =
-            this.inputManager
-                .getMouseY();
-
         const dx =
-            mouseX -
+            mouseWorldX -
             ball.getX();
 
         const dy =
-            mouseY -
+            mouseWorldY -
             ball.getY();
 
         const distance =

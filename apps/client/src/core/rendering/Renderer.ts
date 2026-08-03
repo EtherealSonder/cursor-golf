@@ -1,92 +1,272 @@
-import { Application } from "pixi.js";
+import {
+    Application,
+} from "pixi.js";
 
 import {
     DEFAULT_GAME_VIEWPORT_DEFINITION,
 } from "../game/config/GameViewportDefinition";
 
-export class Renderer {
-    private app: Application | null = null;
+/**
+ * Retained for compatibility with the current Game
+ * integration.
+ *
+ * Fixed-resolution rendering does not emit resize
+ * notifications because the logical viewport never
+ * changes.
+ */
+export type RendererResizeListener = (
+    width: number,
+    height: number,
+) => void;
 
-    private initialized = false;
-    private destroyed = false;
+export class Renderer {
+
+    private app:
+        Application | null =
+        null;
+
+    private initialized =
+        false;
+
+    private destroyed =
+        false;
+
+    /**
+     * Retained so the current Game class remains
+     * compatible.
+     *
+     * The listener is stored but is not repeatedly
+     * invoked during browser resize because CSS owns
+     * presentation scaling.
+     */
+    private resizeListener:
+        RendererResizeListener | null =
+        null;
+
+    private readonly viewportWidth =
+        DEFAULT_GAME_VIEWPORT_DEFINITION
+            .width;
+
+    private readonly viewportHeight =
+        DEFAULT_GAME_VIEWPORT_DEFINITION
+            .height;
 
     constructor() {
-        console.log("Renderer initialized.");
+
+        console.log(
+            "Renderer initialized.",
+        );
     }
 
+    // -------------------------------------------------------
+    // Resize Compatibility
+    // -------------------------------------------------------
+
+    /**
+     * Retained for compatibility with Game.ts.
+     *
+     * The logical Pixi viewport is fixed, so browser
+     * resize does not produce resize notifications.
+     */
+    public setResizeListener(
+        listener:
+            RendererResizeListener | null,
+    ): void {
+
+        this.resizeListener =
+            listener;
+    }
+
+    // -------------------------------------------------------
+    // Initialization
+    // -------------------------------------------------------
+
     public async initialize(
-        container: HTMLDivElement,
+        container:
+            HTMLDivElement,
     ): Promise<void> {
-        this.app = new Application();
 
-        await this.app.init({
-            width:
-                DEFAULT_GAME_VIEWPORT_DEFINITION
-                    .width,
-
-            height:
-                DEFAULT_GAME_VIEWPORT_DEFINITION
-                    .height,
-
-            backgroundColor: 0x2f8f2f,
-            antialias: true,
-        });
-
-        if (this.destroyed) {
-            this.app.destroy(true);
-            this.app = null;
+        if (
+            this.initialized ||
+            this.destroyed
+        ) {
             return;
         }
 
-        /*
-         * The canvas keeps its 1200 × 720 logical
-         * drawing buffer while CSS controls its
-         * responsive displayed size.
-         */
-        this.app.canvas.classList.add(
+        this.app =
+            new Application();
+
+        await this.app.init({
+            width:
+                this.viewportWidth,
+
+            height:
+                this.viewportHeight,
+
+            backgroundColor:
+                0x2f8f2f,
+
+            antialias:
+                true,
+
+            /*
+             * The logical drawing surface remains
+             * exactly 1200 × 720.
+             *
+             * Device-pixel scaling is intentionally
+             * kept stable here. CSS handles browser
+             * presentation size.
+             */
+            autoDensity:
+                false,
+
+            resolution:
+                1,
+        });
+
+        if (
+            this.destroyed
+        ) {
+            this.app.destroy(
+                true,
+            );
+
+            this.app =
+                null;
+
+            return;
+        }
+
+        const canvas =
+            this.app.canvas;
+
+        canvas.classList.add(
             "game-canvas",
         );
 
+        /*
+         * Explicit logical canvas dimensions remain
+         * stable for the lifetime of the Renderer.
+         */
+        canvas.width =
+            this.viewportWidth;
+
+        canvas.height =
+            this.viewportHeight;
+
         container.appendChild(
-            this.app.canvas,
+            canvas,
         );
 
-        this.initialized = true;
+        this.initialized =
+            true;
+
+        /*
+         * Notify once after initialization.
+         *
+         * This keeps any current Game integration
+         * synchronized without introducing live
+         * browser-resize processing.
+         */
+        this.resizeListener?.(
+            this.viewportWidth,
+            this.viewportHeight,
+        );
 
         console.log(
             "Pixi Renderer ready.",
             {
-                width:
-                    DEFAULT_GAME_VIEWPORT_DEFINITION
-                        .width,
+                logicalWidth:
+                    this.viewportWidth,
 
-                height:
-                    DEFAULT_GAME_VIEWPORT_DEFINITION
-                        .height,
+                logicalHeight:
+                    this.viewportHeight,
+
+                resizeMode:
+                    "Fixed logical resolution with CSS presentation scaling",
             },
         );
     }
 
-    public getApplication(): Application | null {
+    // -------------------------------------------------------
+    // Queries
+    // -------------------------------------------------------
+
+    public getApplication():
+        Application | null {
+
         return this.app;
     }
 
-    public render(): void {
-        // Reserved for future renderer-specific work.
+    public getViewportWidth():
+        number {
+
+        return this.viewportWidth;
     }
 
-    public destroy(): void {
-        this.destroyed = true;
+    public getViewportHeight():
+        number {
 
-        if (!this.initialized || this.app === null) {
+        return this.viewportHeight;
+    }
+
+    public isInitialized():
+        boolean {
+
+        return this.initialized;
+    }
+
+    // -------------------------------------------------------
+    // Frame Rendering
+    // -------------------------------------------------------
+
+    public render(): void {
+
+        /*
+         * PixiJS renders through its own application
+         * ticker and renderer lifecycle.
+         *
+         * This method remains available for future
+         * renderer-specific frame work.
+         */
+    }
+
+    // -------------------------------------------------------
+    // Destruction
+    // -------------------------------------------------------
+
+    public destroy(): void {
+
+        if (this.destroyed) {
             return;
         }
 
-        this.app.destroy(true);
+        this.destroyed =
+            true;
 
-        this.app = null;
-        this.initialized = false;
+        this.resizeListener =
+            null;
 
-        console.log("Renderer destroyed.");
+        if (
+            !this.initialized ||
+            this.app ===
+            null
+        ) {
+            return;
+        }
+
+        this.app.destroy(
+            true,
+        );
+
+        this.app =
+            null;
+
+        this.initialized =
+            false;
+
+        console.log(
+            "Renderer destroyed.",
+        );
     }
 }

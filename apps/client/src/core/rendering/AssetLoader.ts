@@ -1,45 +1,123 @@
-import { Assets, Texture } from "pixi.js";
+import {
+    Assets,
+    Texture,
+} from "pixi.js";
 
 import golfClubTexture from "../../assets/sprites/golf/golf_club_temp.png";
 
+import grassMeadowTileTexture from "../../assets/textures/terrain/grass-meadow-tile.jpg";
+
 export class AssetLoader {
-    private static initialized = false;
 
-    private static textures = new Map<string, Texture>();
+    private static initialized =
+        false;
 
-    public static async initialize(): Promise<void> {
+    private static textures =
+        new Map<string, Texture>();
+
+    // -------------------------------------------------------
+    // Initialization
+    // -------------------------------------------------------
+
+    public static async initialize():
+        Promise<void> {
+
         if (this.initialized) {
             return;
         }
 
-        console.log("========== ASSET LOADER ==========");
+        console.log(
+            "========== ASSET LOADER ==========",
+        );
 
         await this.loadTexture(
             "golfClub",
             golfClubTexture,
         );
 
-        this.initialized = true;
+        await this.loadTexture(
+            "grassMeadowTile",
+            grassMeadowTileTexture,
+        );
 
-        console.log("All assets loaded.");
-        console.log("==================================");
+        this.initialized =
+            true;
+
+        console.log(
+            "All assets loaded.",
+        );
+
+        console.log(
+            "==================================",
+        );
     }
+
+    // -------------------------------------------------------
+    // Texture Loading
+    // -------------------------------------------------------
 
     private static async loadTexture(
         key: string,
         assetPath: string,
     ): Promise<void> {
-        const texture = await Assets.load(assetPath);
 
-        this.textures.set(key, texture);
+        if (
+            key.trim()
+                .length ===
+            0
+        ) {
+            throw new Error(
+                "AssetLoader texture key cannot be empty.",
+            );
+        }
+
+        if (
+            assetPath.trim()
+                .length ===
+            0
+        ) {
+            throw new Error(
+                `AssetLoader texture path for '${key}' cannot be empty.`,
+            );
+        }
+
+        if (
+            this.textures.has(
+                key,
+            )
+        ) {
+            throw new Error(
+                `AssetLoader texture key '${key}' has already been registered.`,
+            );
+        }
+
+        const texture =
+            await Assets.load<Texture>(
+                assetPath,
+            );
+
+        this.textures.set(
+            key,
+            texture,
+        );
 
         console.log(
             `Loaded Texture: ${key} (${texture.width} x ${texture.height})`,
         );
     }
 
-    public static getTexture(key: string): Texture {
-        const texture = this.textures.get(key);
+    // -------------------------------------------------------
+    // Texture Queries
+    // -------------------------------------------------------
+
+    public static getTexture(
+        key: string,
+    ): Texture {
+
+        const texture =
+            this.textures.get(
+                key,
+            );
 
         if (!texture) {
             throw new Error(
@@ -50,7 +128,12 @@ export class AssetLoader {
         return texture;
     }
 
-    public static hasTexture(key: string): boolean {
-        return this.textures.has(key);
+    public static hasTexture(
+        key: string,
+    ): boolean {
+
+        return this.textures.has(
+            key,
+        );
     }
 }

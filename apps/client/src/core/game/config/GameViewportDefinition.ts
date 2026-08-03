@@ -1,36 +1,47 @@
 /**
- * Defines the logical PixiJS gameplay viewport.
+ * Defines the fixed logical PixiJS gameplay
+ * coordinate system.
  *
- * During the pre-camera development phase, the
- * complete course remains visible inside this
- * viewport. The renderer, course boundaries, and
- * browser-input conversion all use this shared
- * definition so their coordinate systems cannot
- * silently diverge.
+ * The browser may display the canvas at different
+ * CSS dimensions, but gameplay systems continue to
+ * operate inside this stable logical space.
+ *
+ * This prevents browser resizing from changing:
+ *
+ * 1. Camera coordinates
+ * 2. Ball physics coordinates
+ * 3. Shot distances
+ * 4. Obstacle positions
+ * 5. Input meaning
  */
 export interface GameViewportDefinition {
 
     /**
-     * Logical gameplay width in world pixels.
+     * Fixed logical gameplay width.
      */
     readonly width: number;
 
     /**
-     * Logical gameplay height in world pixels.
+     * Fixed logical gameplay height.
      */
     readonly height: number;
 }
 
 /**
- * Temporary expanded pre-camera viewport.
+ * Stable logical game resolution.
  *
- * The 1200 × 720 dimensions preserve the existing
- * 5:3 course aspect ratio while providing more
- * visible testing space.
+ * The Pixi renderer is created once at this size.
+ * CSS scales the resulting canvas to fill the
+ * available browser game area.
+ *
+ * Browser resize does not modify these values.
  */
 export const DEFAULT_GAME_VIEWPORT_DEFINITION:
     GameViewportDefinition = {
 
-    width: 1200,
-    height: 720,
+    width:
+        1200,
+
+    height:
+        720,
 };

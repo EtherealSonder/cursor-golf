@@ -1,11 +1,41 @@
 import {
     Application,
+    Container,
     Graphics,
+    TilingSprite,
 } from "pixi.js";
+
+import {
+    Camera,
+} from "../camera/Camera";
+
+import {
+    CameraShake,
+} from "../camera/CameraShake";
+
+import {
+    CameraFeedbackController,
+} from "../controllers/CameraFeedbackController";
 
 import {
     DEFAULT_COURSE_BOUNDARY_DEFINITION,
 } from "../config/CourseBoundaryDefinition";
+
+import {
+    DEFAULT_COURSE_VISUAL_DEFINITION,
+} from "../config/CourseVisualDefinition";
+
+import {
+    ProceduralObstacleFieldGenerator,
+} from "../generation/ProceduralObstacleFieldGenerator";
+
+import type {
+    CourseVisualDefinition,
+} from "../config/CourseVisualDefinition";
+
+import type {
+    StaticObstacleDefinition,
+} from "../config/ObstacleDefinition";
 
 import {
     WindTuningController,
@@ -15,25 +45,49 @@ import {
     WindValidationMetrics,
 } from "../debug/WindValidationMetrics";
 
-import { AimIndicator } from "../entities/AimIndicator";
+import {
+    AimIndicator,
+} from "../entities/AimIndicator";
 
 import {
     Ball,
 } from "../entities/Ball";
 
-import { Club } from "../entities/Club";
-import { Connector } from "../entities/Connector";
-import { Entity } from "../entities/Entity";
+import type {
+    BallImpactEvent,
+} from "../entities/Ball";
+
+import {
+    Club,
+} from "../entities/Club";
+
+import {
+    Connector,
+} from "../entities/Connector";
+
+import {
+    Entity,
+} from "../entities/Entity";
 
 import {
     DynamicObstacle,
 } from "../entities/obstacles/DynamicObstacle";
 
 import {
+    StaticObstacle,
+} from "../entities/obstacles/StaticObstacle";
+
+import {
     WindManager,
 } from "../environment/WindManager";
 
-import { ShotFeedback } from "../ui/ShotFeedback";
+import {
+    ShotFeedback,
+} from "../ui/ShotFeedback";
+
+import {
+    AssetLoader,
+} from "../../rendering/AssetLoader";
 
 export class World {
 
@@ -43,6 +97,81 @@ export class World {
 
     private readonly app:
         Application;
+
+    // -------------------------------------------------------
+    // World Rendering Structure
+    // -------------------------------------------------------
+
+    /**
+     * Shared PixiJS parent for every world-space
+     * display object.
+     *
+     * World-space gameplay coordinates remain
+     * unchanged. Camera movement is represented by
+     * moving this single container in the opposite
+     * direction from the Camera position.
+     */
+    private readonly worldContainer:
+        Container;
+
+    /**
+     * Screen-space PixiJS parent.
+     *
+     * This container does not move with the Camera.
+     *
+     * It currently contains the temporary Camera
+     * activation-boundary debug rectangle.
+     */
+    private readonly screenOverlayContainer:
+        Container;
+
+    /**
+     * Temporary screen-space Camera activation
+     * boundary display.
+     */
+    private cameraActivationDebugGraphics:
+        Graphics | null = null;
+
+    /**
+     * Repeating terrain background.
+     *
+     * It is always inserted as the first child of the
+     * World Container so gameplay objects render
+     * above it.
+     */
+    private courseBackground:
+        TilingSprite | null = null;
+
+    /**
+     * Presentation configuration for the temporary
+     * course terrain.
+     */
+    private readonly courseVisualDefinition:
+        CourseVisualDefinition;
+
+    // -------------------------------------------------------
+    // Camera System
+    // -------------------------------------------------------
+
+    /**
+     * Authoritative world Camera.
+     *
+     * Camera position represents the world coordinate
+     * displayed at the top-left corner of the logical
+     * game viewport.
+     */
+    private readonly camera:
+        Camera;
+
+    private readonly cameraShake:
+        CameraShake;
+
+    private readonly cameraFeedbackController:
+        CameraFeedbackController;
+
+    private unsubscribeFromBallImpacts:
+        (() => void) | null =
+        null;
 
     // -------------------------------------------------------
     // Environmental Systems
@@ -56,13 +185,13 @@ export class World {
 
     /**
      * Development-only controller used to apply
-     * deterministic C7 wind-validation presets.
+     * deterministic wind-validation presets.
      */
     private readonly windTuningController:
         WindTuningController;
 
     /**
-     * Structured C7 shot measurement system.
+     * Structured shot-measurement system.
      *
      * It is created after the Ball because it reads
      * the Ball's authoritative movement diagnostics.
@@ -80,6 +209,14 @@ export class World {
 
     private readonly dynamicObstacles:
         DynamicObstacle[] = [];
+
+    /**
+     * Generated static definitions are passed to the
+     * Ball collision system and also used to construct
+     * visible StaticObstacle entities.
+     */
+    private staticObstacleDefinitions:
+        readonly StaticObstacleDefinition[] = [];
 
     // -------------------------------------------------------
     // Core Gameplay Entities
@@ -102,8 +239,57 @@ export class World {
 
     constructor(
         app: Application,
+
+        courseVisualDefinition:
+            CourseVisualDefinition =
+            DEFAULT_COURSE_VISUAL_DEFINITION,
     ) {
-        this.app = app;
+
+        this.app =
+            app;
+
+        this.validateCourseVisualDefinition(
+            courseVisualDefinition,
+        );
+
+        this.courseVisualDefinition =
+            courseVisualDefinition;
+
+        /*
+         * Every world-space PixiJS object is attached
+         * beneath this container.
+         *
+         * React HUD elements remain outside PixiJS and
+         * are unaffected by this transform.
+         */
+        this.worldContainer =
+            new Container();
+
+        /*
+         * Screen-space PixiJS content is kept separate
+         * from the Camera-controlled World Container.
+         */
+        this.screenOverlayContainer =
+            new Container();
+
+        /*
+         * World owns the Camera because the Camera
+         * describes which region of this World is
+         * visible.
+         */
+        this.camera =
+            new Camera(
+                undefined,
+                DEFAULT_COURSE_BOUNDARY_DEFINITION,
+            );
+
+        this.cameraShake =
+            new CameraShake();
+
+        this.cameraFeedbackController =
+            new CameraFeedbackController(
+                this.cameraShake,
+            );
 
         this.windManager =
             new WindManager();
@@ -125,20 +311,101 @@ export class World {
 
     public initialize(): void {
 
+        /*
+         * The Pixi stage remains fixed.
+         *
+         * Only the World Container receives Camera
+         * transforms.
+         */
+        this.app.stage.addChild(
+            this.worldContainer,
+        );
+
+        /*
+         * Overlay is added after the World Container,
+         * ensuring debug graphics remain above the
+         * moving game world.
+         */
+        this.app.stage.addChild(
+            this.screenOverlayContainer,
+        );
+
+        /*
+         * Course is created first so it remains behind
+         * every later world-space display object.
+         */
         this.createCourse();
 
+        this.createCameraActivationDebugGraphics();
+
         // ---------------------------------------------------
-        // C7 Open-Field Validation
+        // Procedural Obstacle Field
         // ---------------------------------------------------
 
         /*
-         * Temporary obstacle entities are intentionally
-         * not created during open-field wind validation.
+         * Generate deterministic obstacle definitions
+         * before constructing the Ball.
          *
-         * Their definitions, classes, collision detection,
-         * and impulse-response systems remain unchanged and
-         * can be restored after wind tuning is complete.
+         * Static definitions are consumed by the
+         * existing static collision pipeline.
+         *
+         * DynamicObstacle instances are consumed by
+         * the existing impulse-based rigid-body
+         * collision pipeline.
          */
+        const obstacleField =
+            new ProceduralObstacleFieldGenerator()
+                .generate(
+                    DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                );
+
+        this.staticObstacleDefinitions =
+            obstacleField
+                .staticDefinitions;
+
+        for (
+            const definition
+            of this.staticObstacleDefinitions
+        ) {
+            this.addEntity(
+                new StaticObstacle(
+                    definition,
+                ),
+            );
+        }
+
+        for (
+            const definition
+            of obstacleField
+                .dynamicDefinitions
+        ) {
+            const obstacle =
+                new DynamicObstacle(
+                    definition,
+                    DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                );
+
+            this.dynamicObstacles.push(
+                obstacle,
+            );
+
+            this.addEntity(
+                obstacle,
+            );
+        }
+
+        console.log(
+            "Procedural obstacle field created.",
+            {
+                staticObstacles:
+                    this.staticObstacleDefinitions
+                        .length,
+
+                dynamicObstacles:
+                    this.dynamicObstacles
+                        .length,
+            },
+        );
 
         // ---------------------------------------------------
         // Create Ball
@@ -148,7 +415,7 @@ export class World {
             new Ball(
                 undefined,
                 undefined,
-                [],
+                this.staticObstacleDefinitions,
                 this.dynamicObstacles,
                 this.windManager,
             );
@@ -156,6 +423,21 @@ export class World {
         this.addEntity(
             this.ball,
         );
+
+        this.unsubscribeFromBallImpacts =
+            this.ball.subscribeToImpacts(
+                (
+                    event:
+                        BallImpactEvent,
+                ): void => {
+
+                    this.cameraFeedbackController
+                        .triggerCollision(
+                            event.type,
+                            event.impactSpeed,
+                        );
+                },
+            );
 
         this.windValidationMetrics =
             new WindValidationMetrics(
@@ -182,14 +464,24 @@ export class World {
             );
         }
 
-        const ballStageIndex =
-            this.app.stage.getChildIndex(
-                this.ball.getContainer(),
-            );
+        /*
+         * The Ball has already been added to the
+         * World Container.
+         *
+         * Insert Connector at the Ball's current
+         * display index so Connector remains directly
+         * behind the Ball and above the terrain.
+         */
+        const ballWorldIndex =
+            this.worldContainer
+                .getChildIndex(
+                    this.ball
+                        .getContainer(),
+                );
 
-        this.app.stage.addChildAt(
+        this.worldContainer.addChildAt(
             connectorGraphics,
-            ballStageIndex,
+            ballWorldIndex,
         );
 
         // ---------------------------------------------------
@@ -233,6 +525,50 @@ export class World {
 
         this.aimIndicator.hide();
 
+        /*
+         * Apply the configured initial Camera position
+         * before the first rendered frame.
+         */
+        this.applyCameraTransform();
+    }
+
+    /**
+     * Updates every screen-space system after the
+     * browser game area changes dimensions.
+     */
+    public resizeViewport(
+        viewportWidth: number,
+        viewportHeight: number,
+    ): void {
+
+        this.camera
+            .setViewportSize(
+                viewportWidth,
+                viewportHeight,
+            );
+
+        this.applyCameraTransform();
+
+        if (
+            this.cameraActivationDebugGraphics
+        ) {
+            this.drawCameraActivationDebugGraphics();
+        }
+    }
+
+    public updateCamera(
+        deltaTime: number,
+    ): void {
+
+        this.camera.update(
+            deltaTime,
+        );
+
+        this.cameraShake.update(
+            deltaTime,
+        );
+
+        this.applyCameraTransform();
     }
 
     public update(
@@ -266,6 +602,10 @@ export class World {
 
     public destroy(): void {
 
+        /*
+         * Entity destroy methods remove and destroy
+         * their own display containers.
+         */
         for (
             const entity
             of this.entities
@@ -273,11 +613,31 @@ export class World {
             entity.destroy();
         }
 
-        this.entities.length = 0;
+        this.entities.length =
+            0;
 
-        this.dynamicObstacles.length = 0;
+        this.dynamicObstacles.length =
+            0;
 
+        this.staticObstacleDefinitions =
+            [];
+
+        /*
+         * Connector is not an Entity and therefore
+         * owns a separate lifecycle.
+         */
         this.connector?.destroy();
+
+        this.connector =
+            null;
+
+        this.unsubscribeFromBallImpacts?.();
+
+        this.unsubscribeFromBallImpacts =
+            null;
+
+        this.cameraFeedbackController
+            .clear();
 
         this.windValidationMetrics
             ?.destroy();
@@ -290,20 +650,69 @@ export class World {
 
         this.windManager.reset();
 
-        this.ball = null;
-        this.connector = null;
-        this.club = null;
-        this.aimIndicator = null;
-        this.shotFeedback = null;
+        /*
+         * Screen-space debug graphics are owned
+         * directly by World.
+         */
+        this.cameraActivationDebugGraphics
+            ?.destroy();
+
+        this.cameraActivationDebugGraphics =
+            null;
+
+        /*
+         * Terrain background is owned directly by
+         * World.
+         */
+        this.courseBackground
+            ?.destroy();
+
+        this.courseBackground =
+            null;
+
+        /*
+         * Entity, Connector, Course and debug display
+         * objects have already destroyed themselves.
+         *
+         * Destroy the empty parent containers without
+         * recursively destroying children again.
+         */
+        this.worldContainer.destroy({
+            children:
+                false,
+        });
+
+        this.screenOverlayContainer.destroy({
+            children:
+                false,
+        });
+
+        this.camera
+            .resetToInitialPosition();
+
+        this.ball =
+            null;
+
+        this.club =
+            null;
+
+        this.aimIndicator =
+            null;
+
+        this.shotFeedback =
+            null;
     }
 
     // -------------------------------------------------------
-    // C7 Validation Reset
+    // Ball and Camera Reset
     // -------------------------------------------------------
 
     /**
-     * Returns the Ball and its validation state to the
+     * Returns the Ball and validation state to the
      * original visible viewport centre.
+     *
+     * Camera position and its shared World Container
+     * transform are also reset immediately.
      */
     public resetBall(): void {
 
@@ -311,11 +720,22 @@ export class World {
             return;
         }
 
-        this.ball.resetToInitialPosition();
+        this.ball
+            .resetToInitialPosition();
 
-        this.aimIndicator?.hide();
+        this.camera
+            .resetToInitialPosition();
 
-        this.club?.resetShotVisuals();
+        this.cameraFeedbackController
+            .clear();
+
+        this.applyCameraTransform();
+
+        this.aimIndicator
+            ?.hide();
+
+        this.club
+            ?.resetShotVisuals();
 
         this.windValidationMetrics
             ?.resetMeasurement();
@@ -335,7 +755,14 @@ export class World {
             entity,
         );
 
-        this.app.stage.addChild(
+        /*
+         * Entity positions remain authoritative
+         * world-space coordinates.
+         *
+         * Camera presentation is inherited from the
+         * shared parent container.
+         */
+        this.worldContainer.addChild(
             entity.getContainer(),
         );
     }
@@ -382,29 +809,147 @@ export class World {
             entity ===
             this.ball
         ) {
-            this.ball = null;
+            this.ball =
+                null;
         }
 
         if (
             entity ===
             this.club
         ) {
-            this.club = null;
+            this.club =
+                null;
         }
 
         if (
             entity ===
             this.aimIndicator
         ) {
-            this.aimIndicator = null;
+            this.aimIndicator =
+                null;
         }
 
         if (
             entity ===
             this.shotFeedback
         ) {
-            this.shotFeedback = null;
+            this.shotFeedback =
+                null;
         }
+    }
+
+    // -------------------------------------------------------
+    // Camera Rendering
+    // -------------------------------------------------------
+
+    /**
+     * Applies the Camera's authoritative base
+     * position to the shared World Container.
+     *
+     * Moving the Camera right makes the world appear
+     * to move left.
+     *
+     * Moving the Camera down makes the world appear
+     * to move up.
+     */
+    private applyCameraTransform(): void {
+
+        const requestedShakeOffset =
+            this.cameraShake
+                .getOffset();
+
+        /*
+         * Clamp only the render offset. The base Camera
+         * remains authoritative for input and gameplay.
+         */
+        const minimumShakeOffsetX =
+            this.camera
+                .getPositionX() -
+            this.camera
+                .getMaximumPositionX();
+
+        const maximumShakeOffsetX =
+            this.camera
+                .getPositionX() -
+            this.camera
+                .getMinimumPositionX();
+
+        const minimumShakeOffsetY =
+            this.camera
+                .getPositionY() -
+            this.camera
+                .getMaximumPositionY();
+
+        const maximumShakeOffsetY =
+            this.camera
+                .getPositionY() -
+            this.camera
+                .getMinimumPositionY();
+
+        const safeShakeOffsetX =
+            Math.max(
+                minimumShakeOffsetX,
+                Math.min(
+                    requestedShakeOffset.x,
+                    maximumShakeOffsetX,
+                ),
+            );
+
+        const safeShakeOffsetY =
+            Math.max(
+                minimumShakeOffsetY,
+                Math.min(
+                    requestedShakeOffset.y,
+                    maximumShakeOffsetY,
+                ),
+            );
+
+        this.worldContainer
+            .position
+            .set(
+                -this.camera
+                    .getPositionX() +
+                safeShakeOffsetX,
+
+                -this.camera
+                    .getPositionY() +
+                safeShakeOffsetY,
+            );
+    }
+
+    // -------------------------------------------------------
+    // Camera Queries
+    // -------------------------------------------------------
+
+    public getCamera():
+        Camera {
+
+        return this.camera;
+    }
+
+    public getCameraFeedbackController():
+        CameraFeedbackController {
+
+        return this.cameraFeedbackController;
+    }
+
+    public getCameraShake():
+        CameraShake {
+
+        return this.cameraShake;
+    }
+
+    /**
+     * Exposes the shared PixiJS World Container for
+     * diagnostics and future rendering systems.
+     *
+     * Gameplay systems should not directly change its
+     * position.
+     */
+    public getWorldContainer():
+        Container {
+
+        return this.worldContainer;
     }
 
     // -------------------------------------------------------
@@ -482,13 +1027,122 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Camera Debug Rendering
+    // -------------------------------------------------------
+
+    private createCameraActivationDebugGraphics():
+        void {
+
+        const definition =
+            this.camera
+                .getDefinition();
+
+        if (
+            !definition
+                .debugActivationBoundaryVisible
+        ) {
+            return;
+        }
+
+        if (
+            this.cameraActivationDebugGraphics
+        ) {
+            throw new Error(
+                "Camera activation debug graphics have already been created.",
+            );
+        }
+
+        this.cameraActivationDebugGraphics =
+            new Graphics();
+
+        this.screenOverlayContainer.addChild(
+            this.cameraActivationDebugGraphics,
+        );
+
+        this.drawCameraActivationDebugGraphics();
+    }
+
+    /**
+     * Redraws the fixed screen-space activation
+     * rectangle from the Camera's current responsive
+     * viewport dimensions.
+     */
+    private drawCameraActivationDebugGraphics():
+        void {
+
+        if (
+            !this.cameraActivationDebugGraphics
+        ) {
+            return;
+        }
+
+        const horizontalInset =
+            this.camera
+                .getHorizontalActivationInset();
+
+        const verticalInset =
+            this.camera
+                .getVerticalActivationInset();
+
+        const activationWidth =
+            Math.max(
+                0,
+                this.camera
+                    .getViewportWidth() -
+                horizontalInset *
+                2,
+            );
+
+        const activationHeight =
+            Math.max(
+                0,
+                this.camera
+                    .getViewportHeight() -
+                verticalInset *
+                2,
+            );
+
+        this.cameraActivationDebugGraphics
+            .clear();
+
+        this.cameraActivationDebugGraphics
+            .rect(
+                horizontalInset,
+                verticalInset,
+                activationWidth,
+                activationHeight,
+            );
+
+        this.cameraActivationDebugGraphics
+            .stroke({
+                width:
+                    2,
+
+                color:
+                    0xffffff,
+
+                alpha:
+                    0.75,
+            });
+    }
+
+    // -------------------------------------------------------
     // Course Rendering
     // -------------------------------------------------------
 
     private createCourse(): void {
 
-        const course =
-            new Graphics();
+        if (this.courseBackground) {
+            throw new Error(
+                "World course background has already been created.",
+            );
+        }
+
+        const terrainTexture =
+            AssetLoader.getTexture(
+                this.courseVisualDefinition
+                    .terrainTextureKey,
+            );
 
         const courseWidth =
             DEFAULT_COURSE_BOUNDARY_DEFINITION
@@ -502,23 +1156,152 @@ export class World {
             DEFAULT_COURSE_BOUNDARY_DEFINITION
                 .minimumY;
 
-        course.rect(
-            DEFAULT_COURSE_BOUNDARY_DEFINITION
-                .minimumX,
+        this.courseBackground =
+            new TilingSprite({
+                texture:
+                    terrainTexture,
 
-            DEFAULT_COURSE_BOUNDARY_DEFINITION
-                .minimumY,
+                width:
+                    courseWidth,
 
-            courseWidth,
-            courseHeight,
-        );
+                height:
+                    courseHeight,
+            });
 
-        course.fill(
-            0x2f8f2f,
-        );
+        /*
+         * TilingSprite local coordinates begin at
+         * zero.
+         *
+         * Move the complete background rectangle to
+         * the course's world-space minimum corner.
+         */
+        this.courseBackground
+            .position
+            .set(
+                DEFAULT_COURSE_BOUNDARY_DEFINITION
+                    .minimumX,
 
-        this.app.stage.addChild(
-            course,
+                DEFAULT_COURSE_BOUNDARY_DEFINITION
+                    .minimumY,
+            );
+
+        /*
+         * Scale the repeated texture pattern without
+         * changing the TilingSprite's world-space
+         * width or height.
+         */
+        this.courseBackground
+            .tileScale
+            .set(
+                this.courseVisualDefinition
+                    .terrainTileScaleX,
+
+                this.courseVisualDefinition
+                    .terrainTileScaleY,
+            );
+
+        this.courseBackground.alpha =
+            this.courseVisualDefinition
+                .terrainAlpha;
+
+        this.courseBackground.tint =
+            this.courseVisualDefinition
+                .terrainTint;
+
+        /*
+         * Terrain is inserted at index zero.
+         *
+         * Connector, Ball, Club, AimIndicator,
+         * ShotFeedback and future obstacles therefore
+         * remain above the background.
+         */
+        this.worldContainer.addChildAt(
+            this.courseBackground,
+            0,
         );
     }
-} 
+
+    // -------------------------------------------------------
+    // Course Visual Validation
+    // -------------------------------------------------------
+
+    private validateCourseVisualDefinition(
+        definition:
+            CourseVisualDefinition,
+    ): void {
+
+        if (
+            definition
+                .terrainTextureKey
+                .trim()
+                .length ===
+            0
+        ) {
+            throw new Error(
+                "Course terrain texture key cannot be empty.",
+            );
+        }
+
+        if (
+            !Number.isFinite(
+                definition
+                    .terrainTileScaleX,
+            ) ||
+            definition
+                .terrainTileScaleX <=
+            0
+        ) {
+            throw new Error(
+                "Course terrainTileScaleX must be a finite number greater than zero.",
+            );
+        }
+
+        if (
+            !Number.isFinite(
+                definition
+                    .terrainTileScaleY,
+            ) ||
+            definition
+                .terrainTileScaleY <=
+            0
+        ) {
+            throw new Error(
+                "Course terrainTileScaleY must be a finite number greater than zero.",
+            );
+        }
+
+        if (
+            !Number.isFinite(
+                definition
+                    .terrainAlpha,
+            ) ||
+            definition
+                .terrainAlpha <
+            0 ||
+            definition
+                .terrainAlpha >
+            1
+        ) {
+            throw new Error(
+                "Course terrainAlpha must remain between zero and one.",
+            );
+        }
+
+        if (
+            !Number.isFinite(
+                definition
+                    .terrainTint,
+            ) ||
+            definition
+                .terrainTint <
+            0 ||
+            definition
+                .terrainTint >
+            0xffffff
+        ) {
+            throw new Error(
+                "Course terrainTint must be a valid hexadecimal color between 0x000000 and 0xffffff.",
+            );
+        }
+    }
+}

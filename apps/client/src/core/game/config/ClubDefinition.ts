@@ -181,7 +181,7 @@ export const BASIC_CLUB_DEFINITION: ClubDefinition = {
     id: "basic-club",
     name: "Basic Club",
 
-    maximumDragDistance: 80,
+    maximumDragDistance: 150,
 
     /*
      * Math.PI / 4 equals 45 degrees.

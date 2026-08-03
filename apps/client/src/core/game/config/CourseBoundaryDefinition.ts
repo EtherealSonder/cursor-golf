@@ -1,11 +1,12 @@
 /**
  * Defines the rectangular playable world used by
- * Ball and obstacle boundary collision.
+ * Ball physics, obstacle collision and Camera
+ * boundary calculation.
  *
  * These dimensions describe world coordinates.
- * They are intentionally independent from the
- * visible PixiJS viewport during C7 open-field
- * wind validation.
+ *
+ * They are independent from the visible logical
+ * PixiJS viewport.
  */
 export interface CourseBoundaryDefinition {
 
@@ -31,30 +32,59 @@ export interface CourseBoundaryDefinition {
 }
 
 /**
- * Temporary enlarged C7 validation world.
+ * Expanded temporary Phase 4 camera-validation
+ * course.
  *
- * The visible viewport remains 1200 × 720 and
- * initially displays world coordinates:
+ * The visible logical viewport remains:
+ *
+ * 1200 × 720
+ *
+ * The initial Camera position remains:
+ *
+ * X: 0
+ * Y: 0
+ *
+ * Therefore the initially visible world region is:
  *
  * X: 0 to 1200
  * Y: 0 to 720
  *
- * The playable world extends one additional visible
- * viewport in every direction. This allows the Ball
- * to leave the screen without immediately colliding
- * with a course boundary while camera support is not
- * yet implemented.
+ * The course uses dimensions based on whole
+ * multiples of the temporary 980 × 980 terrain
+ * texture.
+ *
+ * Horizontal size:
+ *
+ * 6 × 980 = 5880 world pixels
+ *
+ * Vertical size:
+ *
+ * 4 × 980 = 3920 world pixels
  *
  * Total playable size:
  *
- * 3600 × 2160 world pixels.
+ * 5880 × 3920 world pixels
+ *
+ * Camera limits for a 1200 × 720 viewport become:
+ *
+ * Camera X:
+ * -1960 to 2720
+ *
+ * Camera Y:
+ * -980 to 2220
  */
 export const DEFAULT_COURSE_BOUNDARY_DEFINITION:
     CourseBoundaryDefinition = {
 
-    minimumX: -1200,
-    maximumX: 2400,
+    minimumX:
+        -1960,
 
-    minimumY: -720,
-    maximumY: 1440,
+    maximumX:
+        3920,
+
+    minimumY:
+        -980,
+
+    maximumY:
+        2940,
 };

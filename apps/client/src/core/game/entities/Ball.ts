@@ -74,6 +74,32 @@ export enum BallMotionState {
     Moving,
 }
 
+/**
+ * Gameplay-facing collision category emitted after a
+ * valid Ball collision response.
+ */
+export type BallImpactType =
+    | "course-boundary"
+    | "static-obstacle"
+    | "dynamic-obstacle";
+
+export interface BallImpactEvent {
+
+    readonly type:
+    BallImpactType;
+
+    readonly impactSpeed:
+    number;
+
+    readonly resultingSpeed:
+    number;
+}
+
+export type BallImpactListener = (
+    event:
+        BallImpactEvent,
+) => void;
+
 interface BoundaryCollisionResult {
     readonly collidedLeft: boolean;
     readonly collidedRight: boolean;
@@ -273,6 +299,14 @@ export class Ball extends Entity {
      * rest and both velocity components become zero.
      */
     private restStabilityElapsedTime = 0;
+
+    // -------------------------------------------------------
+    // Impact Events
+    // -------------------------------------------------------
+
+    private readonly impactListeners:
+        Set<BallImpactListener> =
+        new Set<BallImpactListener>();
 
     // -------------------------------------------------------
     // Interaction State
@@ -478,6 +512,8 @@ export class Ball extends Entity {
 
         this.ballGraphics = null;
         this.visualContainer = null;
+
+        this.impactListeners.clear();
 
         this.container.destroy({
             children: true,
@@ -961,6 +997,91 @@ export class Ball extends Entity {
                 BallInteractionState.Normal,
             );
         }
+    }
+
+    // -------------------------------------------------------
+    // Impact Events
+    // -------------------------------------------------------
+
+    public subscribeToImpacts(
+        listener:
+            BallImpactListener,
+    ): () => void {
+
+        this.impactListeners.add(
+            listener,
+        );
+
+        let unsubscribed =
+            false;
+
+        return (): void => {
+
+            if (unsubscribed) {
+                return;
+            }
+
+            unsubscribed =
+                true;
+
+            this.impactListeners.delete(
+                listener,
+            );
+        };
+    }
+
+    private notifyImpact(
+        type:
+            BallImpactType,
+
+        impactSpeed:
+            number,
+
+        resultingSpeed:
+            number,
+    ): void {
+
+        if (
+            this.impactListeners.size ===
+            0 ||
+            !Number.isFinite(
+                impactSpeed,
+            ) ||
+            !Number.isFinite(
+                resultingSpeed,
+            )
+        ) {
+            return;
+        }
+
+        const event:
+            BallImpactEvent = {
+
+            type,
+
+            impactSpeed:
+                Math.max(
+                    0,
+                    impactSpeed,
+                ),
+
+            resultingSpeed:
+                Math.max(
+                    0,
+                    resultingSpeed,
+                ),
+        };
+
+        this.impactListeners.forEach(
+            (
+                listener,
+            ): void => {
+
+                listener(
+                    event,
+                );
+            },
+        );
     }
 
     // -------------------------------------------------------
@@ -1468,10 +1589,19 @@ export class Ball extends Entity {
 
         this.boundaryCollisionCount += 1;
 
+        const speedAfterCollision =
+            this.getSpeed();
+
+        this.notifyImpact(
+            "course-boundary",
+            speedBeforeCollision,
+            speedAfterCollision,
+        );
+
         this.logBoundaryCollision(
             collision,
             speedBeforeCollision,
-            this.getSpeed(),
+            speedAfterCollision,
         );
     }
 
@@ -1757,10 +1887,19 @@ export class Ball extends Entity {
 
         this.obstacleCollisionCount += 1;
 
+        const speedAfterCollision =
+            this.getSpeed();
+
+        this.notifyImpact(
+            "static-obstacle",
+            speedBeforeCollision,
+            speedAfterCollision,
+        );
+
         this.logStaticObstacleCollision(
             manifold,
             speedBeforeCollision,
-            this.getSpeed(),
+            speedAfterCollision,
         );
     }
 
@@ -1846,11 +1985,20 @@ export class Ball extends Entity {
             ) {
                 this.obstacleCollisionCount += 1;
 
+                const ballSpeedAfterCollision =
+                    this.getSpeed();
+
+                this.notifyImpact(
+                    "dynamic-obstacle",
+                    speedBeforeCollision,
+                    ballSpeedAfterCollision,
+                );
+
                 this.logDynamicObstacleCollision(
                     obstacle,
                     dynamicManifold,
                     speedBeforeCollision,
-                    this.getSpeed(),
+                    ballSpeedAfterCollision,
                     obstacleSpeedBeforeCollision,
                     Math.hypot(
                         obstacle.getVelocityX(),

@@ -1,4 +1,6 @@
-import { Point } from "pixi.js";
+import {
+    Point,
+} from "pixi.js";
 
 import {
     DEFAULT_GAME_VIEWPORT_DEFINITION,
@@ -17,45 +19,89 @@ export class InputManager {
     // Left Mouse Button
     // -------------------------------------------------------
 
-    private leftMouseDown = false;
+    private leftMouseDown =
+        false;
 
-    private leftMousePressed = false;
+    private leftMousePressed =
+        false;
 
-    private leftMouseReleased = false;
+    private leftMouseReleased =
+        false;
 
     // -------------------------------------------------------
     // Right Mouse Button
     // -------------------------------------------------------
 
-    private rightMouseDown = false;
+    private rightMouseDown =
+        false;
 
-    private rightMousePressed = false;
+    private rightMousePressed =
+        false;
 
-    private rightMouseReleased = false;
+    private rightMouseReleased =
+        false;
 
     // -------------------------------------------------------
-    // Target and Coordinate Space
+    // Target and Logical Coordinate Space
     // -------------------------------------------------------
 
     private readonly target:
         HTMLElement;
 
-    private readonly viewportDefinition:
-        GameViewportDefinition;
+    /**
+     * Stable logical viewport dimensions.
+     *
+     * Browser and CSS canvas dimensions may change,
+     * but input is always converted back into this
+     * coordinate space.
+     */
+    private viewportWidth:
+        number;
+
+    private viewportHeight:
+        number;
+
+    private pointerInsideTarget =
+        false;
 
     constructor(
-        target: HTMLElement,
+        target:
+            HTMLElement,
+
         viewportDefinition:
             GameViewportDefinition =
             DEFAULT_GAME_VIEWPORT_DEFINITION,
     ) {
-        this.target = target;
-        this.viewportDefinition =
-            viewportDefinition;
+
+        this.target =
+            target;
+
+        this.viewportWidth =
+            viewportDefinition
+                .width;
+
+        this.viewportHeight =
+            viewportDefinition
+                .height;
+
+        this.validateViewportSize(
+            this.viewportWidth,
+            this.viewportHeight,
+        );
 
         this.target.addEventListener(
             "mousemove",
             this.onMouseMove,
+        );
+
+        this.target.addEventListener(
+            "mouseenter",
+            this.onMouseEnter,
+        );
+
+        this.target.addEventListener(
+            "mouseleave",
+            this.onMouseLeave,
         );
 
         this.target.addEventListener(
@@ -75,31 +121,105 @@ export class InputManager {
     }
 
     // -------------------------------------------------------
+    // Logical Viewport
+    // -------------------------------------------------------
+
+    /**
+     * Retained for compatibility with the current
+     * Game initialization.
+     *
+     * In fixed-resolution mode this normally receives
+     * the same 1200 × 720 values once during startup.
+     */
+    public setViewportSize(
+        viewportWidth:
+            number,
+
+        viewportHeight:
+            number,
+    ): void {
+
+        this.validateViewportSize(
+            viewportWidth,
+            viewportHeight,
+        );
+
+        this.viewportWidth =
+            viewportWidth;
+
+        this.viewportHeight =
+            viewportHeight;
+
+        this.mousePosition.set(
+            this.clamp(
+                this.mousePosition.x,
+                0,
+                this.viewportWidth,
+            ),
+
+            this.clamp(
+                this.mousePosition.y,
+                0,
+                this.viewportHeight,
+            ),
+        );
+    }
+
+    public getViewportWidth():
+        number {
+
+        return this.viewportWidth;
+    }
+
+    public getViewportHeight():
+        number {
+
+        return this.viewportHeight;
+    }
+
+    // -------------------------------------------------------
     // Frame Lifecycle
     // -------------------------------------------------------
 
     /**
-     * Clears one-frame input flags.
+     * Clears one-frame button flags.
      *
-     * Continuous button states remain active until
+     * Continuous button state remains active until
      * the corresponding mouse button is released.
      */
     public update(): void {
 
-        this.leftMousePressed = false;
-        this.leftMouseReleased = false;
+        this.leftMousePressed =
+            false;
 
-        this.rightMousePressed = false;
-        this.rightMouseReleased = false;
+        this.leftMouseReleased =
+            false;
+
+        this.rightMousePressed =
+            false;
+
+        this.rightMouseReleased =
+            false;
     }
 
     public destroy(
-        target: HTMLElement,
+        target:
+            HTMLElement,
     ): void {
 
         target.removeEventListener(
             "mousemove",
             this.onMouseMove,
+        );
+
+        target.removeEventListener(
+            "mouseenter",
+            this.onMouseEnter,
+        );
+
+        target.removeEventListener(
+            "mouseleave",
+            this.onMouseLeave,
         );
 
         target.removeEventListener(
@@ -116,6 +236,27 @@ export class InputManager {
             "mouseup",
             this.onMouseUp,
         );
+
+        this.pointerInsideTarget =
+            false;
+
+        this.leftMouseDown =
+            false;
+
+        this.leftMousePressed =
+            false;
+
+        this.leftMouseReleased =
+            false;
+
+        this.rightMouseDown =
+            false;
+
+        this.rightMousePressed =
+            false;
+
+        this.rightMouseReleased =
+            false;
     }
 
     // -------------------------------------------------------
@@ -128,27 +269,43 @@ export class InputManager {
         return this.mousePosition;
     }
 
-    public getMouseX(): number {
+    public getMouseX():
+        number {
+
         return this.mousePosition.x;
     }
 
-    public getMouseY(): number {
+    public getMouseY():
+        number {
+
         return this.mousePosition.y;
+    }
+
+    public isPointerInsideTarget():
+        boolean {
+
+        return this.pointerInsideTarget;
     }
 
     // -------------------------------------------------------
     // Left Mouse Queries
     // -------------------------------------------------------
 
-    public isLeftMouseDown(): boolean {
+    public isLeftMouseDown():
+        boolean {
+
         return this.leftMouseDown;
     }
 
-    public wasLeftMousePressed(): boolean {
+    public wasLeftMousePressed():
+        boolean {
+
         return this.leftMousePressed;
     }
 
-    public wasLeftMouseReleased(): boolean {
+    public wasLeftMouseReleased():
+        boolean {
+
         return this.leftMouseReleased;
     }
 
@@ -156,38 +313,43 @@ export class InputManager {
     // Right Mouse Queries
     // -------------------------------------------------------
 
-    public isRightMouseDown(): boolean {
+    public isRightMouseDown():
+        boolean {
+
         return this.rightMouseDown;
     }
 
-    public wasRightMousePressed(): boolean {
+    public wasRightMousePressed():
+        boolean {
+
         return this.rightMousePressed;
     }
 
-    public wasRightMouseReleased(): boolean {
+    public wasRightMouseReleased():
+        boolean {
+
         return this.rightMouseReleased;
     }
 
     // -------------------------------------------------------
-    // Temporary Compatibility Methods
+    // Compatibility Queries
     // -------------------------------------------------------
 
-    /**
-     * Compatibility method for systems that still
-     * expect the original generic mouse API.
-     *
-     * Generic shot input now refers only to the
-     * primary left mouse button.
-     */
-    public isMouseDown(): boolean {
+    public isMouseDown():
+        boolean {
+
         return this.isLeftMouseDown();
     }
 
-    public wasMousePressed(): boolean {
+    public wasMousePressed():
+        boolean {
+
         return this.wasLeftMousePressed();
     }
 
-    public wasMouseReleased(): boolean {
+    public wasMouseReleased():
+        boolean {
+
         return this.wasLeftMouseReleased();
     }
 
@@ -195,8 +357,29 @@ export class InputManager {
     // Browser Events
     // -------------------------------------------------------
 
+    private onMouseEnter = (
+        event:
+            MouseEvent,
+    ): void => {
+
+        this.pointerInsideTarget =
+            true;
+
+        this.updateMousePositionFromEvent(
+            event,
+        );
+    };
+
+    private onMouseLeave = ():
+        void => {
+
+        this.pointerInsideTarget =
+            false;
+    };
+
     private onMouseMove = (
-        event: MouseEvent,
+        event:
+            MouseEvent,
     ): void => {
 
         this.updateMousePositionFromEvent(
@@ -205,20 +388,23 @@ export class InputManager {
     };
 
     private onMouseDown = (
-        event: MouseEvent,
+        event:
+            MouseEvent,
     ): void => {
 
         this.updateMousePositionFromEvent(
             event,
         );
 
-        switch (event.button) {
+        switch (
+        event.button
+        ) {
 
-            /*
-             * Primary left mouse button.
-             */
             case 0:
-                if (!this.leftMouseDown) {
+
+                if (
+                    !this.leftMouseDown
+                ) {
                     this.leftMousePressed =
                         true;
                 }
@@ -228,13 +414,13 @@ export class InputManager {
 
                 break;
 
-            /*
-             * Secondary right mouse button.
-             */
             case 2:
+
                 event.preventDefault();
 
-                if (!this.rightMouseDown) {
+                if (
+                    !this.rightMouseDown
+                ) {
                     this.rightMousePressed =
                         true;
                 }
@@ -247,13 +433,30 @@ export class InputManager {
     };
 
     private onMouseUp = (
-        event: MouseEvent,
+        event:
+            MouseEvent,
     ): void => {
 
-        switch (event.button) {
+        /*
+         * Update the logical release position when the
+         * browser releases over or near the game.
+         *
+         * The coordinate calculation safely clamps to
+         * the logical viewport.
+         */
+        this.updateMousePositionFromEvent(
+            event,
+        );
+
+        switch (
+        event.button
+        ) {
 
             case 0:
-                if (this.leftMouseDown) {
+
+                if (
+                    this.leftMouseDown
+                ) {
                     this.leftMouseReleased =
                         true;
                 }
@@ -264,9 +467,12 @@ export class InputManager {
                 break;
 
             case 2:
+
                 event.preventDefault();
 
-                if (this.rightMouseDown) {
+                if (
+                    this.rightMouseDown
+                ) {
                     this.rightMouseReleased =
                         true;
                 }
@@ -278,27 +484,36 @@ export class InputManager {
         }
     };
 
-    /**
-     * Prevents the browser context menu from
-     * opening over the game canvas.
-     */
     private onContextMenu = (
-        event: MouseEvent,
+        event:
+            MouseEvent,
     ): void => {
 
         event.preventDefault();
     };
 
+    // -------------------------------------------------------
+    // Browser-to-Logical Coordinate Conversion
+    // -------------------------------------------------------
+
     /**
-     * Converts browser CSS coordinates into the
-     * shared logical 1200 × 720 gameplay space.
+     * Converts the current CSS-displayed canvas
+     * position into the stable logical game space.
      *
-     * The Pixi canvas can be displayed at any CSS
-     * size while gameplay input remains aligned
-     * with world positions.
+     * Example:
+     *
+     * Displayed canvas:
+     * 1500 × 650
+     *
+     * Logical viewport:
+     * 1200 × 720
+     *
+     * Browser X and Y are scaled independently back
+     * into the fixed logical coordinate system.
      */
     private updateMousePositionFromEvent(
-        event: MouseEvent,
+        event:
+            MouseEvent,
     ): void {
 
         const coordinateElement =
@@ -309,8 +524,10 @@ export class InputManager {
                 .getBoundingClientRect();
 
         if (
-            rect.width <= 0 ||
-            rect.height <= 0
+            rect.width <=
+            0 ||
+            rect.height <=
+            0
         ) {
             return;
         }
@@ -326,45 +543,37 @@ export class InputManager {
         const logicalX =
             displayedX *
             (
-                this.viewportDefinition
-                    .width /
+                this.viewportWidth /
                 rect.width
             );
 
         const logicalY =
             displayedY *
             (
-                this.viewportDefinition
-                    .height /
+                this.viewportHeight /
                 rect.height
             );
 
         this.mousePosition.set(
-            Math.max(
+            this.clamp(
+                logicalX,
                 0,
-                Math.min(
-                    logicalX,
-                    this.viewportDefinition
-                        .width,
-                ),
+                this.viewportWidth,
             ),
 
-            Math.max(
+            this.clamp(
+                logicalY,
                 0,
-                Math.min(
-                    logicalY,
-                    this.viewportDefinition
-                        .height,
-                ),
+                this.viewportHeight,
             ),
         );
     }
 
     /**
-     * Uses the actual canvas rectangle whenever it
-     * exists. Falling back to the host element keeps
-     * initialization safe before Renderer appends
-     * the canvas.
+     * Uses the actual Pixi canvas whenever it exists.
+     *
+     * Before Renderer initialization, the host game
+     * element provides a safe fallback rectangle.
      */
     private getCoordinateElement():
         HTMLElement {
@@ -374,6 +583,59 @@ export class InputManager {
                 "canvas",
             );
 
-        return canvas ?? this.target;
+        return (
+            canvas ??
+            this.target
+        );
+    }
+
+    // -------------------------------------------------------
+    // Validation and Utilities
+    // -------------------------------------------------------
+
+    private validateViewportSize(
+        viewportWidth:
+            number,
+
+        viewportHeight:
+            number,
+    ): void {
+
+        if (
+            !Number.isFinite(
+                viewportWidth,
+            ) ||
+            !Number.isFinite(
+                viewportHeight,
+            ) ||
+            viewportWidth <=
+            0 ||
+            viewportHeight <=
+            0
+        ) {
+            throw new Error(
+                "InputManager viewport dimensions must be finite values greater than zero.",
+            );
+        }
+    }
+
+    private clamp(
+        value:
+            number,
+
+        minimum:
+            number,
+
+        maximum:
+            number,
+    ): number {
+
+        return Math.max(
+            minimum,
+            Math.min(
+                value,
+                maximum,
+            ),
+        );
     }
 }

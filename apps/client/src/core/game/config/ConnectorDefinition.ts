@@ -71,6 +71,53 @@ export interface ConnectorDefinition {
     readonly maximumAnimationDeltaTime: number;
 
     // -------------------------------------------------------
+    // Power Milestones
+    // -------------------------------------------------------
+
+    readonly milestoneRatios:
+    readonly number[];
+
+    readonly milestoneLength: number;
+
+    readonly milestoneThickness: number;
+
+    readonly milestoneColor: number;
+
+    readonly milestoneInactiveAlpha: number;
+
+    readonly milestoneActiveAlpha: number;
+
+    // -------------------------------------------------------
+    // Active Power Endpoint
+    // -------------------------------------------------------
+
+    readonly endpointMarkerBaseRadius: number;
+
+    readonly endpointMarkerMaximumRadius: number;
+
+    readonly endpointMarkerOutlineThickness: number;
+
+    readonly endpointMarkerOutlineColor: number;
+
+    readonly endpointMarkerAlpha: number;
+
+    // -------------------------------------------------------
+    // Club-End Energy Node
+    // -------------------------------------------------------
+
+    readonly clubNodeBaseRadius: number;
+
+    readonly clubNodeMaximumRadius: number;
+
+    readonly clubNodeAlpha: number;
+
+    readonly clubNodeGlowStartPower: number;
+
+    readonly clubNodeGlowMaximumRadius: number;
+
+    readonly clubNodeGlowAlpha: number;
+
+    // -------------------------------------------------------
     // Power Colours
     // -------------------------------------------------------
 
@@ -101,9 +148,9 @@ export const DEFAULT_CONNECTOR_DEFINITION:
     // Segment Geometry
     // ---------------------------------------------------
 
-    segmentLength: 12,
+    segmentLength: 14,
 
-    segmentGap: 6,
+    segmentGap: 4,
 
     minimumSegmentLength: 2,
 
@@ -123,9 +170,9 @@ export const DEFAULT_CONNECTOR_DEFINITION:
     // Active Power Layer
     // ---------------------------------------------------
 
-    basePowerThickness: 6,
+    basePowerThickness: 5,
 
-    maximumPowerThickness: 8,
+    maximumPowerThickness: 11,
 
     powerAlpha: 1,
 
@@ -133,31 +180,82 @@ export const DEFAULT_CONNECTOR_DEFINITION:
     // Near-Maximum Emphasis
     // ---------------------------------------------------
 
-    emphasisStartPower: 0.8,
+    emphasisStartPower: 0.55,
 
     emphasisHighlightColor: 0xffffff,
 
     maximumHighlightBlend: 0.28,
 
-    maximumHighlightThickness: 11,
+    maximumHighlightThickness: 15,
 
-    maximumHighlightAlpha: 0.32,
+    maximumHighlightAlpha: 0.42,
 
     // ---------------------------------------------------
     // Travelling Pulse
     // ---------------------------------------------------
 
-    pulseDuration: 0.9,
+    pulseDuration: 0.72,
 
-    pulseHalfWidth: 14,
+    pulseHalfWidth: 17,
 
-    pulseThicknessIncrease: 2,
+    pulseThicknessIncrease: 3,
 
-    maximumPulseAlpha: 0.65,
+    maximumPulseAlpha: 0.78,
 
     pulseColor: 0xffffff,
 
     maximumAnimationDeltaTime: 0.1,
+
+    // ---------------------------------------------------
+    // Power Milestones
+    // ---------------------------------------------------
+
+    milestoneRatios: [
+        0.25,
+        0.50,
+        0.75,
+        1.00,
+    ],
+
+    milestoneLength: 16,
+
+    milestoneThickness: 2,
+
+    milestoneColor: 0xffffff,
+
+    milestoneInactiveAlpha: 0.20,
+
+    milestoneActiveAlpha: 0.86,
+
+    // ---------------------------------------------------
+    // Active Power Endpoint
+    // ---------------------------------------------------
+
+    endpointMarkerBaseRadius: 4,
+
+    endpointMarkerMaximumRadius: 7,
+
+    endpointMarkerOutlineThickness: 2,
+
+    endpointMarkerOutlineColor: 0xffffff,
+
+    endpointMarkerAlpha: 1,
+
+    // ---------------------------------------------------
+    // Club-End Energy Node
+    // ---------------------------------------------------
+
+    clubNodeBaseRadius: 3,
+
+    clubNodeMaximumRadius: 8,
+
+    clubNodeAlpha: 0.95,
+
+    clubNodeGlowStartPower: 0.65,
+
+    clubNodeGlowMaximumRadius: 14,
+
+    clubNodeGlowAlpha: 0.25,
 
     // ---------------------------------------------------
     // Power Colours
