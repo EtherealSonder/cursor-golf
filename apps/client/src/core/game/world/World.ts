@@ -26,6 +26,10 @@ import {
 } from "../config/CourseVisualDefinition";
 
 import {
+    DEFAULT_HOLE_DEFINITION,
+} from "../config/HoleDefinition";
+
+import {
     ProceduralObstacleFieldGenerator,
 } from "../generation/ProceduralObstacleFieldGenerator";
 
@@ -44,6 +48,11 @@ import {
 import {
     WindValidationMetrics,
 } from "../debug/WindValidationMetrics";
+
+
+import {
+    PerformanceDebugOverlay,
+} from "../debug/PerformanceDebugOverlay";
 
 import {
     AimIndicator,
@@ -70,6 +79,10 @@ import {
 } from "../entities/Entity";
 
 import {
+    Hole,
+} from "../entities/Hole";
+
+import {
     DynamicObstacle,
 } from "../entities/obstacles/DynamicObstacle";
 
@@ -82,6 +95,22 @@ import {
 } from "../environment/WindManager";
 
 import {
+    WindVisualizer,
+} from "../environment/WindVisualizer";
+
+import {
+    SurfaceSystem,
+} from "../surface/SurfaceSystem";
+
+import {
+    SurfaceType,
+} from "../surface/SurfaceType";
+
+import {
+    SurfaceState,
+} from "../surface/SurfaceState";
+
+import {
     ShotFeedback,
 } from "../ui/ShotFeedback";
 
@@ -89,77 +118,107 @@ import {
     AssetLoader,
 } from "../../rendering/AssetLoader";
 
-export class World {
+const SURFACE_TEST_ZONES_ENABLED =
+    false;
 
-    // -------------------------------------------------------
-    // Core Application
-    // -------------------------------------------------------
+const PHASE_2_SURFACE_ZONES = [
+    {
+        id: "phase-2-wet-grass-zone",
+        surfaceType: SurfaceType.Grass,
+        x: 80,
+        y: 60,
+        width: 360,
+        height: 260,
+    },
+    {
+        id: "phase-2-scorched-grass-zone",
+        surfaceType: SurfaceType.Grass,
+        x: 760,
+        y: 60,
+        width: 360,
+        height: 260,
+    },
+    {
+        id: "phase-2-dry-sand-zone",
+        surfaceType: SurfaceType.Sand,
+        x: 80,
+        y: 400,
+        width: 360,
+        height: 260,
+    },
+    {
+        id: "phase-2-wet-sand-zone",
+        surfaceType: SurfaceType.Sand,
+        x: 760,
+        y: 400,
+        width: 360,
+        height: 260,
+    },
+] as const;
+
+const PHASE_2_SURFACE_VISUALS = {
+    normalGrass: {
+        fillColor: 0x82b53b,
+        fillAlpha: 0.18,
+        outlineColor: 0x6f9d31,
+    },
+    wetGrass: {
+        fillColor: 0x4aa6a6,
+        fillAlpha: 0.42,
+        outlineColor: 0x2f7f86,
+    },
+    scorchedGrass: {
+        fillColor: 0x5d3a24,
+        fillAlpha: 0.72,
+        outlineColor: 0x3d2417,
+    },
+    drySand: {
+        fillColor: 0xd7b36a,
+        fillAlpha: 0.82,
+        outlineColor: 0xb48a45,
+    },
+    wetSand: {
+        fillColor: 0x9f7b4f,
+        fillAlpha: 0.86,
+        outlineColor: 0x745638,
+    },
+    outlineAlpha: 0.9,
+    outlineWidth: 4,
+} as const;
+
+export class World {
 
     private readonly app:
         Application;
 
-    // -------------------------------------------------------
-    // World Rendering Structure
-    // -------------------------------------------------------
-
-    /**
-     * Shared PixiJS parent for every world-space
-     * display object.
-     *
-     * World-space gameplay coordinates remain
-     * unchanged. Camera movement is represented by
-     * moving this single container in the opposite
-     * direction from the Camera position.
-     */
     private readonly worldContainer:
         Container;
 
-    /**
-     * Screen-space PixiJS parent.
-     *
-     * This container does not move with the Camera.
-     *
-     * It currently contains the temporary Camera
-     * activation-boundary debug rectangle.
-     */
     private readonly screenOverlayContainer:
         Container;
 
-    /**
-     * Temporary screen-space Camera activation
-     * boundary display.
-     */
     private cameraActivationDebugGraphics:
         Graphics | null = null;
 
-    /**
-     * Repeating terrain background.
-     *
-     * It is always inserted as the first child of the
-     * World Container so gameplay objects render
-     * above it.
-     */
+    private performanceDebugOverlay:
+        PerformanceDebugOverlay | null =
+        null;
+
     private courseBackground:
         TilingSprite | null = null;
 
     /**
-     * Presentation configuration for the temporary
-     * course terrain.
+     * Temporary Phase 2 world-space visualization for
+     * authored surface zones.
+     *
+     * Physics authority remains SurfaceSystem.
      */
+    private surfaceGraphics:
+        Graphics | null = null;
+
     private readonly courseVisualDefinition:
         CourseVisualDefinition;
 
-    // -------------------------------------------------------
-    // Camera System
-    // -------------------------------------------------------
-
-    /**
-     * Authoritative world Camera.
-     *
-     * Camera position represents the world coordinate
-     * displayed at the top-left corner of the logical
-     * game viewport.
-     */
     private readonly camera:
         Camera;
 
@@ -173,29 +232,27 @@ export class World {
         (() => void) | null =
         null;
 
+    private unsubscribeFromSurfaceChanges:
+        (() => void) | null =
+        null;
+
     // -------------------------------------------------------
     // Environmental Systems
     // -------------------------------------------------------
 
-    /**
-     * Authoritative environmental wind owner.
-     */
     private readonly windManager:
         WindManager;
 
-    /**
-     * Development-only controller used to apply
-     * deterministic wind-validation presets.
-     */
+    private windVisualizer:
+        WindVisualizer | null =
+        null;
+
+    private readonly surfaceSystem:
+        SurfaceSystem;
+
     private readonly windTuningController:
         WindTuningController;
 
-    /**
-     * Structured shot-measurement system.
-     *
-     * It is created after the Ball because it reads
-     * the Ball's authoritative movement diagnostics.
-     */
     private windValidationMetrics:
         WindValidationMetrics | null =
         null;
@@ -210,11 +267,6 @@ export class World {
     private readonly dynamicObstacles:
         DynamicObstacle[] = [];
 
-    /**
-     * Generated static definitions are passed to the
-     * Ball collision system and also used to construct
-     * visible StaticObstacle entities.
-     */
     private staticObstacleDefinitions:
         readonly StaticObstacleDefinition[] = [];
 
@@ -224,6 +276,9 @@ export class World {
 
     private ball:
         Ball | null = null;
+
+    private hole:
+        Hole | null = null;
 
     private connector:
         Connector | null = null;
@@ -238,7 +293,8 @@ export class World {
         ShotFeedback | null = null;
 
     constructor(
-        app: Application,
+        app:
+            Application,
 
         courseVisualDefinition:
             CourseVisualDefinition =
@@ -255,28 +311,12 @@ export class World {
         this.courseVisualDefinition =
             courseVisualDefinition;
 
-        /*
-         * Every world-space PixiJS object is attached
-         * beneath this container.
-         *
-         * React HUD elements remain outside PixiJS and
-         * are unaffected by this transform.
-         */
         this.worldContainer =
             new Container();
 
-        /*
-         * Screen-space PixiJS content is kept separate
-         * from the Camera-controlled World Container.
-         */
         this.screenOverlayContainer =
             new Container();
 
-        /*
-         * World owns the Camera because the Camera
-         * describes which region of this World is
-         * visible.
-         */
         this.camera =
             new Camera(
                 undefined,
@@ -294,11 +334,11 @@ export class World {
         this.windManager =
             new WindManager();
 
-        /*
-         * The tuning controller receives the same
-         * WindManager used by Ball physics and the
-         * React Wind HUD.
-         */
+        this.surfaceSystem =
+            new SurfaceSystem(
+                SurfaceType.Grass,
+            );
+
         this.windTuningController =
             new WindTuningController(
                 this.windManager,
@@ -309,50 +349,46 @@ export class World {
     // Lifecycle
     // -------------------------------------------------------
 
-    public initialize(): void {
+    public initialize():
+        void {
 
-        /*
-         * The Pixi stage remains fixed.
-         *
-         * Only the World Container receives Camera
-         * transforms.
-         */
         this.app.stage.addChild(
             this.worldContainer,
         );
 
-        /*
-         * Overlay is added after the World Container,
-         * ensuring debug graphics remain above the
-         * moving game world.
-         */
         this.app.stage.addChild(
             this.screenOverlayContainer,
         );
 
-        /*
-         * Course is created first so it remains behind
-         * every later world-space display object.
-         */
         this.createCourse();
 
+        if (
+            SURFACE_TEST_ZONES_ENABLED
+        ) {
+            this.createPhase2SurfaceZones();
+
+            this.createSurfaceGraphics();
+
+            this.unsubscribeFromSurfaceChanges =
+                this.surfaceSystem
+                    .subscribeToChanges(
+                        (): void => {
+
+                            this.drawSurfaceGraphics();
+                        },
+                    );
+        }
+
+        this.createWindVisualizer();
+
         this.createCameraActivationDebugGraphics();
+
+        this.createPerformanceDebugOverlay();
 
         // ---------------------------------------------------
         // Procedural Obstacle Field
         // ---------------------------------------------------
 
-        /*
-         * Generate deterministic obstacle definitions
-         * before constructing the Ball.
-         *
-         * Static definitions are consumed by the
-         * existing static collision pipeline.
-         *
-         * DynamicObstacle instances are consumed by
-         * the existing impulse-based rigid-body
-         * collision pipeline.
-         */
         const obstacleField =
             new ProceduralObstacleFieldGenerator()
                 .generate(
@@ -418,6 +454,7 @@ export class World {
                 this.staticObstacleDefinitions,
                 this.dynamicObstacles,
                 this.windManager,
+                this.surfaceSystem,
             );
 
         this.addEntity(
@@ -425,18 +462,47 @@ export class World {
         );
 
         this.unsubscribeFromBallImpacts =
-            this.ball.subscribeToImpacts(
-                (
-                    event:
-                        BallImpactEvent,
-                ): void => {
+            this.ball
+                .subscribeToImpacts(
+                    (
+                        event:
+                            BallImpactEvent,
+                    ): void => {
 
-                    this.cameraFeedbackController
-                        .triggerCollision(
-                            event.type,
-                            event.impactSpeed,
-                        );
-                },
+                        this.cameraFeedbackController
+                            .triggerCollision(
+                                event.type,
+                                event.impactSpeed,
+                            );
+                    },
+                );
+
+        // ---------------------------------------------------
+        // Create Hole
+        // ---------------------------------------------------
+
+        this.hole =
+            new Hole(
+                this.ball,
+                DEFAULT_HOLE_DEFINITION,
+            );
+
+        this.addEntity(
+            this.hole,
+        );
+
+        const ballDisplayIndex =
+            this.worldContainer
+                .getChildIndex(
+                    this.ball
+                        .getContainer(),
+                );
+
+        this.worldContainer
+            .setChildIndex(
+                this.hole
+                    .getContainer(),
+                ballDisplayIndex,
             );
 
         this.windValidationMetrics =
@@ -453,25 +519,21 @@ export class World {
         this.connector =
             new Connector();
 
-        this.connector.initialize();
+        this.connector
+            .initialize();
 
         const connectorGraphics =
-            this.connector.getGraphics();
+            this.connector
+                .getGraphics();
 
-        if (!connectorGraphics) {
+        if (
+            !connectorGraphics
+        ) {
             throw new Error(
                 "World could not initialize because the Connector graphics do not exist.",
             );
         }
 
-        /*
-         * The Ball has already been added to the
-         * World Container.
-         *
-         * Insert Connector at the Ball's current
-         * display index so Connector remains directly
-         * behind the Ball and above the terrain.
-         */
         const ballWorldIndex =
             this.worldContainer
                 .getChildIndex(
@@ -479,10 +541,11 @@ export class World {
                         .getContainer(),
                 );
 
-        this.worldContainer.addChildAt(
-            connectorGraphics,
-            ballWorldIndex,
-        );
+        this.worldContainer
+            .addChildAt(
+                connectorGraphics,
+                ballWorldIndex,
+            );
 
         // ---------------------------------------------------
         // Create Club
@@ -525,20 +588,15 @@ export class World {
 
         this.aimIndicator.hide();
 
-        /*
-         * Apply the configured initial Camera position
-         * before the first rendered frame.
-         */
         this.applyCameraTransform();
     }
 
-    /**
-     * Updates every screen-space system after the
-     * browser game area changes dimensions.
-     */
     public resizeViewport(
-        viewportWidth: number,
-        viewportHeight: number,
+        viewportWidth:
+            number,
+
+        viewportHeight:
+            number,
     ): void {
 
         this.camera
@@ -554,10 +612,17 @@ export class World {
         ) {
             this.drawCameraActivationDebugGraphics();
         }
+
+        this.performanceDebugOverlay
+            ?.setViewportSize(
+                viewportWidth,
+                viewportHeight,
+            );
     }
 
     public updateCamera(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
         this.camera.update(
@@ -572,8 +637,19 @@ export class World {
     }
 
     public update(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
+
+        this.surfaceSystem
+            .update(
+                deltaTime,
+            );
+
+        this.windVisualizer
+            ?.update(
+                deltaTime,
+            );
 
         for (
             const entity
@@ -598,14 +674,16 @@ export class World {
 
         this.windValidationMetrics
             ?.update();
+
+        this.performanceDebugOverlay
+            ?.update(
+                deltaTime,
+            );
     }
 
-    public destroy(): void {
+    public destroy():
+        void {
 
-        /*
-         * Entity destroy methods remove and destroy
-         * their own display containers.
-         */
         for (
             const entity
             of this.entities
@@ -622,16 +700,14 @@ export class World {
         this.staticObstacleDefinitions =
             [];
 
-        /*
-         * Connector is not an Entity and therefore
-         * owns a separate lifecycle.
-         */
-        this.connector?.destroy();
+        this.connector
+            ?.destroy();
 
         this.connector =
             null;
 
-        this.unsubscribeFromBallImpacts?.();
+        this.unsubscribeFromBallImpacts
+            ?.();
 
         this.unsubscribeFromBallImpacts =
             null;
@@ -648,35 +724,48 @@ export class World {
         this.windTuningController
             .destroy();
 
-        this.windManager.reset();
+        this.windVisualizer
+            ?.destroy();
 
-        /*
-         * Screen-space debug graphics are owned
-         * directly by World.
-         */
+        this.windVisualizer =
+            null;
+
+        this.windManager
+            .reset();
+
+        this.unsubscribeFromSurfaceChanges
+            ?.();
+
+        this.unsubscribeFromSurfaceChanges =
+            null;
+
+        this.surfaceSystem
+            .clearZones();
+
         this.cameraActivationDebugGraphics
             ?.destroy();
 
         this.cameraActivationDebugGraphics =
             null;
 
-        /*
-         * Terrain background is owned directly by
-         * World.
-         */
+        this.performanceDebugOverlay
+            ?.destroy();
+
+        this.performanceDebugOverlay =
+            null;
+
+        this.surfaceGraphics
+            ?.destroy();
+
+        this.surfaceGraphics =
+            null;
+
         this.courseBackground
             ?.destroy();
 
         this.courseBackground =
             null;
 
-        /*
-         * Entity, Connector, Course and debug display
-         * objects have already destroyed themselves.
-         *
-         * Destroy the empty parent containers without
-         * recursively destroying children again.
-         */
         this.worldContainer.destroy({
             children:
                 false,
@@ -693,6 +782,9 @@ export class World {
         this.ball =
             null;
 
+        this.hole =
+            null;
+
         this.club =
             null;
 
@@ -704,24 +796,23 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Ball and Camera Reset
+    // Reset
     // -------------------------------------------------------
 
-    /**
-     * Returns the Ball and validation state to the
-     * original visible viewport centre.
-     *
-     * Camera position and its shared World Container
-     * transform are also reset immediately.
-     */
-    public resetBall(): void {
+    public resetBall():
+        void {
 
-        if (!this.ball) {
+        if (
+            !this.ball
+        ) {
             return;
         }
 
         this.ball
             .resetToInitialPosition();
+
+        this.hole
+            ?.resetEntryState();
 
         this.camera
             .resetToInitialPosition();
@@ -746,7 +837,8 @@ export class World {
     // -------------------------------------------------------
 
     public addEntity(
-        entity: Entity,
+        entity:
+            Entity,
     ): void {
 
         entity.initialize();
@@ -755,26 +847,22 @@ export class World {
             entity,
         );
 
-        /*
-         * Entity positions remain authoritative
-         * world-space coordinates.
-         *
-         * Camera presentation is inherited from the
-         * shared parent container.
-         */
         this.worldContainer.addChild(
-            entity.getContainer(),
+            entity
+                .getContainer(),
         );
     }
 
     public removeEntity(
-        entity: Entity,
+        entity:
+            Entity,
     ): void {
 
         const entityIndex =
-            this.entities.indexOf(
-                entity,
-            );
+            this.entities
+                .indexOf(
+                    entity,
+                );
 
         if (
             entityIndex ===
@@ -791,9 +879,10 @@ export class World {
         );
 
         const dynamicObstacleIndex =
-            this.dynamicObstacles.indexOf(
-                entity as DynamicObstacle,
-            );
+            this.dynamicObstacles
+                .indexOf(
+                    entity as DynamicObstacle,
+                );
 
         if (
             dynamicObstacleIndex !==
@@ -810,6 +899,14 @@ export class World {
             this.ball
         ) {
             this.ball =
+                null;
+        }
+
+        if (
+            entity ===
+            this.hole
+        ) {
+            this.hole =
                 null;
         }
 
@@ -842,26 +939,13 @@ export class World {
     // Camera Rendering
     // -------------------------------------------------------
 
-    /**
-     * Applies the Camera's authoritative base
-     * position to the shared World Container.
-     *
-     * Moving the Camera right makes the world appear
-     * to move left.
-     *
-     * Moving the Camera down makes the world appear
-     * to move up.
-     */
-    private applyCameraTransform(): void {
+    private applyCameraTransform():
+        void {
 
         const requestedShakeOffset =
             this.cameraShake
                 .getOffset();
 
-        /*
-         * Clamp only the render offset. The base Camera
-         * remains authoritative for input and gameplay.
-         */
         const minimumShakeOffsetX =
             this.camera
                 .getPositionX() -
@@ -918,7 +1002,7 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Camera Queries
+    // Queries
     // -------------------------------------------------------
 
     public getCamera():
@@ -939,27 +1023,22 @@ export class World {
         return this.cameraShake;
     }
 
-    /**
-     * Exposes the shared PixiJS World Container for
-     * diagnostics and future rendering systems.
-     *
-     * Gameplay systems should not directly change its
-     * position.
-     */
     public getWorldContainer():
         Container {
 
         return this.worldContainer;
     }
 
-    // -------------------------------------------------------
-    // Environmental System Queries
-    // -------------------------------------------------------
-
     public getWindManager():
         WindManager {
 
         return this.windManager;
+    }
+
+    public getSurfaceSystem():
+        SurfaceSystem {
+
+        return this.surfaceSystem;
     }
 
     public getWindTuningController():
@@ -971,7 +1050,9 @@ export class World {
     public getWindValidationMetrics():
         WindValidationMetrics {
 
-        if (!this.windValidationMetrics) {
+        if (
+            !this.windValidationMetrics
+        ) {
             throw new Error(
                 "Wind validation metrics are not available before World initialization.",
             );
@@ -979,10 +1060,6 @@ export class World {
 
         return this.windValidationMetrics;
     }
-
-    // -------------------------------------------------------
-    // Entity Queries
-    // -------------------------------------------------------
 
     public getEntities():
         readonly Entity[] {
@@ -1000,6 +1077,12 @@ export class World {
         Ball | null {
 
         return this.ball;
+    }
+
+    public getHole():
+        Hole | null {
+
+        return this.hole;
     }
 
     public getConnector():
@@ -1024,6 +1107,306 @@ export class World {
         ShotFeedback | null {
 
         return this.shotFeedback;
+    }
+
+    // -------------------------------------------------------
+    // Wind Visualization
+    // -------------------------------------------------------
+
+    private createWindVisualizer():
+        void {
+
+        if (
+            this.windVisualizer
+        ) {
+            throw new Error(
+                "World wind visualizer has already been created.",
+            );
+        }
+
+        this.windVisualizer =
+            new WindVisualizer(
+                this.windManager,
+                this.camera,
+            );
+
+        /*
+         * Course background occupies index 0.
+         *
+         * Insert wind immediately above the terrain.
+         * If temporary surface visuals exist, they
+         * remain above wind after this insertion.
+         */
+        this.worldContainer
+            .addChildAt(
+                this.windVisualizer
+                    .getGraphics(),
+
+                Math.min(
+                    1,
+                    this.worldContainer
+                        .children
+                        .length,
+                ),
+            );
+    }
+
+    // -------------------------------------------------------
+    // Phase 2 Surface States
+    // -------------------------------------------------------
+
+    private createPhase2SurfaceZones():
+        void {
+
+        if (
+            this.surfaceSystem
+                .getZones()
+                .length >
+            0
+        ) {
+            throw new Error(
+                "World surface zones have already been created.",
+            );
+        }
+
+        for (
+            const definition
+            of PHASE_2_SURFACE_ZONES
+        ) {
+            this.surfaceSystem
+                .addZone(
+                    definition,
+                );
+        }
+
+        this.surfaceSystem
+            .setZoneState(
+                "phase-2-wet-grass-zone",
+                SurfaceState.Wet,
+            );
+
+        this.surfaceSystem
+            .setZoneState(
+                "phase-2-scorched-grass-zone",
+                SurfaceState.Scorched,
+            );
+
+        this.surfaceSystem
+            .setZoneState(
+                "phase-2-wet-sand-zone",
+                SurfaceState.Wet,
+            );
+    }
+
+    private createSurfaceGraphics():
+        void {
+
+        if (
+            this.surfaceGraphics
+        ) {
+            throw new Error(
+                "World surface graphics have already been created.",
+            );
+        }
+
+        this.surfaceGraphics =
+            new Graphics();
+
+        /*
+         * Course background is index 0. Insert the
+         * surface visualization immediately above it,
+         * before obstacle/entity display objects.
+         */
+        this.worldContainer
+            .addChildAt(
+                this.surfaceGraphics,
+                Math.min(
+                    1,
+                    this.worldContainer
+                        .children
+                        .length,
+                ),
+            );
+
+        this.drawSurfaceGraphics();
+    }
+
+    private drawSurfaceGraphics():
+        void {
+
+        if (
+            !this.surfaceGraphics
+        ) {
+            return;
+        }
+
+        this.surfaceGraphics
+            .clear();
+
+        for (
+            const zone
+            of this.surfaceSystem
+                .getZones()
+        ) {
+            const definition =
+                zone.getDefinition();
+
+            const sample =
+                this.surfaceSystem
+                    .getSurfaceAt(
+                        definition.x +
+                        definition.width /
+                        2,
+
+                        definition.y +
+                        definition.height /
+                        2,
+                    );
+
+            const visual =
+                this.getSurfaceVisual(
+                    sample.surfaceType,
+                    sample.surfaceState,
+                );
+
+            this.surfaceGraphics
+                .rect(
+                    definition.x,
+                    definition.y,
+                    definition.width,
+                    definition.height,
+                );
+
+            this.surfaceGraphics
+                .fill({
+                    color:
+                        visual.fillColor,
+
+                    alpha:
+                        visual.fillAlpha,
+                });
+
+            this.surfaceGraphics
+                .rect(
+                    definition.x,
+                    definition.y,
+                    definition.width,
+                    definition.height,
+                );
+
+            this.surfaceGraphics
+                .stroke({
+                    width:
+                        PHASE_2_SURFACE_VISUALS
+                            .outlineWidth,
+
+                    color:
+                        visual.outlineColor,
+
+                    alpha:
+                        PHASE_2_SURFACE_VISUALS
+                            .outlineAlpha,
+                });
+        }
+    }
+
+    private getSurfaceVisual(
+        surfaceType:
+            SurfaceType,
+
+        surfaceState:
+            SurfaceState,
+    ): {
+        readonly fillColor: number;
+        readonly fillAlpha: number;
+        readonly outlineColor: number;
+    } {
+
+        if (
+            surfaceType ===
+            SurfaceType.Grass
+        ) {
+            switch (
+            surfaceState
+            ) {
+                case SurfaceState.Wet:
+                    return PHASE_2_SURFACE_VISUALS
+                        .wetGrass;
+
+                case SurfaceState.Scorched:
+                    return PHASE_2_SURFACE_VISUALS
+                        .scorchedGrass;
+
+                case SurfaceState.Normal:
+                    return PHASE_2_SURFACE_VISUALS
+                        .normalGrass;
+
+                default:
+                    throw new Error(
+                        `Unsupported Grass surface state '${surfaceState}'.`,
+                    );
+            }
+        }
+
+        if (
+            surfaceType ===
+            SurfaceType.Sand
+        ) {
+            switch (
+            surfaceState
+            ) {
+                case SurfaceState.Wet:
+                    return PHASE_2_SURFACE_VISUALS
+                        .wetSand;
+
+                case SurfaceState.Dry:
+                    return PHASE_2_SURFACE_VISUALS
+                        .drySand;
+
+                default:
+                    throw new Error(
+                        `Unsupported Sand surface state '${surfaceState}'.`,
+                    );
+            }
+        }
+
+        throw new Error(
+            `Unsupported surface type '${surfaceType}'.`,
+        );
+    }
+
+    // -------------------------------------------------------
+    // Performance Debug Overlay
+    // -------------------------------------------------------
+
+    private createPerformanceDebugOverlay():
+        void {
+
+        if (
+            this.performanceDebugOverlay
+        ) {
+            throw new Error(
+                "World performance debug overlay has already been created.",
+            );
+        }
+
+        this.performanceDebugOverlay =
+            new PerformanceDebugOverlay();
+
+        this.performanceDebugOverlay
+            .setViewportSize(
+                this.camera
+                    .getViewportWidth(),
+
+                this.camera
+                    .getViewportHeight(),
+            );
+
+        this.screenOverlayContainer
+            .addChild(
+                this.performanceDebugOverlay
+                    .getContainer(),
+            );
     }
 
     // -------------------------------------------------------
@@ -1055,18 +1438,14 @@ export class World {
         this.cameraActivationDebugGraphics =
             new Graphics();
 
-        this.screenOverlayContainer.addChild(
-            this.cameraActivationDebugGraphics,
-        );
+        this.screenOverlayContainer
+            .addChild(
+                this.cameraActivationDebugGraphics,
+            );
 
         this.drawCameraActivationDebugGraphics();
     }
 
-    /**
-     * Redraws the fixed screen-space activation
-     * rectangle from the Camera's current responsive
-     * viewport dimensions.
-     */
     private drawCameraActivationDebugGraphics():
         void {
 
@@ -1130,19 +1509,23 @@ export class World {
     // Course Rendering
     // -------------------------------------------------------
 
-    private createCourse(): void {
+    private createCourse():
+        void {
 
-        if (this.courseBackground) {
+        if (
+            this.courseBackground
+        ) {
             throw new Error(
                 "World course background has already been created.",
             );
         }
 
         const terrainTexture =
-            AssetLoader.getTexture(
-                this.courseVisualDefinition
-                    .terrainTextureKey,
-            );
+            AssetLoader
+                .getTexture(
+                    this.courseVisualDefinition
+                        .terrainTextureKey,
+                );
 
         const courseWidth =
             DEFAULT_COURSE_BOUNDARY_DEFINITION
@@ -1168,13 +1551,6 @@ export class World {
                     courseHeight,
             });
 
-        /*
-         * TilingSprite local coordinates begin at
-         * zero.
-         *
-         * Move the complete background rectangle to
-         * the course's world-space minimum corner.
-         */
         this.courseBackground
             .position
             .set(
@@ -1185,11 +1561,6 @@ export class World {
                     .minimumY,
             );
 
-        /*
-         * Scale the repeated texture pattern without
-         * changing the TilingSprite's world-space
-         * width or height.
-         */
         this.courseBackground
             .tileScale
             .set(
@@ -1208,17 +1579,11 @@ export class World {
             this.courseVisualDefinition
                 .terrainTint;
 
-        /*
-         * Terrain is inserted at index zero.
-         *
-         * Connector, Ball, Club, AimIndicator,
-         * ShotFeedback and future obstacles therefore
-         * remain above the background.
-         */
-        this.worldContainer.addChildAt(
-            this.courseBackground,
-            0,
-        );
+        this.worldContainer
+            .addChildAt(
+                this.courseBackground,
+                0,
+            );
     }
 
     // -------------------------------------------------------
@@ -1291,16 +1656,10 @@ export class World {
             !Number.isFinite(
                 definition
                     .terrainTint,
-            ) ||
-            definition
-                .terrainTint <
-            0 ||
-            definition
-                .terrainTint >
-            0xffffff
+            )
         ) {
             throw new Error(
-                "Course terrainTint must be a valid hexadecimal color between 0x000000 and 0xffffff.",
+                "Course terrainTint must be a finite number.",
             );
         }
     }

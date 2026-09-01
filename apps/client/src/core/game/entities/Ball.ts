@@ -57,6 +57,10 @@ import type {
     WindManager,
 } from "../environment/WindManager";
 
+import type {
+    SurfaceSystem,
+} from "../surface/SurfaceSystem";
+
 import { Entity } from "./Entity";
 
 import type {
@@ -74,10 +78,12 @@ export enum BallMotionState {
     Moving,
 }
 
-/**
- * Gameplay-facing collision category emitted after a
- * valid Ball collision response.
- */
+export enum BallGameplayState {
+    Active,
+    HoleCapture,
+    Holed,
+}
+
 export type BallImpactType =
     | "course-boundary"
     | "static-obstacle"
@@ -109,19 +115,11 @@ interface BoundaryCollisionResult {
 
 export class Ball extends Entity {
 
-    // -------------------------------------------------------
-    // Visual Structure
-    // -------------------------------------------------------
-
     private visualContainer:
         Container | null = null;
 
     private ballGraphics:
         Graphics | null = null;
-
-    // -------------------------------------------------------
-    // Ball Configuration
-    // -------------------------------------------------------
 
     private readonly radius = 10;
 
@@ -140,31 +138,255 @@ export class Ball extends Entity {
     private readonly dynamicObstacles:
         readonly DynamicObstacle[];
 
-    /**
-     * Shared environmental wind state owned by the
-     * World.
-     *
-     * The Ball reads acceleration from this manager
-     * only while already moving. Wind never launches
-     * or wakes a stationary Ball.
-     */
     private readonly windManager:
         WindManager;
 
+    /**
+     * Shared authoritative terrain query owned by
+     * World.
+     *
+     * The Ball consumes resolved physical properties
+     * and does not branch on Grass/Sand identity.
+     */
+    private readonly surfaceSystem:
+        SurfaceSystem;
+
+    private motionState =
+        BallMotionState.Stationary;
+
+    private gameplayState =
+        BallGameplayState.Active;
+
+    private velocityX = 0;
+    private velocityY = 0;
+
+    private launchPositionX = 0;
+    private launchPositionY = 0;
+
+    private mostRecentLaunchSpeed = 0;
+
+    private mostRecentLaunchDirectionRadians = 0;
+
+    private movementElapsedTime = 0;
+
+    private movementDistanceTravelled = 0;
+
+    private boundaryCollisionCount = 0;
+
+    private obstacleCollisionCount = 0;
+
+    private restStabilityElapsedTime = 0;
+
+    private readonly impactListeners:
+        Set<BallImpactListener> =
+        new Set<BallImpactListener>();
+
+    private interactionState =
+        BallInteractionState.Normal;
+
+    private readonly normalScale = 1;
+
+    private readonly interactionScale = 1.12;
+
+    private readonly scaleResponseSpeed = 12;
+
+    private currentVisualScale =
+        this.normalScale;
+
+    private targetVisualScale =
+        this.normalScale;
+
+    private tensionPower = 0;
+
+    private vibrationTime = 0;
+
+    private readonly minimumVibrationFrequency = 3;
+
+    private readonly maximumVibrationFrequency = 18;
+
+    private readonly maximumVibrationAmplitude = 1.5;
+
+    private readonly secondaryFrequencyRatio = 1.37;
+
+    constructor(
+        physicsDefinition:
+            BallPhysicsDefinition =
+            DEFAULT_BALL_PHYSICS_DEFINITION,
+
+        courseBoundaryDefinition:
+            CourseBoundaryDefinition =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION,
+
+        staticObstacleDefinitions:
+            readonly StaticObstacleDefinition[] = [],
+
+        dynamicObstacles:
+            readonly DynamicObstacle[] = [],
+
+        windManager:
+            WindManager,
+
+        surfaceSystem:
+            SurfaceSystem,
+    ) {
+        super();
+
+        this.validatePhysicsDefinition(
+            physicsDefinition,
+        );
+
+        this.physicsDefinition =
+            physicsDefinition;
+
+        this.validateCourseBoundaryDefinition(
+            courseBoundaryDefinition,
+        );
+
+        this.courseBoundaryDefinition =
+            courseBoundaryDefinition;
+
+        this.validateStaticObstacleDefinitions(
+            staticObstacleDefinitions,
+        );
+
+        this.staticObstacleDefinitions =
+            staticObstacleDefinitions;
+
+        this.validateDynamicObstacles(
+            dynamicObstacles,
+        );
+
+        this.dynamicObstacles =
+            dynamicObstacles;
+
+        this.windManager =
+            windManager;
+
+        this.surfaceSystem =
+            surfaceSystem;
+    }
+
     // -------------------------------------------------------
-    // Validation Reset
+    // Lifecycle
     // -------------------------------------------------------
 
-    /**
-     * Returns the Ball to the centre of the visible
-     * 1200 × 720 viewport without reconstructing the
-     * World or refreshing the browser page.
-     *
-     * The enlarged course can extend beyond the
-     * viewport, so the visible viewport centre is a
-     * separate concept from the course centre.
-     */
-    public resetToInitialPosition(): void {
+    protected onInitialize(): void {
+
+        this.visualContainer =
+            new Container();
+
+        this.ballGraphics =
+            new Graphics();
+
+        this.container.position.set(
+            this.getInitialPositionX(),
+            this.getInitialPositionY(),
+        );
+
+        this.visualContainer.addChild(
+            this.ballGraphics,
+        );
+
+        this.container.addChild(
+            this.visualContainer,
+        );
+
+        this.correctPositionInsideCourse();
+
+        this.resolveStaticObstacleCollisions();
+
+        for (
+            let passIndex = 0;
+            passIndex <
+            this.physicsDefinition
+                .maximumObstacleResolutionPasses;
+            passIndex += 1
+        ) {
+            if (
+                !this.resolveDynamicObstacleCollisions()
+            ) {
+                break;
+            }
+        }
+
+        this.applyVisualScale();
+        this.resetVisualOffset();
+        this.drawBall();
+    }
+
+    protected onUpdate(
+        deltaTime:
+            number,
+    ): void {
+
+        const safeDeltaTime =
+            Math.min(
+                Math.max(
+                    0,
+                    deltaTime,
+                ),
+                this.physicsDefinition
+                    .maximumDeltaTime,
+            );
+
+        if (
+            this.gameplayState ===
+            BallGameplayState.Active
+        ) {
+            this.updateMotion(
+                safeDeltaTime,
+            );
+
+            this.updateTargetScale();
+
+            this.updateVisualScale(
+                safeDeltaTime,
+            );
+
+            this.updateVibration(
+                safeDeltaTime,
+            );
+
+            return;
+        }
+
+        this.resetVisualOffset();
+        this.resetVibration();
+    }
+
+    protected onDestroy(): void {
+
+        this.stop(
+            false,
+        );
+
+        this.ballGraphics
+            ?.destroy();
+
+        this.ballGraphics =
+            null;
+
+        this.visualContainer =
+            null;
+
+        this.impactListeners
+            .clear();
+
+        this.container.destroy({
+            children:
+                true,
+        });
+    }
+
+    // -------------------------------------------------------
+    // Reset
+    // -------------------------------------------------------
+
+    public resetToInitialPosition():
+        void {
+
+        this.gameplayState =
+            BallGameplayState.Active;
 
         this.stop(
             false,
@@ -223,16 +445,16 @@ export class Ball extends Entity {
                 .maximumObstacleResolutionPasses;
             passIndex += 1
         ) {
-            const collisionResolved =
-                this.resolveDynamicObstacleCollisions();
-
-            if (!collisionResolved) {
+            if (
+                !this.resolveDynamicObstacleCollisions()
+            ) {
                 break;
             }
         }
     }
 
-    private getInitialPositionX(): number {
+    private getInitialPositionX():
+        number {
 
         return (
             DEFAULT_GAME_VIEWPORT_DEFINITION
@@ -241,7 +463,8 @@ export class Ball extends Entity {
         );
     }
 
-    private getInitialPositionY(): number {
+    private getInitialPositionY():
+        number {
 
         return (
             DEFAULT_GAME_VIEWPORT_DEFINITION
@@ -251,290 +474,24 @@ export class Ball extends Entity {
     }
 
     // -------------------------------------------------------
-    // Motion State
-    // -------------------------------------------------------
-
-    private motionState =
-        BallMotionState.Stationary;
-
-    /**
-     * Horizontal velocity measured in pixels
-     * per second.
-     */
-    private velocityX = 0;
-
-    /**
-     * Vertical velocity measured in pixels
-     * per second.
-     */
-    private velocityY = 0;
-
-    // -------------------------------------------------------
-    // Motion Diagnostics
-    // -------------------------------------------------------
-
-    private launchPositionX = 0;
-
-    private launchPositionY = 0;
-
-    private mostRecentLaunchSpeed = 0;
-
-    private mostRecentLaunchDirectionRadians = 0;
-
-    private movementElapsedTime = 0;
-
-    private movementDistanceTravelled = 0;
-
-    private boundaryCollisionCount = 0;
-
-    private obstacleCollisionCount = 0;
-
-    /**
-     * Time spent continuously inside the configured
-     * low-speed rest-confirmation region.
-     *
-     * Wind cannot keep the Ball moving indefinitely
-     * inside this region. Once the configured
-     * duration is reached, the Ball enters exact
-     * rest and both velocity components become zero.
-     */
-    private restStabilityElapsedTime = 0;
-
-    // -------------------------------------------------------
-    // Impact Events
-    // -------------------------------------------------------
-
-    private readonly impactListeners:
-        Set<BallImpactListener> =
-        new Set<BallImpactListener>();
-
-    // -------------------------------------------------------
-    // Interaction State
-    // -------------------------------------------------------
-
-    private interactionState =
-        BallInteractionState.Normal;
-
-    // -------------------------------------------------------
-    // Scale Feedback
-    // -------------------------------------------------------
-
-    private readonly normalScale = 1;
-
-    private readonly interactionScale = 1.12;
-
-    private readonly scaleResponseSpeed = 12;
-
-    private currentVisualScale =
-        this.normalScale;
-
-    private targetVisualScale =
-        this.normalScale;
-
-    // -------------------------------------------------------
-    // Drag-Tension Vibration
-    // -------------------------------------------------------
-
-    private tensionPower = 0;
-
-    private vibrationTime = 0;
-
-    private readonly minimumVibrationFrequency = 3;
-
-    private readonly maximumVibrationFrequency = 18;
-
-    private readonly maximumVibrationAmplitude = 1.5;
-
-    private readonly secondaryFrequencyRatio = 1.37;
-
-    constructor(
-        physicsDefinition:
-            BallPhysicsDefinition =
-            DEFAULT_BALL_PHYSICS_DEFINITION,
-
-        courseBoundaryDefinition:
-            CourseBoundaryDefinition =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION,
-
-        staticObstacleDefinitions:
-            readonly StaticObstacleDefinition[] = [],
-
-        dynamicObstacles:
-            readonly DynamicObstacle[] = [],
-
-        windManager:
-            WindManager,
-    ) {
-        super();
-
-        this.validatePhysicsDefinition(
-            physicsDefinition,
-        );
-
-        /*
-         * Assign the validated physics definition
-         * before course validation because course
-         * validation reads boundarySafetyMargin
-         * from this.physicsDefinition.
-         */
-        this.physicsDefinition =
-            physicsDefinition;
-
-        this.validateCourseBoundaryDefinition(
-            courseBoundaryDefinition,
-        );
-
-        this.courseBoundaryDefinition =
-            courseBoundaryDefinition;
-
-        this.validateStaticObstacleDefinitions(
-            staticObstacleDefinitions,
-        );
-
-        this.staticObstacleDefinitions =
-            staticObstacleDefinitions;
-
-        this.validateDynamicObstacles(
-            dynamicObstacles,
-        );
-
-        this.dynamicObstacles =
-            dynamicObstacles;
-
-        this.windManager =
-            windManager;
-    }
-
-    // -------------------------------------------------------
-    // Lifecycle
-    // -------------------------------------------------------
-
-    protected onInitialize(): void {
-
-        this.visualContainer =
-            new Container();
-
-        this.ballGraphics =
-            new Graphics();
-
-        /*
-         * The Entity container remains the
-         * authoritative gameplay and physics
-         * position.
-         */
-        const initialPositionX =
-            this.getInitialPositionX();
-
-        const initialPositionY =
-            this.getInitialPositionY();
-
-        this.container.position.set(
-            initialPositionX,
-            initialPositionY,
-        );
-
-        /*
-         * Presentation-only effects remain on
-         * the visual child.
-         */
-        this.visualContainer.addChild(
-            this.ballGraphics,
-        );
-
-        this.container.addChild(
-            this.visualContainer,
-        );
-
-        this.correctPositionInsideCourse();
-
-        /*
-         * Resolve any invalid initial overlap with
-         * static or dynamic obstacles.
-         */
-        this.resolveStaticObstacleCollisions();
-
-        for (
-            let passIndex = 0;
-            passIndex <
-            this.physicsDefinition
-                .maximumObstacleResolutionPasses;
-            passIndex += 1
-        ) {
-            const collisionResolved =
-                this.resolveDynamicObstacleCollisions();
-
-            if (!collisionResolved) {
-                break;
-            }
-        }
-
-        this.applyVisualScale();
-        this.resetVisualOffset();
-        this.drawBall();
-    }
-
-    protected onUpdate(
-        deltaTime: number,
-    ): void {
-
-        const safeDeltaTime =
-            Math.min(
-                Math.max(
-                    0,
-                    deltaTime,
-                ),
-                this.physicsDefinition
-                    .maximumDeltaTime,
-            );
-
-        this.updateMotion(
-            safeDeltaTime,
-        );
-
-        this.updateTargetScale();
-
-        this.updateVisualScale(
-            safeDeltaTime,
-        );
-
-        this.updateVibration(
-            safeDeltaTime,
-        );
-    }
-
-    protected onDestroy(): void {
-
-        this.stop(
-            false,
-        );
-
-        this.ballGraphics?.destroy();
-
-        this.ballGraphics = null;
-        this.visualContainer = null;
-
-        this.impactListeners.clear();
-
-        this.container.destroy({
-            children: true,
-        });
-    }
-
-    // -------------------------------------------------------
     // Ball Data
     // -------------------------------------------------------
 
-    public getRadius(): number {
+    public getRadius():
+        number {
+
         return this.radius;
     }
 
-    public getMass(): number {
+    public getMass():
+        number {
 
         return this.physicsDefinition
             .mass;
     }
 
-    public getInverseMass(): number {
+    public getInverseMass():
+        number {
 
         return (
             1 /
@@ -546,14 +503,6 @@ export class Ball extends Entity {
     public getInverseMomentOfInertia():
         number {
 
-        /*
-         * The Ball is treated as a point-mass for
-         * gameplay collision response.
-         *
-         * Its visible rotation is not currently
-         * simulated, so angular impulse does not
-         * alter a Ball angular velocity.
-         */
         return 0;
     }
 
@@ -562,7 +511,8 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     public canLaunchWithPower(
-        normalizedPower: number,
+        normalizedPower:
+            number,
     ): boolean {
 
         return (
@@ -573,7 +523,8 @@ export class Ball extends Entity {
     }
 
     public hasMetMinimumPreparationTime(
-        preparationTime: number,
+        preparationTime:
+            number,
     ): boolean {
 
         return (
@@ -584,11 +535,15 @@ export class Ball extends Entity {
     }
 
     public canLaunchShot(
-        normalizedPower: number,
-        preparationTime: number,
+        normalizedPower:
+            number,
+
+        preparationTime:
+            number,
     ): boolean {
 
         return (
+            this.isAvailableForInteraction() &&
             this.isStationary() &&
             this.canLaunchWithPower(
                 normalizedPower,
@@ -600,15 +555,21 @@ export class Ball extends Entity {
     }
 
     // -------------------------------------------------------
-    // Ball Launch
+    // Launch
     // -------------------------------------------------------
 
     public launch(
-        normalizedPower: number,
-        directionRadians: number,
+        normalizedPower:
+            number,
+
+        directionRadians:
+            number,
     ): boolean {
 
-        if (this.isMoving()) {
+        if (
+            !this.isAvailableForInteraction() ||
+            this.isMoving()
+        ) {
             return false;
         }
 
@@ -633,11 +594,6 @@ export class Ball extends Entity {
             return false;
         }
 
-        /*
-         * Defensive correction in case another
-         * system previously moved the Ball
-         * outside the legal course area.
-         */
         this.correctPositionInsideCourse();
 
         this.resolveStaticObstacleCollisions();
@@ -649,10 +605,9 @@ export class Ball extends Entity {
                 .maximumObstacleResolutionPasses;
             passIndex += 1
         ) {
-            const resolvedCollision =
-                this.resolveDynamicObstacleCollisions();
-
-            if (!resolvedCollision) {
+            if (
+                !this.resolveDynamicObstacleCollisions()
+            ) {
                 break;
             }
         }
@@ -712,19 +667,9 @@ export class Ball extends Entity {
         return true;
     }
 
-    // -------------------------------------------------------
-    // Motion State
-    // -------------------------------------------------------
-
-    /**
-     * Returns the Ball to an exact stationary
-     * state.
-     *
-     * Both velocity components are explicitly
-     * set to zero.
-     */
     public stop(
-        logDiagnostics = true,
+        logDiagnostics =
+            true,
     ): void {
 
         const wasMoving =
@@ -752,7 +697,8 @@ export class Ball extends Entity {
         return this.motionState;
     }
 
-    public isMoving(): boolean {
+    public isMoving():
+        boolean {
 
         return (
             this.motionState ===
@@ -760,7 +706,8 @@ export class Ball extends Entity {
         );
     }
 
-    public isStationary(): boolean {
+    public isStationary():
+        boolean {
 
         return (
             this.motionState ===
@@ -769,22 +716,29 @@ export class Ball extends Entity {
     }
 
     // -------------------------------------------------------
-    // Velocity Queries
+    // Velocity
     // -------------------------------------------------------
 
-    public getVelocityX(): number {
+    public getVelocityX():
+        number {
+
         return this.velocityX;
     }
 
-    public getVelocityY(): number {
+    public getVelocityY():
+        number {
+
         return this.velocityY;
     }
 
-    public getAngularVelocity(): number {
+    public getAngularVelocity():
+        number {
+
         return 0;
     }
 
-    public getSpeed(): number {
+    public getSpeed():
+        number {
 
         return Math.hypot(
             this.velocityX,
@@ -796,7 +750,8 @@ export class Ball extends Entity {
     // Physics Configuration Queries
     // -------------------------------------------------------
 
-    public getMinimumLaunchPower(): number {
+    public getMinimumLaunchPower():
+        number {
 
         return this.physicsDefinition
             .minimumLaunchPower;
@@ -809,48 +764,56 @@ export class Ball extends Entity {
             .minimumShotPreparationTime;
     }
 
-    public getMinimumLaunchSpeed(): number {
+    public getMinimumLaunchSpeed():
+        number {
 
         return this.physicsDefinition
             .minimumLaunchSpeed;
     }
 
-    public getMaximumBallSpeed(): number {
+    public getMaximumBallSpeed():
+        number {
 
         return this.physicsDefinition
             .maximumBallSpeed;
     }
 
-    public getShotPowerExponent(): number {
+    public getShotPowerExponent():
+        number {
 
         return this.physicsDefinition
             .shotPowerExponent;
     }
 
-    public getRollingDeceleration(): number {
+    public getRollingDeceleration():
+        number {
 
         return this.physicsDefinition
             .rollingDeceleration;
     }
 
-    public getStopSpeedThreshold(): number {
+    public getStopSpeedThreshold():
+        number {
 
         return this.physicsDefinition
             .stopSpeedThreshold;
     }
 
-    public getBoundaryRestitution(): number {
+    public getBoundaryRestitution():
+        number {
 
         return this.physicsDefinition
             .boundaryRestitution;
     }
 
-    public getBoundaryCollisionCount(): number {
+    public getBoundaryCollisionCount():
+        number {
 
         return this.boundaryCollisionCount;
     }
 
-    public getObstacleCollisionCount(): number {
+    public getObstacleCollisionCount():
+        number {
 
         return this.obstacleCollisionCount;
     }
@@ -859,17 +822,20 @@ export class Ball extends Entity {
     // Validation Metric Queries
     // -------------------------------------------------------
 
-    public getLaunchPositionX(): number {
+    public getLaunchPositionX():
+        number {
 
         return this.launchPositionX;
     }
 
-    public getLaunchPositionY(): number {
+    public getLaunchPositionY():
+        number {
 
         return this.launchPositionY;
     }
 
-    public getMostRecentLaunchSpeed(): number {
+    public getMostRecentLaunchSpeed():
+        number {
 
         return this.mostRecentLaunchSpeed;
     }
@@ -880,7 +846,8 @@ export class Ball extends Entity {
         return this.mostRecentLaunchDirectionRadians;
     }
 
-    public getMovementElapsedTime(): number {
+    public getMovementElapsedTime():
+        number {
 
         return this.movementElapsedTime;
     }
@@ -892,7 +859,8 @@ export class Ball extends Entity {
     }
 
     public getLaunchSpeedForPower(
-        normalizedPower: number,
+        normalizedPower:
+            number,
     ): number {
 
         const clampedPower =
@@ -922,11 +890,25 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     public applyImpulseAtWorldPoint(
-        impulseX: number,
-        impulseY: number,
-        contactPointX: number,
-        contactPointY: number,
+        impulseX:
+            number,
+
+        impulseY:
+            number,
+
+        contactPointX:
+            number,
+
+        contactPointY:
+            number,
     ): void {
+
+        if (
+            this.gameplayState !==
+            BallGameplayState.Active
+        ) {
+            return;
+        }
 
         void contactPointX;
         void contactPointY;
@@ -1017,16 +999,19 @@ export class Ball extends Entity {
 
         return (): void => {
 
-            if (unsubscribed) {
+            if (
+                unsubscribed
+            ) {
                 return;
             }
 
             unsubscribed =
                 true;
 
-            this.impactListeners.delete(
-                listener,
-            );
+            this.impactListeners
+                .delete(
+                    listener,
+                );
         };
     }
 
@@ -1042,7 +1027,8 @@ export class Ball extends Entity {
     ): void {
 
         if (
-            this.impactListeners.size ===
+            this.impactListeners
+                .size ===
             0 ||
             !Number.isFinite(
                 impactSpeed,
@@ -1074,7 +1060,8 @@ export class Ball extends Entity {
 
         this.impactListeners.forEach(
             (
-                listener,
+                listener:
+                    BallImpactListener,
             ): void => {
 
                 listener(
@@ -1089,18 +1076,13 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     private updateMotion(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
-        if (!this.isMoving()) {
-            /*
-             * A moving dynamic obstacle may enter
-             * the Ball even when the Ball begins
-             * this frame at rest.
-             *
-             * Resolve such contacts so obstacle
-             * momentum can reactivate the Ball.
-             */
+        if (
+            !this.isMoving()
+        ) {
             for (
                 let passIndex = 0;
                 passIndex <
@@ -1108,10 +1090,9 @@ export class Ball extends Entity {
                     .maximumObstacleResolutionPasses;
                 passIndex += 1
             ) {
-                const resolvedCollision =
-                    this.resolveDynamicObstacleCollisions();
-
-                if (!resolvedCollision) {
+                if (
+                    !this.resolveDynamicObstacleCollisions()
+                ) {
                     break;
                 }
             }
@@ -1119,7 +1100,10 @@ export class Ball extends Entity {
             return;
         }
 
-        if (deltaTime <= 0) {
+        if (
+            deltaTime <=
+            0
+        ) {
             return;
         }
 
@@ -1153,12 +1137,6 @@ export class Ball extends Entity {
             return;
         }
 
-        /*
-         * Divide high-speed movement into smaller
-         * pieces so collision is tested repeatedly
-         * along the Ball's path instead of only at
-         * the frame's final position.
-         */
         const estimatedFrameDistance =
             frameStartSpeed *
             deltaTime;
@@ -1179,10 +1157,13 @@ export class Ball extends Entity {
 
         for (
             let stepIndex = 0;
-            stepIndex < physicsStepCount;
+            stepIndex <
+            physicsStepCount;
             stepIndex += 1
         ) {
-            if (!this.isMoving()) {
+            if (
+                !this.isMoving()
+            ) {
                 break;
             }
 
@@ -1193,18 +1174,13 @@ export class Ball extends Entity {
     }
 
     private updateMotionStep(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
         const currentSpeed =
             this.getSpeed();
 
-        /*
-         * Preserve the velocity at the beginning of
-         * this sub-step so movement can be integrated
-         * from the average of the starting and ending
-         * velocity vectors.
-         */
         const startingVelocityX =
             this.velocityX;
 
@@ -1212,12 +1188,30 @@ export class Ball extends Entity {
             this.velocityY;
 
         // ---------------------------------------------------
-        // 1. Rolling Resistance
+        // 1. Surface-Aware Rolling Resistance
         // ---------------------------------------------------
 
-        const speedReduction =
+        /*
+         * Surface is sampled inside every internal
+         * physics sub-step. Fast movement therefore
+         * responds as soon as the Ball centre crosses
+         * a surface boundary.
+         */
+        const currentSurface =
+            this.surfaceSystem
+                .getSurfaceAt(
+                    this.getX(),
+                    this.getY(),
+                );
+
+        const effectiveRollingDeceleration =
             this.physicsDefinition
                 .rollingDeceleration *
+            currentSurface
+                .rollingResistanceMultiplier;
+
+        const speedReduction =
+            effectiveRollingDeceleration *
             deltaTime;
 
         const speedAfterRollingResistance =
@@ -1227,7 +1221,10 @@ export class Ball extends Entity {
                 speedReduction,
             );
 
-        if (currentSpeed > 0) {
+        if (
+            currentSpeed >
+            0
+        ) {
             const directionX =
                 this.velocityX /
                 currentSpeed;
@@ -1252,15 +1249,6 @@ export class Ball extends Entity {
         // 2. Speed-Scaled Wind Acceleration
         // ---------------------------------------------------
 
-        /*
-         * This method can only be reached while the
-         * Ball is already in BallMotionState.Moving.
-         *
-         * A stationary Ball returns from updateMotion
-         * before any wind acceleration is evaluated.
-         * Therefore wind cannot launch or wake the
-         * Ball.
-         */
         const activeSpeedRange =
             this.physicsDefinition
                 .maximumBallSpeed -
@@ -1268,7 +1256,8 @@ export class Ball extends Entity {
                 .stopSpeedThreshold;
 
         const normalizedBallSpeed =
-            activeSpeedRange > 0
+            activeSpeedRange >
+                0
                 ? Math.min(
                     Math.max(
                         (
@@ -1299,12 +1288,6 @@ export class Ball extends Entity {
             windAcceleration.y *
             deltaTime;
 
-        /*
-         * Retain the existing defensive maximum
-         * speed limit. External acceleration must not
-         * push the Ball beyond the current Part B
-         * safety boundary.
-         */
         const speedAfterWind =
             this.getSpeed();
 
@@ -1331,6 +1314,7 @@ export class Ball extends Entity {
             );
 
             this.stop();
+
             return;
         }
 
@@ -1355,15 +1339,6 @@ export class Ball extends Entity {
         // 3. Movement Integration
         // ---------------------------------------------------
 
-        /*
-         * Trapezoidal vector integration preserves
-         * frame-rate independence while allowing wind
-         * to curve the path during this same sub-step.
-         *
-         * Using velocity components rather than only
-         * scalar speed is essential because wind can
-         * change both direction and magnitude.
-         */
         const movementX =
             (
                 startingVelocityX +
@@ -1401,10 +1376,6 @@ export class Ball extends Entity {
         // 4. Collision Handling
         // ---------------------------------------------------
 
-        /*
-         * Every collision system below receives the
-         * wind-adjusted velocity.
-         */
         this.resolveWorldBoundaryCollision();
 
         this.resolveStaticObstacleCollisions();
@@ -1416,10 +1387,9 @@ export class Ball extends Entity {
                 .maximumObstacleResolutionPasses;
             passIndex += 1
         ) {
-            const resolvedCollision =
-                this.resolveDynamicObstacleCollisions();
-
-            if (!resolvedCollision) {
+            if (
+                !this.resolveDynamicObstacleCollisions()
+            ) {
                 break;
             }
         }
@@ -1435,16 +1405,9 @@ export class Ball extends Entity {
         );
     }
 
-    /**
-     * Confirms that low-speed motion is stable before
-     * placing the Ball into exact rest.
-     *
-     * The timer resets whenever speed rises above the
-     * configurable confirmation threshold. Dynamic
-     * collision impulses also reset it immediately.
-     */
     private evaluateRestStability(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
         const currentSpeed =
@@ -1467,6 +1430,7 @@ export class Ball extends Entity {
             );
 
             this.stop();
+
             return;
         }
 
@@ -1485,6 +1449,7 @@ export class Ball extends Entity {
             restConfirmationSpeed
         ) {
             this.restStabilityElapsedTime = 0;
+
             return;
         }
 
@@ -1504,17 +1469,6 @@ export class Ball extends Entity {
     // World Boundary Collision
     // -------------------------------------------------------
 
-    /**
-     * Resolves Ball collision against the
-     * rectangular course boundaries.
-     *
-     * The collision uses:
-     *
-     * 1. Radius-aware legal center positions
-     * 2. Position correction
-     * 3. Velocity reflection
-     * 4. Restitution-based energy loss
-     */
     private resolveWorldBoundaryCollision():
         void {
 
@@ -1539,17 +1493,10 @@ export class Ball extends Entity {
         const speedBeforeCollision =
             this.getSpeed();
 
-        /*
-         * Reflect only when velocity is moving
-         * into the wall.
-         *
-         * This prevents an already-corrected Ball
-         * from having its velocity reversed again
-         * on a later frame.
-         */
         if (
             collision.collidedLeft &&
-            this.velocityX < 0
+            this.velocityX <
+            0
         ) {
             this.velocityX =
                 -this.velocityX *
@@ -1559,7 +1506,8 @@ export class Ball extends Entity {
 
         if (
             collision.collidedRight &&
-            this.velocityX > 0
+            this.velocityX >
+            0
         ) {
             this.velocityX =
                 -this.velocityX *
@@ -1569,7 +1517,8 @@ export class Ball extends Entity {
 
         if (
             collision.collidedTop &&
-            this.velocityY < 0
+            this.velocityY <
+            0
         ) {
             this.velocityY =
                 -this.velocityY *
@@ -1579,7 +1528,8 @@ export class Ball extends Entity {
 
         if (
             collision.collidedBottom &&
-            this.velocityY > 0
+            this.velocityY >
+            0
         ) {
             this.velocityY =
                 -this.velocityY *
@@ -1587,7 +1537,8 @@ export class Ball extends Entity {
                     .boundaryRestitution;
         }
 
-        this.boundaryCollisionCount += 1;
+        this.boundaryCollisionCount +=
+            1;
 
         const speedAfterCollision =
             this.getSpeed();
@@ -1605,11 +1556,6 @@ export class Ball extends Entity {
         );
     }
 
-    /**
-     * Detects whether the Ball has crossed a
-     * course edge and corrects its center to the
-     * nearest valid radius-aware position.
-     */
     private detectAndCorrectBoundaryCollision():
         BoundaryCollisionResult {
 
@@ -1631,10 +1577,17 @@ export class Ball extends Entity {
         let correctedY =
             this.getY();
 
-        let collidedLeft = false;
-        let collidedRight = false;
-        let collidedTop = false;
-        let collidedBottom = false;
+        let collidedLeft =
+            false;
+
+        let collidedRight =
+            false;
+
+        let collidedTop =
+            false;
+
+        let collidedBottom =
+            false;
 
         if (
             correctedX <
@@ -1643,7 +1596,8 @@ export class Ball extends Entity {
             correctedX =
                 legalMinimumX;
 
-            collidedLeft = true;
+            collidedLeft =
+                true;
         } else if (
             correctedX >
             legalMaximumX
@@ -1651,7 +1605,8 @@ export class Ball extends Entity {
             correctedX =
                 legalMaximumX;
 
-            collidedRight = true;
+            collidedRight =
+                true;
         }
 
         if (
@@ -1661,7 +1616,8 @@ export class Ball extends Entity {
             correctedY =
                 legalMinimumY;
 
-            collidedTop = true;
+            collidedTop =
+                true;
         } else if (
             correctedY >
             legalMaximumY
@@ -1669,7 +1625,8 @@ export class Ball extends Entity {
             correctedY =
                 legalMaximumY;
 
-            collidedBottom = true;
+            collidedBottom =
+                true;
         }
 
         if (
@@ -1692,11 +1649,8 @@ export class Ball extends Entity {
         };
     }
 
-    /**
-     * Ensures the Ball is fully inside the
-     * playable course without changing velocity.
-     */
-    private correctPositionInsideCourse(): void {
+    private correctPositionInsideCourse():
+        void {
 
         const correctedX =
             Math.max(
@@ -1722,7 +1676,8 @@ export class Ball extends Entity {
         );
     }
 
-    private getLegalMinimumX(): number {
+    private getLegalMinimumX():
+        number {
 
         return (
             this.courseBoundaryDefinition
@@ -1733,7 +1688,8 @@ export class Ball extends Entity {
         );
     }
 
-    private getLegalMaximumX(): number {
+    private getLegalMaximumX():
+        number {
 
         return (
             this.courseBoundaryDefinition
@@ -1744,7 +1700,8 @@ export class Ball extends Entity {
         );
     }
 
-    private getLegalMinimumY(): number {
+    private getLegalMinimumY():
+        number {
 
         return (
             this.courseBoundaryDefinition
@@ -1755,7 +1712,8 @@ export class Ball extends Entity {
         );
     }
 
-    private getLegalMaximumY(): number {
+    private getLegalMaximumY():
+        number {
 
         return (
             this.courseBoundaryDefinition
@@ -1775,7 +1733,8 @@ export class Ball extends Entity {
 
         if (
             this.staticObstacleDefinitions
-                .length === 0
+                .length ===
+            0
         ) {
             return;
         }
@@ -1802,7 +1761,9 @@ export class Ball extends Entity {
                         obstacle,
                     );
 
-                if (!manifold) {
+                if (
+                    !manifold
+                ) {
                     continue;
                 }
 
@@ -1814,7 +1775,9 @@ export class Ball extends Entity {
                     true;
             }
 
-            if (!resolvedCollision) {
+            if (
+                !resolvedCollision
+            ) {
                 break;
             }
         }
@@ -1833,6 +1796,7 @@ export class Ball extends Entity {
         this.translate(
             manifold.normalX *
             correctionDistance,
+
             manifold.normalY *
             correctionDistance,
         );
@@ -1843,12 +1807,10 @@ export class Ball extends Entity {
             this.velocityY *
             manifold.normalY;
 
-        /*
-         * Position correction is still necessary
-         * when already separating, but a second
-         * bounce must not be applied.
-         */
-        if (normalVelocity >= 0) {
+        if (
+            normalVelocity >=
+            0
+        ) {
             return;
         }
 
@@ -1885,7 +1847,8 @@ export class Ball extends Entity {
             manifold.normalY *
             reflectedNormalSpeed;
 
-        this.obstacleCollisionCount += 1;
+        this.obstacleCollisionCount +=
+            1;
 
         const speedAfterCollision =
             this.getSpeed();
@@ -1912,12 +1875,14 @@ export class Ball extends Entity {
 
         if (
             this.dynamicObstacles
-                .length === 0
+                .length ===
+            0
         ) {
             return false;
         }
 
-        let collisionResolved = false;
+        let collisionResolved =
+            false;
 
         for (
             const obstacle
@@ -1937,7 +1902,9 @@ export class Ball extends Entity {
                     obstacleDefinition,
                 );
 
-            if (!detectedManifold) {
+            if (
+                !detectedManifold
+            ) {
                 continue;
             }
 
@@ -1956,34 +1923,44 @@ export class Ball extends Entity {
                 );
 
             const obstacleAngularSpeedBeforeCollision =
-                obstacle.getAngularVelocity();
+                obstacle
+                    .getAngularVelocity();
 
             const result =
                 resolveDynamicCollision(
                     this.createBallCollisionBody(),
+
                     this.createObstacleCollisionBody(
                         obstacle,
                     ),
+
                     dynamicManifold,
+
                     this.physicsDefinition
                         .dynamicPositionCorrectionPercent,
+
                     this.physicsDefinition
                         .dynamicPositionCorrectionSlop,
                 );
 
-            if (!result.resolved) {
+            if (
+                !result.resolved
+            ) {
                 continue;
             }
 
             this.correctPositionInsideCourse();
 
-            collisionResolved = true;
+            collisionResolved =
+                true;
 
             if (
-                result.normalImpulseMagnitude >
+                result
+                    .normalImpulseMagnitude >
                 0
             ) {
-                this.obstacleCollisionCount += 1;
+                this.obstacleCollisionCount +=
+                    1;
 
                 const ballSpeedAfterCollision =
                     this.getSpeed();
@@ -2087,7 +2064,8 @@ export class Ball extends Entity {
             velocityY:
                 this.velocityY,
 
-            angularVelocity: 0,
+            angularVelocity:
+                0,
 
             inverseMass:
                 this.getInverseMass(),
@@ -2097,10 +2075,17 @@ export class Ball extends Entity {
 
             applyImpulseAtWorldPoint:
                 (
-                    impulseX: number,
-                    impulseY: number,
-                    contactPointX: number,
-                    contactPointY: number,
+                    impulseX:
+                        number,
+
+                    impulseY:
+                        number,
+
+                    contactPointX:
+                        number,
+
+                    contactPointY:
+                        number,
                 ): void => {
 
                     const impulseMagnitude =
@@ -2120,9 +2105,14 @@ export class Ball extends Entity {
                             impulseMagnitude;
 
                         this.applyImpulseAtWorldPoint(
-                            impulseX * scale,
-                            impulseY * scale,
+                            impulseX *
+                            scale,
+
+                            impulseY *
+                            scale,
+
                             contactPointX,
+
                             contactPointY,
                         );
 
@@ -2139,8 +2129,11 @@ export class Ball extends Entity {
 
             translate:
                 (
-                    deltaX: number,
-                    deltaY: number,
+                    deltaX:
+                        number,
+
+                    deltaY:
+                        number,
                 ): void => {
 
                     this.translate(
@@ -2170,10 +2163,12 @@ export class Ball extends Entity {
                 obstacle.getVelocityY(),
 
             angularVelocity:
-                obstacle.getAngularVelocity(),
+                obstacle
+                    .getAngularVelocity(),
 
             inverseMass:
-                obstacle.getInverseMass(),
+                obstacle
+                    .getInverseMass(),
 
             inverseMomentOfInertia:
                 obstacle
@@ -2181,10 +2176,17 @@ export class Ball extends Entity {
 
             applyImpulseAtWorldPoint:
                 (
-                    impulseX: number,
-                    impulseY: number,
-                    contactPointX: number,
-                    contactPointY: number,
+                    impulseX:
+                        number,
+
+                    impulseY:
+                        number,
+
+                    contactPointX:
+                        number,
+
+                    contactPointY:
+                        number,
                 ): void => {
 
                     const impulseMagnitude =
@@ -2203,28 +2205,38 @@ export class Ball extends Entity {
                                 .maximumCollisionImpulse /
                             impulseMagnitude;
 
-                        obstacle.applyImpulseAtWorldPoint(
-                            impulseX * scale,
-                            impulseY * scale,
-                            contactPointX,
-                            contactPointY,
-                        );
+                        obstacle
+                            .applyImpulseAtWorldPoint(
+                                impulseX *
+                                scale,
+
+                                impulseY *
+                                scale,
+
+                                contactPointX,
+
+                                contactPointY,
+                            );
 
                         return;
                     }
 
-                    obstacle.applyImpulseAtWorldPoint(
-                        impulseX,
-                        impulseY,
-                        contactPointX,
-                        contactPointY,
-                    );
+                    obstacle
+                        .applyImpulseAtWorldPoint(
+                            impulseX,
+                            impulseY,
+                            contactPointX,
+                            contactPointY,
+                        );
                 },
 
             translate:
                 (
-                    deltaX: number,
-                    deltaY: number,
+                    deltaX:
+                        number,
+
+                    deltaY:
+                        number,
                 ): void => {
 
                     obstacle.translate(
@@ -2240,7 +2252,8 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     private calculateLaunchSpeed(
-        normalizedPower: number,
+        normalizedPower:
+            number,
     ): number {
 
         const minimumPower =
@@ -2252,7 +2265,8 @@ export class Ball extends Entity {
             minimumPower;
 
         const remappedPower =
-            validPowerRange > 0
+            validPowerRange >
+                0
                 ? (
                     normalizedPower -
                     minimumPower
@@ -2291,14 +2305,18 @@ export class Ball extends Entity {
     }
 
     // -------------------------------------------------------
-    // Static Collision Diagnostics
+    // Diagnostics
     // -------------------------------------------------------
 
     private logStaticObstacleCollision(
         manifold:
             CollisionManifold,
-        speedBeforeCollision: number,
-        speedAfterCollision: number,
+
+        speedBeforeCollision:
+            number,
+
+        speedAfterCollision:
+            number,
     ): void {
 
         console.log(
@@ -2315,45 +2333,61 @@ export class Ball extends Entity {
             {
                 x:
                     manifold.normalX
-                        .toFixed(3),
+                        .toFixed(
+                            3,
+                        ),
 
                 y:
                     manifold.normalY
-                        .toFixed(3),
+                        .toFixed(
+                            3,
+                        ),
             },
         );
 
         console.log(
             "Penetration Depth:",
-            manifold.penetrationDepth
-                .toFixed(3),
+            manifold
+                .penetrationDepth
+                .toFixed(
+                    3,
+                ),
             "px",
         );
 
         console.log(
             "Speed Before Collision:",
             speedBeforeCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Speed After Collision:",
             speedAfterCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Restitution:",
             manifold.restitution
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
         );
 
         console.log(
             "Collision Friction:",
-            manifold.collisionFriction
-                .toFixed(2),
+            manifold
+                .collisionFriction
+                .toFixed(
+                    2,
+                ),
         );
 
         console.log(
@@ -2366,10 +2400,6 @@ export class Ball extends Entity {
         );
     }
 
-    // -------------------------------------------------------
-    // Dynamic Collision Diagnostics
-    // -------------------------------------------------------
-
     private logDynamicObstacleCollision(
         obstacle:
             DynamicObstacle,
@@ -2377,11 +2407,17 @@ export class Ball extends Entity {
         manifold:
             DynamicCollisionManifold,
 
-        ballSpeedBeforeCollision: number,
-        ballSpeedAfterCollision: number,
+        ballSpeedBeforeCollision:
+            number,
 
-        obstacleSpeedBeforeCollision: number,
-        obstacleSpeedAfterCollision: number,
+        ballSpeedAfterCollision:
+            number,
+
+        obstacleSpeedBeforeCollision:
+            number,
+
+        obstacleSpeedAfterCollision:
+            number,
 
         obstacleAngularSpeedBeforeCollision:
             number,
@@ -2389,8 +2425,11 @@ export class Ball extends Entity {
         obstacleAngularSpeedAfterCollision:
             number,
 
-        normalImpulseMagnitude: number,
-        frictionImpulseMagnitude: number,
+        normalImpulseMagnitude:
+            number,
+
+        frictionImpulseMagnitude:
+            number,
     ): void {
 
         console.log(
@@ -2414,11 +2453,15 @@ export class Ball extends Entity {
             {
                 x:
                     manifold.normalX
-                        .toFixed(3),
+                        .toFixed(
+                            3,
+                        ),
 
                 y:
                     manifold.normalY
-                        .toFixed(3),
+                        .toFixed(
+                            3,
+                        ),
             },
         );
 
@@ -2427,85 +2470,111 @@ export class Ball extends Entity {
             {
                 x:
                     manifold.contactPointX
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
 
                 y:
                     manifold.contactPointY
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
             },
         );
 
         console.log(
             "Penetration Depth:",
             manifold.penetrationDepth
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
             "px",
         );
 
         console.log(
             "Ball Speed Before:",
             ballSpeedBeforeCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Ball Speed After:",
             ballSpeedAfterCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Obstacle Speed Before:",
             obstacleSpeedBeforeCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Obstacle Speed After:",
             obstacleSpeedAfterCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Obstacle Angular Speed Before:",
             obstacleAngularSpeedBeforeCollision
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
             "rad/s",
         );
 
         console.log(
             "Obstacle Angular Speed After:",
             obstacleAngularSpeedAfterCollision
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
             "rad/s",
         );
 
         console.log(
             "Combined Restitution:",
             manifold.restitution
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
         );
 
         console.log(
             "Combined Friction:",
             manifold.friction
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
         );
 
         console.log(
             "Normal Impulse:",
             normalImpulseMagnitude
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
         );
 
         console.log(
             "Friction Impulse:",
             frictionImpulseMagnitude
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
         );
 
         console.log(
@@ -2518,38 +2587,47 @@ export class Ball extends Entity {
         );
     }
 
-    // -------------------------------------------------------
-    // Boundary Collision Diagnostics
-    // -------------------------------------------------------
-
     private logBoundaryCollision(
-        collision: BoundaryCollisionResult,
-        speedBeforeCollision: number,
-        speedAfterCollision: number,
+        collision:
+            BoundaryCollisionResult,
+
+        speedBeforeCollision:
+            number,
+
+        speedAfterCollision:
+            number,
     ): void {
 
         const collidedEdges:
             string[] = [];
 
-        if (collision.collidedLeft) {
+        if (
+            collision.collidedLeft
+        ) {
             collidedEdges.push(
                 "Left",
             );
         }
 
-        if (collision.collidedRight) {
+        if (
+            collision.collidedRight
+        ) {
             collidedEdges.push(
                 "Right",
             );
         }
 
-        if (collision.collidedTop) {
+        if (
+            collision.collidedTop
+        ) {
             collidedEdges.push(
                 "Top",
             );
         }
 
-        if (collision.collidedBottom) {
+        if (
+            collision.collidedBottom
+        ) {
             collidedEdges.push(
                 "Bottom",
             );
@@ -2571,25 +2649,33 @@ export class Ball extends Entity {
             {
                 x:
                     this.getX()
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
 
                 y:
                     this.getY()
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
             },
         );
 
         console.log(
             "Speed Before Collision:",
             speedBeforeCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
             "Speed After Collision:",
             speedAfterCollision
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
@@ -2598,11 +2684,15 @@ export class Ball extends Entity {
             {
                 x:
                     this.velocityX
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
 
                 y:
                     this.velocityY
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
             },
         );
 
@@ -2610,7 +2700,9 @@ export class Ball extends Entity {
             "Restitution:",
             this.physicsDefinition
                 .boundaryRestitution
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
         );
 
         console.log(
@@ -2623,11 +2715,8 @@ export class Ball extends Entity {
         );
     }
 
-    // -------------------------------------------------------
-    // Rest Diagnostics
-    // -------------------------------------------------------
-
-    private logRestState(): void {
+    private logRestState():
+        void {
 
         const displacementX =
             this.getX() -
@@ -2643,6 +2732,13 @@ export class Ball extends Entity {
                 displacementY,
             );
 
+        const surface =
+            this.surfaceSystem
+                .getSurfaceAt(
+                    this.getX(),
+                    this.getY(),
+                );
+
         console.log(
             "========== BALL STOPPED ==========",
         );
@@ -2652,11 +2748,15 @@ export class Ball extends Entity {
             {
                 x:
                     this.launchPositionX
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
 
                 y:
                     this.launchPositionY
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
             },
         );
 
@@ -2665,47 +2765,80 @@ export class Ball extends Entity {
             {
                 x:
                     this.getX()
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
 
                 y:
                     this.getY()
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
             },
         );
 
         console.log(
             "Initial Speed:",
             this.mostRecentLaunchSpeed
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s",
         );
 
         console.log(
-            "Rolling Deceleration:",
+            "Base Rolling Deceleration:",
             this.physicsDefinition
                 .rollingDeceleration
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px/s²",
+        );
+
+        console.log(
+            "Stop Surface:",
+            surface.surfaceType,
+        );
+
+        console.log(
+            "Stop Surface State:",
+            surface.surfaceState,
+        );
+
+        console.log(
+            "Stop Surface Rolling Multiplier:",
+            surface
+                .rollingResistanceMultiplier
+                .toFixed(
+                    2,
+                ),
         );
 
         console.log(
             "Movement Time:",
             this.movementElapsedTime
-                .toFixed(3),
+                .toFixed(
+                    3,
+                ),
             "seconds",
         );
 
         console.log(
             "Integrated Travel Distance:",
             this.movementDistanceTravelled
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px",
         );
 
         console.log(
             "Straight-Line Displacement:",
             straightLineDisplacement
-                .toFixed(2),
+                .toFixed(
+                    2,
+                ),
             "px",
         );
 
@@ -2724,11 +2857,15 @@ export class Ball extends Entity {
             {
                 x:
                     this.velocityX
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
 
                 y:
                     this.velocityY
-                        .toFixed(2),
+                        .toFixed(
+                            2,
+                        ),
             },
         );
 
@@ -2753,8 +2890,19 @@ export class Ball extends Entity {
     }
 
     public setInteractionState(
-        state: BallInteractionState,
+        state:
+            BallInteractionState,
     ): void {
+
+        if (
+            this.gameplayState !==
+            BallGameplayState.Active
+        ) {
+            this.interactionState =
+                BallInteractionState.Normal;
+
+            return;
+        }
 
         const resolvedState =
             this.isMoving()
@@ -2783,11 +2931,8 @@ export class Ball extends Entity {
         }
     }
 
-    // -------------------------------------------------------
-    // Scale Feedback
-    // -------------------------------------------------------
-
-    private updateTargetScale(): void {
+    private updateTargetScale():
+        void {
 
         switch (
         this.interactionState
@@ -2806,7 +2951,8 @@ export class Ball extends Entity {
     }
 
     private updateVisualScale(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
         const interpolationFactor =
@@ -2837,11 +2983,14 @@ export class Ball extends Entity {
         this.applyVisualScale();
     }
 
-    private applyVisualScale(): void {
+    private applyVisualScale():
+        void {
 
-        this.visualContainer?.scale.set(
-            this.currentVisualScale,
-        );
+        this.visualContainer
+            ?.scale
+            .set(
+                this.currentVisualScale,
+            );
     }
 
     // -------------------------------------------------------
@@ -2849,7 +2998,8 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     public setTensionPower(
-        normalizedPower: number,
+        normalizedPower:
+            number,
     ): void {
 
         this.tensionPower =
@@ -2862,26 +3012,25 @@ export class Ball extends Entity {
             );
     }
 
-    public getTensionPower(): number {
+    public getTensionPower():
+        number {
+
         return this.tensionPower;
     }
 
     private updateVibration(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
         if (
             this.interactionState !==
-            BallInteractionState.Dragging
+            BallInteractionState.Dragging ||
+            this.tensionPower <=
+            0
         ) {
             this.resetVisualOffset();
-            return;
-        }
 
-        if (
-            this.tensionPower <= 0
-        ) {
-            this.resetVisualOffset();
             return;
         }
 
@@ -2915,24 +3064,31 @@ export class Ball extends Entity {
             ) *
             amplitude;
 
-        this.visualContainer?.position.set(
-            offsetX,
-            offsetY,
-        );
+        this.visualContainer
+            ?.position
+            .set(
+                offsetX,
+                offsetY,
+            );
     }
 
-    private resetVibration(): void {
+    private resetVibration():
+        void {
 
         this.vibrationTime = 0;
+
         this.resetVisualOffset();
     }
 
-    private resetVisualOffset(): void {
+    private resetVisualOffset():
+        void {
 
-        this.visualContainer?.position.set(
-            0,
-            0,
-        );
+        this.visualContainer
+            ?.position
+            .set(
+                0,
+                0,
+            );
     }
 
     // -------------------------------------------------------
@@ -2940,15 +3096,19 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     public setAimVector(
-        dx: number,
-        dy: number,
+        dx:
+            number,
+
+        dy:
+            number,
     ): void {
 
         void dx;
         void dy;
     }
 
-    public clearAimVector(): void {
+    public clearAimVector():
+        void {
         // Intentionally empty.
     }
 
@@ -2956,23 +3116,29 @@ export class Ball extends Entity {
     // Rendering
     // -------------------------------------------------------
 
-    private drawBall(): void {
+    private drawBall():
+        void {
 
-        if (!this.ballGraphics) {
+        if (
+            !this.ballGraphics
+        ) {
             return;
         }
 
-        this.ballGraphics.clear();
+        this.ballGraphics
+            .clear();
 
-        this.ballGraphics.circle(
-            0,
-            0,
-            this.radius,
-        );
+        this.ballGraphics
+            .circle(
+                0,
+                0,
+                this.radius,
+            );
 
-        this.ballGraphics.fill(
-            this.ballColor,
-        );
+        this.ballGraphics
+            .fill(
+                this.ballColor,
+            );
     }
 
     // -------------------------------------------------------
@@ -2985,8 +3151,10 @@ export class Ball extends Entity {
     ): void {
 
         if (
-            definition.minimumLaunchPower < 0 ||
-            definition.minimumLaunchPower >= 1
+            definition.minimumLaunchPower <
+            0 ||
+            definition.minimumLaunchPower >=
+            1
         ) {
             throw new Error(
                 "Ball minimumLaunchPower must be greater than or equal to 0 and lower than 1.",
@@ -3003,7 +3171,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.minimumLaunchSpeed <= 0
+            definition.minimumLaunchSpeed <=
+            0
         ) {
             throw new Error(
                 "Ball minimumLaunchSpeed must be greater than 0.",
@@ -3011,7 +3180,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.maximumBallSpeed <= 0
+            definition.maximumBallSpeed <=
+            0
         ) {
             throw new Error(
                 "Ball maximumBallSpeed must be greater than 0.",
@@ -3028,7 +3198,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.shotPowerExponent <= 0
+            definition.shotPowerExponent <=
+            0
         ) {
             throw new Error(
                 "Ball shotPowerExponent must be greater than 0.",
@@ -3036,7 +3207,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.rollingDeceleration <= 0
+            definition.rollingDeceleration <=
+            0
         ) {
             throw new Error(
                 "Ball rollingDeceleration must be greater than 0.",
@@ -3044,7 +3216,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.stopSpeedThreshold < 0
+            definition.stopSpeedThreshold <
+            0
         ) {
             throw new Error(
                 "Ball stopSpeedThreshold cannot be negative.",
@@ -3061,7 +3234,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.mass <= 0 ||
+            definition.mass <=
+            0 ||
             !Number.isFinite(
                 definition.mass,
             )
@@ -3072,8 +3246,10 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.obstacleRestitution < 0 ||
-            definition.obstacleRestitution > 1
+            definition.obstacleRestitution <
+            0 ||
+            definition.obstacleRestitution >
+            1
         ) {
             throw new Error(
                 "Ball obstacleRestitution must be between 0 and 1.",
@@ -3081,8 +3257,10 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.obstacleFriction < 0 ||
-            definition.obstacleFriction > 1
+            definition.obstacleFriction <
+            0 ||
+            definition.obstacleFriction >
+            1
         ) {
             throw new Error(
                 "Ball obstacleFriction must be between 0 and 1.",
@@ -3090,8 +3268,10 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.boundaryRestitution < 0 ||
-            definition.boundaryRestitution > 1
+            definition.boundaryRestitution <
+            0 ||
+            definition.boundaryRestitution >
+            1
         ) {
             throw new Error(
                 "Ball boundaryRestitution must be between 0 and 1.",
@@ -3099,7 +3279,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.boundarySafetyMargin < 0
+            definition.boundarySafetyMargin <
+            0
         ) {
             throw new Error(
                 "Ball boundarySafetyMargin cannot be negative.",
@@ -3130,11 +3311,9 @@ export class Ball extends Entity {
         }
 
         if (
-            definition
-                .dynamicPositionCorrectionPercent <
+            definition.dynamicPositionCorrectionPercent <
             0 ||
-            definition
-                .dynamicPositionCorrectionPercent >
+            definition.dynamicPositionCorrectionPercent >
             1
         ) {
             throw new Error(
@@ -3143,8 +3322,7 @@ export class Ball extends Entity {
         }
 
         if (
-            definition
-                .dynamicPositionCorrectionSlop <
+            definition.dynamicPositionCorrectionSlop <
             0
         ) {
             throw new Error(
@@ -3156,8 +3334,7 @@ export class Ball extends Entity {
             definition.maximumCollisionImpulse <=
             0 ||
             !Number.isFinite(
-                definition
-                    .maximumCollisionImpulse,
+                definition.maximumCollisionImpulse,
             )
         ) {
             throw new Error(
@@ -3166,7 +3343,8 @@ export class Ball extends Entity {
         }
 
         if (
-            definition.maximumDeltaTime <= 0
+            definition.maximumDeltaTime <=
+            0
         ) {
             throw new Error(
                 "Ball maximumDeltaTime must be greater than 0.",
@@ -3264,8 +3442,10 @@ export class Ball extends Entity {
             of definitions
         ) {
             if (
-                definition.id.trim()
-                    .length === 0
+                definition.id
+                    .trim()
+                    .length ===
+                0
             ) {
                 throw new Error(
                     "Static obstacle id cannot be empty.",
@@ -3288,9 +3468,11 @@ export class Ball extends Entity {
 
             if (
                 definition.material
-                    .restitution < 0 ||
+                    .restitution <
+                0 ||
                 definition.material
-                    .restitution > 1
+                    .restitution >
+                1
             ) {
                 throw new Error(
                     `Static obstacle '${definition.id}' restitution must be between 0 and 1.`,
@@ -3299,9 +3481,11 @@ export class Ball extends Entity {
 
             if (
                 definition.material
-                    .collisionFriction < 0 ||
+                    .collisionFriction <
+                0 ||
                 definition.material
-                    .collisionFriction > 1
+                    .collisionFriction >
+                1
             ) {
                 throw new Error(
                     `Static obstacle '${definition.id}' collision friction must be between 0 and 1.`,
@@ -3323,11 +3507,14 @@ export class Ball extends Entity {
             of obstacles
         ) {
             const definition =
-                obstacle.getDefinition();
+                obstacle
+                    .getDefinition();
 
             if (
-                definition.id.trim()
-                    .length === 0
+                definition.id
+                    .trim()
+                    .length ===
+                0
             ) {
                 throw new Error(
                     "Dynamic obstacle id cannot be empty.",
@@ -3349,10 +3536,12 @@ export class Ball extends Entity {
             );
 
             if (
-                obstacle.getInverseMass() <
+                obstacle
+                    .getInverseMass() <
                 0 ||
                 !Number.isFinite(
-                    obstacle.getInverseMass(),
+                    obstacle
+                        .getInverseMass(),
                 )
             ) {
                 throw new Error(
@@ -3374,5 +3563,152 @@ export class Ball extends Entity {
                 );
             }
         }
+    }
+
+    // -------------------------------------------------------
+    // Hole Capture State
+    // -------------------------------------------------------
+
+    public beginHoleCapture():
+        void {
+
+        if (
+            this.gameplayState !==
+            BallGameplayState.Active
+        ) {
+            return;
+        }
+
+        this.stop(
+            false,
+        );
+
+        this.gameplayState =
+            BallGameplayState.HoleCapture;
+
+        this.interactionState =
+            BallInteractionState.Normal;
+
+        this.tensionPower = 0;
+
+        this.resetVibration();
+
+        this.resetVisualOffset();
+    }
+
+    public setHoleCaptureTransform(
+        positionX:
+            number,
+
+        positionY:
+            number,
+
+        visualScale:
+            number,
+    ): void {
+
+        if (
+            this.gameplayState !==
+            BallGameplayState.HoleCapture
+        ) {
+            return;
+        }
+
+        this.setPosition(
+            positionX,
+            positionY,
+        );
+
+        this.currentVisualScale =
+            Math.max(
+                0,
+                visualScale,
+            );
+
+        this.targetVisualScale =
+            this.currentVisualScale;
+
+        this.applyVisualScale();
+    }
+
+    public completeHoleCapture(
+        positionX:
+            number,
+
+        positionY:
+            number,
+
+        visualScale =
+            0,
+    ): void {
+
+        this.stop(
+            false,
+        );
+
+        this.setPosition(
+            positionX,
+            positionY,
+        );
+
+        this.gameplayState =
+            BallGameplayState.Holed;
+
+        this.interactionState =
+            BallInteractionState.Normal;
+
+        this.currentVisualScale =
+            Math.max(
+                0,
+                visualScale,
+            );
+
+        this.targetVisualScale =
+            this.currentVisualScale;
+
+        this.applyVisualScale();
+
+        this.resetVibration();
+
+        this.resetVisualOffset();
+    }
+
+    public getGameplayState():
+        BallGameplayState {
+
+        return this.gameplayState;
+    }
+
+    public isBeingCaptured():
+        boolean {
+
+        return (
+            this.gameplayState ===
+            BallGameplayState.HoleCapture
+        );
+    }
+
+    public isHoled():
+        boolean {
+
+        return (
+            this.gameplayState ===
+            BallGameplayState.Holed
+        );
+    }
+
+    public isAvailableForInteraction():
+        boolean {
+
+        return (
+            this.gameplayState ===
+            BallGameplayState.Active
+        );
+    }
+
+    public getVisualScale():
+        number {
+
+        return this.currentVisualScale;
     }
 }

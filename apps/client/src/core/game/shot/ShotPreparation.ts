@@ -84,7 +84,10 @@ export class ShotPreparation {
 
         this.oscillationSpeed =
             this.clubDefinition
-                .minimumOscillationSpeed;
+                .oscillationEnabled
+                ? this.clubDefinition
+                    .minimumOscillationSpeed
+                : 0;
 
         this.optimalAccuracyTolerance =
             this.clubDefinition
@@ -107,6 +110,25 @@ export class ShotPreparation {
             throw new Error(
                 "ShotPreparation deltaTime cannot be negative.",
             );
+        }
+
+        if (
+            !this.clubDefinition
+                .oscillationEnabled
+        ) {
+            this.oscillationOffset = 0;
+            this.rawOscillationWave = 0;
+            this.shapedOscillationWave = 0;
+
+            this.currentAimAngle =
+                this.baseAimAngle;
+
+            this.accuracyQuality = 1;
+
+            this.insideOptimalAccuracyRange =
+                true;
+
+            return;
         }
 
         this.oscillationTime +=
@@ -175,6 +197,15 @@ export class ShotPreparation {
     // -------------------------------------------------------
 
     private updateOscillationSpeed(): void {
+
+        if (
+            !this.clubDefinition
+                .oscillationEnabled
+        ) {
+            this.oscillationSpeed = 0;
+
+            return;
+        }
 
         const minimumSpeed =
             this.clubDefinition
@@ -396,7 +427,10 @@ export class ShotPreparation {
 
         this.oscillationSpeed =
             this.clubDefinition
-                .minimumOscillationSpeed;
+                .oscillationEnabled
+                ? this.clubDefinition
+                    .minimumOscillationSpeed
+                : 0;
 
         this.accuracyQuality = 1;
 

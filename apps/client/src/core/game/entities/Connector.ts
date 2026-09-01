@@ -34,6 +34,8 @@ import type {
  */
 export class Connector {
 
+    private static sharedPulseProgress = 0;
+
     private graphics:
         Graphics | null = null;
 
@@ -528,7 +530,6 @@ export class Connector {
 
         this.updatePulse(
             deltaTime,
-            emphasis,
         );
 
         const basePowerColor =
@@ -1102,14 +1103,7 @@ export class Connector {
      */
     private updatePulse(
         deltaTime: number,
-        emphasis: number,
     ): void {
-
-        if (emphasis <= 0) {
-            this.resetPulse();
-
-            return;
-        }
 
         const safeDeltaTime =
             Math.max(
@@ -1133,6 +1127,11 @@ export class Connector {
                 this.definition
                     .pulseDuration;
         }
+
+        Connector.sharedPulseProgress =
+            this.pulseTime /
+            this.definition
+                .pulseDuration;
     }
 
     /**
@@ -1165,6 +1164,19 @@ export class Connector {
     private resetPulse(): void {
 
         this.pulseTime = 0;
+        Connector.sharedPulseProgress = 0;
+    }
+
+    public static getSharedPulseProgress():
+        number {
+
+        return Connector.sharedPulseProgress;
+    }
+
+    public getPulseProgress():
+        number {
+
+        return Connector.sharedPulseProgress;
     }
 
     // -------------------------------------------------------

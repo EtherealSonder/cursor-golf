@@ -238,7 +238,6 @@ export class ShotController {
             ball.getY(),
             currentAimAngle,
             normalizedPower,
-            accuracyQuality,
         );
 
         // -----------------------------
