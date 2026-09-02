@@ -58,6 +58,10 @@ import type {
 } from "../environment/WindManager";
 
 import type {
+    LocalWindSystem,
+} from "../environment/LocalWindSystem";
+
+import type {
     SurfaceSystem,
 } from "../surface/SurfaceSystem";
 
@@ -140,6 +144,13 @@ export class Ball extends Entity {
 
     private readonly windManager:
         WindManager;
+
+    /**
+     * Shared authoritative local-airflow query owned
+     * by World.
+     */
+    private readonly localWindSystem:
+        LocalWindSystem;
 
     /**
      * Shared authoritative terrain query owned by
@@ -228,6 +239,9 @@ export class Ball extends Entity {
 
         surfaceSystem:
             SurfaceSystem,
+
+        localWindSystem:
+            LocalWindSystem,
     ) {
         super();
 
@@ -264,6 +278,9 @@ export class Ball extends Entity {
 
         this.surfaceSystem =
             surfaceSystem;
+
+        this.localWindSystem =
+            localWindSystem;
     }
 
     // -------------------------------------------------------
@@ -1272,7 +1289,7 @@ export class Ball extends Entity {
                 )
                 : 0;
 
-        const windAcceleration =
+        const globalWindAcceleration =
             this.windManager
                 .getSafeScaledAcceleration(
                     normalizedBallSpeed,
@@ -1280,12 +1297,32 @@ export class Ball extends Entity {
                     this.velocityY,
                 );
 
+        /*
+         * Local airflow is sampled inside every
+         * internal physics sub-step so fast movement
+         * cannot skip a narrow Fan stream.
+         */
+        const localWindAcceleration =
+            this.localWindSystem
+                .getAccelerationAt(
+                    this.getX(),
+                    this.getY(),
+                );
+
+        const combinedWindAccelerationX =
+            globalWindAcceleration.x +
+            localWindAcceleration.x;
+
+        const combinedWindAccelerationY =
+            globalWindAcceleration.y +
+            localWindAcceleration.y;
+
         this.velocityX +=
-            windAcceleration.x *
+            combinedWindAccelerationX *
             deltaTime;
 
         this.velocityY +=
-            windAcceleration.y *
+            combinedWindAccelerationY *
             deltaTime;
 
         const speedAfterWind =
@@ -1305,11 +1342,17 @@ export class Ball extends Entity {
                     velocityY:
                         this.velocityY,
 
-                    windAccelerationX:
-                        windAcceleration.x,
+                    globalWindAccelerationX:
+                        globalWindAcceleration.x,
 
-                    windAccelerationY:
-                        windAcceleration.y,
+                    globalWindAccelerationY:
+                        globalWindAcceleration.y,
+
+                    localWindAccelerationX:
+                        localWindAcceleration.x,
+
+                    localWindAccelerationY:
+                        localWindAcceleration.y,
                 },
             );
 

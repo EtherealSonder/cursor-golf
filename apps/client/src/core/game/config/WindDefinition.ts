@@ -224,14 +224,14 @@ export const DEFAULT_WIND_DEFINITION:
 
     initialDirectionDegrees: 315,
 
-    initialStrength: 35,
+    initialStrength: 0,
 
     // -------------------------------------------------------------------------
     // Session Randomization
     // -------------------------------------------------------------------------
 
     randomization: {
-        enabled: true,
+        enabled: false,
 
         minimumDirectionDegrees: 0,
 

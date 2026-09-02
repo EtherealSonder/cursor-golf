@@ -1,30 +1,11 @@
 ﻿import {
     useEffect,
     useRef,
-    useState,
 } from "react";
-
-import WindPanel from "../../components/hud/WindPanel";
 
 import {
     Game,
 } from "../../core/game/Game";
-
-import {
-    DEFAULT_DEBUG_UI_DEFINITION,
-} from "../../core/game/config/DebugUiDefinition";
-
-import type {
-    WindTuningState,
-} from "../../core/game/debug/WindTuningController";
-
-import type {
-    WindValidationState,
-} from "../../core/game/debug/WindValidationMetrics";
-
-import type {
-    WindState,
-} from "../../core/game/environment/WindManager";
 
 import "./HomePage.css";
 
@@ -43,31 +24,6 @@ function HomePage() {
         useRef<Game | null>(
             null,
         );
-
-    // -------------------------------------------------------
-    // Live Environmental UI State
-    // -------------------------------------------------------
-
-    const [
-        windState,
-        setWindState,
-    ] = useState<WindState | null>(
-        null,
-    );
-
-    const [
-        windTuningState,
-        setWindTuningState,
-    ] = useState<WindTuningState | null>(
-        null,
-    );
-
-    const [
-        windValidationState,
-        setWindValidationState,
-    ] = useState<WindValidationState | null>(
-        null,
-    );
 
     // -------------------------------------------------------
     // Game Lifecycle
@@ -94,18 +50,6 @@ function HomePage() {
             let disposed =
                 false;
 
-            let unsubscribeFromWind:
-                (() => void) | null =
-                null;
-
-            let unsubscribeFromWindTuning:
-                (() => void) | null =
-                null;
-
-            let unsubscribeFromWindValidation:
-                (() => void) | null =
-                null;
-
             const initializeGame =
                 async (): Promise<void> => {
 
@@ -113,23 +57,9 @@ function HomePage() {
 
                     if (disposed) {
                         game.stop();
+
                         return;
                     }
-
-                    unsubscribeFromWind =
-                        game.subscribeToWindState(
-                            setWindState,
-                        );
-
-                    unsubscribeFromWindTuning =
-                        game.subscribeToWindTuningState(
-                            setWindTuningState,
-                        );
-
-                    unsubscribeFromWindValidation =
-                        game.subscribeToWindValidationState(
-                            setWindValidationState,
-                        );
                 };
 
             void initializeGame();
@@ -138,21 +68,6 @@ function HomePage() {
 
                 disposed =
                     true;
-
-                unsubscribeFromWind?.();
-
-                unsubscribeFromWind =
-                    null;
-
-                unsubscribeFromWindTuning?.();
-
-                unsubscribeFromWindTuning =
-                    null;
-
-                unsubscribeFromWindValidation?.();
-
-                unsubscribeFromWindValidation =
-                    null;
 
                 game.stop();
 
@@ -164,29 +79,8 @@ function HomePage() {
     );
 
     // -------------------------------------------------------
-    // Wind Controls
+    // Gameplay Controls
     // -------------------------------------------------------
-
-    const handlePreviousPreset =
-        (): void => {
-
-            gameRef.current
-                ?.applyPreviousWindPreset();
-        };
-
-    const handleNextPreset =
-        (): void => {
-
-            gameRef.current
-                ?.applyNextWindPreset();
-        };
-
-    const handleRandomWind =
-        (): void => {
-
-            gameRef.current
-                ?.applyRandomWind();
-        };
 
     const handleResetBall =
         (): void => {
@@ -195,51 +89,12 @@ function HomePage() {
                 ?.resetBall();
         };
 
-    // -------------------------------------------------------
-    // Wind-Tuning Derived State
-    // -------------------------------------------------------
+    const handleRandomFire =
+        (): void => {
 
-    const isRandomMode =
-        windTuningState
-            ?.mode !==
-        "preset";
-
-    const activePreset =
-        windTuningState
-            ?.activePreset ??
-        null;
-
-    const activePresetPosition =
-        windTuningState
-            ?.activePresetIndex ===
-            null ||
-            windTuningState
-                ?.activePresetIndex ===
-            undefined
-            ? null
-            : (
-                windTuningState
-                    .activePresetIndex +
-                1
-            );
-
-    // -------------------------------------------------------
-    // Validation Metrics Derived State
-    // -------------------------------------------------------
-
-    const isMeasuring =
-        windValidationState
-            ?.status ===
-        "measuring";
-
-    const validationResult =
-        windValidationState
-            ?.latestResult ??
-        null;
-
-    const showWindValidationPanel =
-        DEFAULT_DEBUG_UI_DEFINITION
-            .showWindValidationPanel;
+            gameRef.current
+                ?.generateRandomFire();
+        };
 
     // -------------------------------------------------------
     // Page Structure
@@ -338,12 +193,8 @@ function HomePage() {
 
                     <aside
                         className="hud-rail"
-                        aria-label="Gameplay information"
+                        aria-label="Gameplay controls"
                     >
-
-                        <WindPanel
-                            windState={windState}
-                        />
 
                         <div className="hud-rail__compact-actions">
 
@@ -351,7 +202,6 @@ function HomePage() {
                                 type="button"
                                 className="hud-action-button"
                                 onClick={handleResetBall}
-                                disabled={!windValidationState}
                             >
                                 Reset Ball
                             </button>
@@ -359,261 +209,12 @@ function HomePage() {
                             <button
                                 type="button"
                                 className="hud-action-button"
-                                onClick={handleRandomWind}
-                                disabled={
-                                    !windTuningState ||
-                                    isMeasuring
-                                }
+                                onClick={handleRandomFire}
                             >
-                                Generate Random Wind
+                                Generate Random Fire
                             </button>
 
                         </div>
-
-                        {showWindValidationPanel && (
-
-                            <section
-                                className="wind-tuning-panel"
-                                aria-label="Wind validation controls"
-                            >
-
-                                <div className="wind-tuning-panel__header">
-
-                                    <span className="wind-tuning-panel__eyebrow">
-                                        C7 Validation
-                                    </span>
-
-                                    <h2 className="wind-tuning-panel__title">
-                                        Wind Preset
-                                    </h2>
-
-                                </div>
-
-                                <div className="wind-tuning-panel__current">
-
-                                    <span className="wind-tuning-panel__mode">
-
-                                        {isRandomMode
-                                            ? "Random Session"
-                                            : "Deterministic"}
-
-                                    </span>
-
-                                    <strong className="wind-tuning-panel__name">
-
-                                        {activePreset
-                                            ?.name ??
-                                            "Random Wind"}
-
-                                    </strong>
-
-                                    {activePreset && (
-                                        <p className="wind-tuning-panel__description">
-                                            {activePreset.description}
-                                        </p>
-                                    )}
-
-                                    {!activePreset && (
-                                        <p className="wind-tuning-panel__description">
-                                            Uses the normal weighted wind bands and a randomly generated direction.
-                                        </p>
-                                    )}
-
-                                    <div className="wind-tuning-panel__details">
-
-                                        <span>
-                                            Direction
-                                        </span>
-
-                                        <strong>
-                                            {windState
-                                                ? `${windState.directionDegrees.toFixed(0)}°`
-                                                : "--"}
-                                        </strong>
-
-                                        <span>
-                                            Speed
-                                        </span>
-
-                                        <strong>
-                                            {windState
-                                                ? `${Math.round(windState.strength)} km/h`
-                                                : "--"}
-                                        </strong>
-
-                                    </div>
-
-                                    {activePresetPosition !== null && (
-                                        <span className="wind-tuning-panel__position">
-
-                                            Preset {activePresetPosition}
-                                            {" / "}
-                                            {windTuningState?.presetCount ?? 0}
-
-                                        </span>
-                                    )}
-
-                                </div>
-
-                                <div className="wind-tuning-panel__current">
-
-                                    <span className="wind-tuning-panel__mode">
-                                        Shot Metrics
-                                    </span>
-
-                                    <strong className="wind-tuning-panel__name">
-
-                                        {isMeasuring
-                                            ? `Measuring Shot ${windValidationState?.activeShotNumber ?? ""}`
-                                            : validationResult
-                                                ? `Completed Shot ${validationResult.shotNumber}`
-                                                : "Awaiting Shot"}
-
-                                    </strong>
-
-                                    {!validationResult && !isMeasuring && (
-                                        <p className="wind-tuning-panel__description">
-                                            Select a wind condition, take one shot, and wait for the Ball to reach exact rest.
-                                        </p>
-                                    )}
-
-                                    {isMeasuring && (
-                                        <p className="wind-tuning-panel__description">
-                                            Measurement is active. Wind controls remain locked until the Ball stops.
-                                        </p>
-                                    )}
-
-                                    {validationResult && !isMeasuring && (
-                                        <div className="wind-tuning-panel__details">
-
-                                            <span>
-                                                Test
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.windPresetName ?? "Random Wind"}
-                                            </strong>
-
-                                            <span>
-                                                Launch Speed
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.launchSpeed.toFixed(1)} px/s
-                                            </strong>
-
-                                            <span>
-                                                Maximum Speed
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.maximumSpeed.toFixed(1)} px/s
-                                            </strong>
-
-                                            <span>
-                                                Movement Time
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.movementTime.toFixed(3)} s
-                                            </strong>
-
-                                            <span>
-                                                Travel Distance
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.travelDistance.toFixed(1)} px
-                                            </strong>
-
-                                            <span>
-                                                Displacement
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.straightLineDisplacement.toFixed(1)} px
-                                            </strong>
-
-                                            <span>
-                                                Forward Distance
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.longitudinalDisplacement.toFixed(1)} px
-                                            </strong>
-
-                                            <span>
-                                                Maximum Drift
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.maximumLateralDrift.toFixed(1)} px
-                                            </strong>
-
-                                            <span>
-                                                Final Drift
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.finalLateralDrift.toFixed(1)} px
-                                            </strong>
-
-                                            <span>
-                                                Boundary Hits
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.boundaryCollisionCount}
-                                            </strong>
-
-                                            <span>
-                                                Obstacle Hits
-                                            </span>
-
-                                            <strong>
-                                                {validationResult.obstacleCollisionCount}
-                                            </strong>
-
-                                        </div>
-                                    )}
-
-                                </div>
-
-                                <div className="wind-tuning-panel__controls">
-
-                                    <button
-                                        type="button"
-                                        className="wind-tuning-panel__button"
-                                        onClick={handlePreviousPreset}
-                                        disabled={
-                                            !windTuningState ||
-                                            isMeasuring
-                                        }
-                                    >
-                                        Previous
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        className="wind-tuning-panel__button"
-                                        onClick={handleNextPreset}
-                                        disabled={
-                                            !windTuningState ||
-                                            isMeasuring
-                                        }
-                                    >
-                                        Next
-                                    </button>
-
-                                </div>
-
-                                <p className="wind-tuning-panel__reference">
-                                    Reference test shot: horizontally toward the right.
-                                </p>
-
-                            </section>
-
-                        )}
 
                     </aside>
 

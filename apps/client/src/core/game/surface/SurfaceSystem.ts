@@ -15,9 +15,17 @@ import {
     SurfaceZone,
 } from "./SurfaceZone";
 
+import {
+    SurfaceStateRegion,
+} from "./SurfaceStateRegion";
+
 import type {
     SurfaceZoneDefinition,
 } from "./SurfaceZone";
+
+import type {
+    SurfaceStateRegionDefinition,
+} from "./SurfaceStateRegion";
 
 import type {
     SurfaceState,
@@ -33,9 +41,18 @@ export type SurfaceChangeListener =
 /**
  * Authoritative spatial surface-query and runtime-state system.
  *
- * Grass remains the course-wide fallback. Authored zones may
- * represent either a different surface type or a localized
- * runtime state such as Wet Grass or Scorched Grass.
+ * Base terrain comes from authored SurfaceZones or the
+ * course-wide fallback surface. Runtime SurfaceStateRegions
+ * may then override only the state of the same base surface
+ * type.
+ *
+ * Example:
+ *
+ * fallback Grass
+ * + Scorched Grass state region
+ * = Scorched Grass sample
+ *
+ * A Grass state region never converts Sand into Grass.
  */
 export class SurfaceSystem {
 
@@ -44,6 +61,9 @@ export class SurfaceSystem {
 
     private readonly zones:
         SurfaceZone[] = [];
+
+    private readonly stateRegions:
+        SurfaceStateRegion[] = [];
 
     private readonly changeListeners:
         Set<SurfaceChangeListener> =
@@ -130,12 +150,67 @@ export class SurfaceSystem {
                 true;
         }
 
+        for (
+            const region
+            of this.stateRegions
+        ) {
+            if (
+                !region.advanceStateTimer(
+                    deltaTime,
+                )
+            ) {
+                continue;
+            }
+
+            const definition =
+                region.getDefinition();
+
+            const currentStateDefinition =
+                getSurfaceStateDefinition(
+                    definition.surfaceType,
+                    region.getCurrentState(),
+                );
+
+            const reversionState =
+                definition.reversionState ??
+                currentStateDefinition.reversionState;
+
+            if (
+                reversionState ===
+                null
+            ) {
+                region.setRuntimeState(
+                    region.getCurrentState(),
+                    null,
+                );
+
+                continue;
+            }
+
+            this.validateStateForSurface(
+                definition.surfaceType,
+                reversionState,
+            );
+
+            region.setRuntimeState(
+                reversionState,
+                null,
+            );
+
+            stateChanged =
+                true;
+        }
+
         if (
             stateChanged
         ) {
             this.notifyChanged();
         }
     }
+
+    // ---------------------------------------------------------------------
+    // Base authored zones
+    // ---------------------------------------------------------------------
 
     public addZone(
         definition:
@@ -193,10 +268,104 @@ export class SurfaceSystem {
             return;
         }
 
-        this.zones.length = 0;
+        this.zones.length =
+            0;
 
         this.notifyChanged();
     }
+
+    // ---------------------------------------------------------------------
+    // Runtime state regions
+    // ---------------------------------------------------------------------
+
+    public addStateRegion(
+        definition:
+            SurfaceStateRegionDefinition,
+    ): boolean {
+
+        if (
+            this.stateRegions.some(
+                (
+                    region:
+                        SurfaceStateRegion,
+                ): boolean =>
+                    region
+                        .getDefinition()
+                        .id ===
+                    definition.id,
+            )
+        ) {
+            return false;
+        }
+
+        this.validateStateForSurface(
+            definition.surfaceType,
+            definition.state,
+        );
+
+        if (
+            definition.reversionState !==
+            null
+        ) {
+            this.validateStateForSurface(
+                definition.surfaceType,
+                definition.reversionState,
+            );
+        }
+
+        if (
+            definition.durationSeconds !==
+            null &&
+            definition.reversionState ===
+            null &&
+            getSurfaceStateDefinition(
+                definition.surfaceType,
+                definition.state,
+            )
+                .reversionState ===
+            null
+        ) {
+            throw new Error(
+                `Surface state region '${definition.id}' cannot use a temporary duration because its state has no reversion state.`,
+            );
+        }
+
+        this.stateRegions.push(
+            new SurfaceStateRegion(
+                definition,
+            ),
+        );
+
+        this.notifyChanged();
+
+        return true;
+    }
+
+    public clearStateRegions():
+        void {
+
+        if (
+            this.stateRegions.length ===
+            0
+        ) {
+            return;
+        }
+
+        this.stateRegions.length =
+            0;
+
+        this.notifyChanged();
+    }
+
+    public getStateRegions():
+        readonly SurfaceStateRegion[] {
+
+        return this.stateRegions;
+    }
+
+    // ---------------------------------------------------------------------
+    // Queries
+    // ---------------------------------------------------------------------
 
     public getSurfaceAt(
         worldX:
@@ -206,22 +375,29 @@ export class SurfaceSystem {
             number,
     ): SurfaceSample {
 
+        const baseSample =
+            this.getBaseSurfaceAt(
+                worldX,
+                worldY,
+            );
+
         for (
-            let zoneIndex =
-                this.zones.length - 1;
+            let regionIndex =
+                this.stateRegions.length -
+                1;
 
-            zoneIndex >= 0;
+            regionIndex >= 0;
 
-            zoneIndex -= 1
+            regionIndex -= 1
         ) {
-            const zone =
-                this.zones[
-                zoneIndex
+            const region =
+                this.stateRegions[
+                regionIndex
                 ];
 
             if (
-                !zone ||
-                !zone.containsPoint(
+                !region ||
+                !region.containsPoint(
                     worldX,
                     worldY,
                 )
@@ -229,43 +405,49 @@ export class SurfaceSystem {
                 continue;
             }
 
-            return this.createSampleForZone(
-                zone,
-            );
-        }
+            const definition =
+                region.getDefinition();
 
-        const defaultDefinition =
-            getSurfaceDefinition(
-                this.defaultSurfaceType,
-            );
+            if (
+                definition.surfaceType !==
+                baseSample.surfaceType
+            ) {
+                continue;
+            }
 
-        const stateDefinition =
-            getSurfaceStateDefinition(
-                this.defaultSurfaceType,
-                defaultDefinition.defaultState,
-            );
+            const currentState =
+                region.getCurrentState();
 
-        this.validateStateDefinition(
-            stateDefinition
-                .rollingResistanceMultiplier,
-            this.defaultSurfaceType,
-            defaultDefinition.defaultState,
-        );
+            const stateDefinition =
+                getSurfaceStateDefinition(
+                    baseSample.surfaceType,
+                    currentState,
+                );
 
-        return {
-            surfaceType:
-                this.defaultSurfaceType,
-
-            surfaceState:
-                defaultDefinition.defaultState,
-
-            rollingResistanceMultiplier:
+            this.validateStateDefinition(
                 stateDefinition
                     .rollingResistanceMultiplier,
+                baseSample.surfaceType,
+                currentState,
+            );
 
-            zoneId:
-                null,
-        };
+            return {
+                surfaceType:
+                    baseSample.surfaceType,
+
+                surfaceState:
+                    currentState,
+
+                rollingResistanceMultiplier:
+                    stateDefinition
+                        .rollingResistanceMultiplier,
+
+                zoneId:
+                    baseSample.zoneId,
+            };
+        }
+
+        return baseSample;
     }
 
     public setZoneState(
@@ -324,7 +506,8 @@ export class SurfaceSystem {
 
         for (
             let zoneIndex =
-                this.zones.length - 1;
+                this.zones.length -
+                1;
 
             zoneIndex >= 0;
 
@@ -414,6 +597,81 @@ export class SurfaceSystem {
 
             surfaceState:
                 definition.defaultState,
+
+            rollingResistanceMultiplier:
+                stateDefinition
+                    .rollingResistanceMultiplier,
+
+            zoneId:
+                null,
+        };
+    }
+
+    // ---------------------------------------------------------------------
+    // Internal base terrain resolution
+    // ---------------------------------------------------------------------
+
+    private getBaseSurfaceAt(
+        worldX:
+            number,
+
+        worldY:
+            number,
+    ): SurfaceSample {
+
+        for (
+            let zoneIndex =
+                this.zones.length -
+                1;
+
+            zoneIndex >= 0;
+
+            zoneIndex -= 1
+        ) {
+            const zone =
+                this.zones[
+                zoneIndex
+                ];
+
+            if (
+                !zone ||
+                !zone.containsPoint(
+                    worldX,
+                    worldY,
+                )
+            ) {
+                continue;
+            }
+
+            return this.createSampleForZone(
+                zone,
+            );
+        }
+
+        const defaultDefinition =
+            getSurfaceDefinition(
+                this.defaultSurfaceType,
+            );
+
+        const stateDefinition =
+            getSurfaceStateDefinition(
+                this.defaultSurfaceType,
+                defaultDefinition.defaultState,
+            );
+
+        this.validateStateDefinition(
+            stateDefinition
+                .rollingResistanceMultiplier,
+            this.defaultSurfaceType,
+            defaultDefinition.defaultState,
+        );
+
+        return {
+            surfaceType:
+                this.defaultSurfaceType,
+
+            surfaceState:
+                defaultDefinition.defaultState,
 
             rollingResistanceMultiplier:
                 stateDefinition

@@ -252,7 +252,7 @@ export interface WindVisualDefinition {
 export const DEFAULT_WIND_VISUAL_DEFINITION:
     WindVisualDefinition = {
 
-    enabled: true,
+    enabled: false,
 
     // -------------------------------------------------------------------------
     // Particle Pool

@@ -26,6 +26,19 @@ import {
 } from "../config/CourseVisualDefinition";
 
 import {
+    DEFAULT_FIRE_TEST_DEFINITION,
+} from "../config/FireTestDefinition";
+
+import {
+    DEFAULT_WIND_VISUAL_DEFINITION,
+} from "../config/WindVisualDefinition";
+
+import {
+    DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS,
+    DEFAULT_LOCAL_WIND_VISUAL_DEFINITION,
+} from "../config/LocalWindDefinition";
+
+import {
     DEFAULT_HOLE_DEFINITION,
 } from "../config/HoleDefinition";
 
@@ -49,10 +62,13 @@ import {
     WindValidationMetrics,
 } from "../debug/WindValidationMetrics";
 
-
 import {
     PerformanceDebugOverlay,
 } from "../debug/PerformanceDebugOverlay";
+
+import {
+    FireDebugController,
+} from "../debug/FireDebugController";
 
 import {
     AimIndicator,
@@ -83,6 +99,10 @@ import {
 } from "../entities/Hole";
 
 import {
+    Fan,
+} from "../entities/mechanisms/Fan";
+
+import {
     DynamicObstacle,
 } from "../entities/obstacles/DynamicObstacle";
 
@@ -91,12 +111,36 @@ import {
 } from "../entities/obstacles/StaticObstacle";
 
 import {
+    FireManager,
+} from "../environment/FireManager";
+
+import {
+    FireVisualizer,
+} from "../environment/FireVisualizer";
+
+import {
+    EnvironmentField,
+} from "../environment/EnvironmentField";
+
+import {
+    EnvironmentFieldVisualizer,
+} from "../environment/EnvironmentFieldVisualizer";
+
+import {
     WindManager,
 } from "../environment/WindManager";
 
 import {
     WindVisualizer,
 } from "../environment/WindVisualizer";
+
+import {
+    LocalWindSystem,
+} from "../environment/LocalWindSystem";
+
+import {
+    LocalWindVisualizer,
+} from "../environment/LocalWindVisualizer";
 
 import {
     SurfaceSystem,
@@ -208,8 +252,7 @@ export class World {
         TilingSprite | null = null;
 
     /**
-     * Temporary Phase 2 world-space visualization for
-     * authored surface zones.
+     * Development-only world-space surface visualization.
      *
      * Physics authority remains SurfaceSystem.
      */
@@ -247,8 +290,35 @@ export class World {
         WindVisualizer | null =
         null;
 
+    private readonly localWindSystem:
+        LocalWindSystem;
+
+    private localWindVisualizer:
+        LocalWindVisualizer | null =
+        null;
+
+    private readonly fans:
+        Fan[] = [];
+
     private readonly surfaceSystem:
         SurfaceSystem;
+
+    private readonly environmentField:
+        EnvironmentField;
+
+    private environmentFieldVisualizer:
+        EnvironmentFieldVisualizer | null =
+        null;
+
+    private readonly fireManager:
+        FireManager;
+
+    private readonly fireDebugController:
+        FireDebugController;
+
+    private fireVisualizer:
+        FireVisualizer | null =
+        null;
 
     private readonly windTuningController:
         WindTuningController;
@@ -334,9 +404,31 @@ export class World {
         this.windManager =
             new WindManager();
 
+        this.localWindSystem =
+            new LocalWindSystem(
+                DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS,
+            );
+
         this.surfaceSystem =
             new SurfaceSystem(
                 SurfaceType.Grass,
+            );
+
+        this.environmentField =
+            new EnvironmentField(
+                this.surfaceSystem,
+            );
+
+        this.fireManager =
+            new FireManager(
+                this.surfaceSystem,
+                this.environmentField,
+            );
+
+        this.fireDebugController =
+            new FireDebugController(
+                this.camera,
+                this.fireManager,
             );
 
         this.windTuningController =
@@ -366,7 +458,20 @@ export class World {
             SURFACE_TEST_ZONES_ENABLED
         ) {
             this.createPhase2SurfaceZones();
+        }
 
+        if (
+            DEFAULT_FIRE_TEST_DEFINITION
+                .enabled
+        ) {
+            this.createPhase4FireTestSurfaceZones();
+        }
+
+        if (
+            SURFACE_TEST_ZONES_ENABLED ||
+            DEFAULT_FIRE_TEST_DEFINITION
+                .enabled
+        ) {
             this.createSurfaceGraphics();
 
             this.unsubscribeFromSurfaceChanges =
@@ -379,7 +484,20 @@ export class World {
                     );
         }
 
-        this.createWindVisualizer();
+        if (
+            DEFAULT_WIND_VISUAL_DEFINITION
+                .enabled
+        ) {
+            this.createWindVisualizer();
+        }
+
+        this.createLocalWindVisualizer();
+
+        this.createFanEntities();
+
+        this.createEnvironmentFieldVisualizer();
+
+        this.createFireVisualizer();
 
         this.createCameraActivationDebugGraphics();
 
@@ -455,6 +573,7 @@ export class World {
                 this.dynamicObstacles,
                 this.windManager,
                 this.surfaceSystem,
+                this.localWindSystem,
             );
 
         this.addEntity(
@@ -646,7 +765,25 @@ export class World {
                 deltaTime,
             );
 
+        this.fireManager
+            .update(
+                deltaTime,
+            );
+
         this.windVisualizer
+            ?.update(
+                deltaTime,
+            );
+
+        this.localWindVisualizer
+            ?.update(
+                deltaTime,
+            );
+
+        this.environmentFieldVisualizer
+            ?.update();
+
+        this.fireVisualizer
             ?.update(
                 deltaTime,
             );
@@ -724,6 +861,33 @@ export class World {
         this.windTuningController
             .destroy();
 
+        this.fireVisualizer
+            ?.destroy();
+
+        this.fireVisualizer =
+            null;
+
+        this.fireManager
+            .reset();
+
+        this.environmentFieldVisualizer
+            ?.destroy();
+
+        this.environmentFieldVisualizer =
+            null;
+
+        this.environmentField
+            .reset();
+
+        this.localWindVisualizer
+            ?.destroy();
+
+        this.localWindVisualizer =
+            null;
+
+        this.fans.length =
+            0;
+
         this.windVisualizer
             ?.destroy();
 
@@ -738,6 +902,9 @@ export class World {
 
         this.unsubscribeFromSurfaceChanges =
             null;
+
+        this.surfaceSystem
+            .clearStateRegions();
 
         this.surfaceSystem
             .clearZones();
@@ -830,6 +997,38 @@ export class World {
 
         this.windValidationMetrics
             ?.resetMeasurement();
+    }
+
+    // -------------------------------------------------------
+    // Fire Debug
+    // -------------------------------------------------------
+
+    /**
+     * Generates one randomized Fire cluster inside the
+     * currently visible camera rectangle.
+     *
+     * This is a development/test bridge only. The actual
+     * ignition rules remain authoritative in FireManager.
+     */
+    public generateRandomVisibleFire():
+        void {
+
+        const result =
+            this.fireDebugController
+                .generateRandomVisibleFire();
+
+        if (!result) {
+            console.warn(
+                "Random Fire generation could not find an ignitable location in the visible viewport.",
+            );
+
+            return;
+        }
+
+        console.log(
+            "Random Fire generated.",
+            result,
+        );
     }
 
     // -------------------------------------------------------
@@ -1035,10 +1234,34 @@ export class World {
         return this.windManager;
     }
 
+    public getLocalWindSystem():
+        LocalWindSystem {
+
+        return this.localWindSystem;
+    }
+
+    public getFans():
+        readonly Fan[] {
+
+        return this.fans;
+    }
+
     public getSurfaceSystem():
         SurfaceSystem {
 
         return this.surfaceSystem;
+    }
+
+    public getEnvironmentField():
+        EnvironmentField {
+
+        return this.environmentField;
+    }
+
+    public getFireManager():
+        FireManager {
+
+        return this.fireManager;
     }
 
     public getWindTuningController():
@@ -1110,6 +1333,177 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Environment Field Visualization
+    // -------------------------------------------------------
+
+    private createEnvironmentFieldVisualizer():
+        void {
+
+        if (
+            this.environmentFieldVisualizer
+        ) {
+            throw new Error(
+                "World environment field visualizer has already been created.",
+            );
+        }
+
+        this.environmentFieldVisualizer =
+            new EnvironmentFieldVisualizer(
+                this.app,
+                this.environmentField,
+            );
+
+        this.worldContainer
+            .addChild(
+                this.environmentFieldVisualizer
+                    .getContainer(),
+            );
+
+        this.environmentFieldVisualizer
+            .update();
+    }
+
+    // -------------------------------------------------------
+    // Fire
+    // -------------------------------------------------------
+
+    private createFireVisualizer():
+        void {
+
+        if (
+            this.fireVisualizer
+        ) {
+            throw new Error(
+                "World fire visualizer has already been created.",
+            );
+        }
+
+        this.fireVisualizer =
+            new FireVisualizer(
+                this.fireManager,
+            );
+
+        /*
+         * Fire is world-space presentation. At this point
+         * initialization has not created gameplay entities,
+         * so adding it now keeps it above terrain/surface
+         * state visuals and below obstacles/entities.
+         */
+        this.worldContainer
+            .addChild(
+                this.fireVisualizer
+                    .getContainer(),
+            );
+    }
+
+    private createPhase4FireTestSurfaceZones():
+        void {
+
+        const wetDefinition =
+            DEFAULT_FIRE_TEST_DEFINITION
+                .wetGrassBlocker;
+
+        const sandDefinition =
+            DEFAULT_FIRE_TEST_DEFINITION
+                .sandBlocker;
+
+        this.surfaceSystem
+            .addZone(
+                wetDefinition,
+            );
+
+        this.surfaceSystem
+            .setZoneState(
+                wetDefinition.id,
+                SurfaceState.Wet,
+            );
+
+        this.surfaceSystem
+            .addZone(
+                sandDefinition,
+            );
+    }
+
+    // -------------------------------------------------------
+    // Local Wind / Fan Test Mechanisms
+    // -------------------------------------------------------
+
+    private createLocalWindVisualizer():
+        void {
+
+        if (
+            this.localWindVisualizer
+        ) {
+            throw new Error(
+                "World local wind visualizer has already been created.",
+            );
+        }
+
+        if (
+            !DEFAULT_LOCAL_WIND_VISUAL_DEFINITION
+                .enabled
+        ) {
+            return;
+        }
+
+        this.localWindVisualizer =
+            new LocalWindVisualizer(
+                this.localWindSystem,
+            );
+
+        this.worldContainer
+            .addChildAt(
+                this.localWindVisualizer
+                    .getGraphics(),
+
+                Math.min(
+                    1,
+                    this.worldContainer
+                        .children
+                        .length,
+                ),
+            );
+    }
+
+    private createFanEntities():
+        void {
+
+        if (
+            this.fans.length >
+            0
+        ) {
+            throw new Error(
+                "World Fan entities have already been created.",
+            );
+        }
+
+        for (
+            const source
+            of this.localWindSystem
+                .getSources()
+        ) {
+            if (
+                !source.enabled
+            ) {
+                continue;
+            }
+
+            const fan =
+                new Fan(
+                    source,
+                );
+
+            this.fans.push(
+                fan,
+            );
+
+            this.addEntity(
+                fan,
+            );
+        }
+    }
+
+    // -------------------------------------------------------
     // Wind Visualization
     // -------------------------------------------------------
 
@@ -1134,8 +1528,7 @@ export class World {
          * Course background occupies index 0.
          *
          * Insert wind immediately above the terrain.
-         * If temporary surface visuals exist, they
-         * remain above wind after this insertion.
+         * Surface-state visuals remain above wind.
          */
         this.worldContainer
             .addChildAt(
@@ -1152,7 +1545,7 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Phase 2 Surface States
+    // Surface States
     // -------------------------------------------------------
 
     private createPhase2SurfaceZones():
@@ -1212,11 +1605,6 @@ export class World {
         this.surfaceGraphics =
             new Graphics();
 
-        /*
-         * Course background is index 0. Insert the
-         * surface visualization immediately above it,
-         * before obstacle/entity display objects.
-         */
         this.worldContainer
             .addChildAt(
                 this.surfaceGraphics,
@@ -1269,45 +1657,136 @@ export class World {
                     sample.surfaceState,
                 );
 
-            this.surfaceGraphics
-                .rect(
-                    definition.x,
-                    definition.y,
-                    definition.width,
-                    definition.height,
-                );
-
-            this.surfaceGraphics
-                .fill({
-                    color:
-                        visual.fillColor,
-
-                    alpha:
-                        visual.fillAlpha,
-                });
-
-            this.surfaceGraphics
-                .rect(
-                    definition.x,
-                    definition.y,
-                    definition.width,
-                    definition.height,
-                );
-
-            this.surfaceGraphics
-                .stroke({
-                    width:
-                        PHASE_2_SURFACE_VISUALS
-                            .outlineWidth,
-
-                    color:
-                        visual.outlineColor,
-
-                    alpha:
-                        PHASE_2_SURFACE_VISUALS
-                            .outlineAlpha,
-                });
+            this.drawSurfaceRectangle(
+                definition.x,
+                definition.y,
+                definition.width,
+                definition.height,
+                visual,
+            );
         }
+
+        for (
+            const region
+            of this.surfaceSystem
+                .getStateRegions()
+        ) {
+            const definition =
+                region.getDefinition();
+
+            /*
+             * Dynamic Fire scorch is presented by
+             * EnvironmentFieldVisualizer. Fire keeps a coarse
+             * compatibility SurfaceStateRegion so existing
+             * scorched-grass rolling resistance remains intact,
+             * but that rectangle is not rendered.
+             */
+            if (
+                definition.id
+                    .startsWith(
+                        "fire-scorch-",
+                    )
+            ) {
+                continue;
+            }
+
+            const sample =
+                this.surfaceSystem
+                    .getSurfaceAt(
+                        definition.x +
+                        definition.width /
+                        2,
+
+                        definition.y +
+                        definition.height /
+                        2,
+                    );
+
+            const visual =
+                this.getSurfaceVisual(
+                    sample.surfaceType,
+                    sample.surfaceState,
+                );
+
+            this.drawSurfaceRectangle(
+                definition.x,
+                definition.y,
+                definition.width,
+                definition.height,
+                visual,
+            );
+        }
+    }
+
+    private drawSurfaceRectangle(
+        x:
+            number,
+
+        y:
+            number,
+
+        width:
+            number,
+
+        height:
+            number,
+
+        visual: {
+            readonly fillColor:
+            number;
+
+            readonly fillAlpha:
+            number;
+
+            readonly outlineColor:
+            number;
+        },
+    ): void {
+
+        if (
+            !this.surfaceGraphics
+        ) {
+            return;
+        }
+
+        this.surfaceGraphics
+            .rect(
+                x,
+                y,
+                width,
+                height,
+            );
+
+        this.surfaceGraphics
+            .fill({
+                color:
+                    visual.fillColor,
+
+                alpha:
+                    visual.fillAlpha,
+            });
+
+        this.surfaceGraphics
+            .rect(
+                x,
+                y,
+                width,
+                height,
+            );
+
+        this.surfaceGraphics
+            .stroke({
+                width:
+                    PHASE_2_SURFACE_VISUALS
+                        .outlineWidth,
+
+                color:
+                    visual.outlineColor,
+
+                alpha:
+                    PHASE_2_SURFACE_VISUALS
+                        .outlineAlpha,
+            });
     }
 
     private getSurfaceVisual(
