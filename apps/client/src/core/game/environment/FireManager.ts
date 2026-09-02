@@ -31,6 +31,10 @@ import type {
     EnvironmentField,
 } from "./EnvironmentField";
 
+import type {
+    LocalWindSystem,
+} from "./LocalWindSystem";
+
 import {
     FireCell,
 } from "./FireCell";
@@ -45,11 +49,16 @@ const FIRE_NEIGHBOUR_OFFSETS:
     readonly {
         readonly x: number;
         readonly y: number;
+        readonly diagonal: boolean;
     }[] = [
-        { x: 0, y: -1 },
-        { x: 1, y: 0 },
-        { x: 0, y: 1 },
-        { x: -1, y: 0 },
+        { x: 0, y: -1, diagonal: false },
+        { x: 1, y: -1, diagonal: true },
+        { x: 1, y: 0, diagonal: false },
+        { x: 1, y: 1, diagonal: true },
+        { x: 0, y: 1, diagonal: false },
+        { x: -1, y: 1, diagonal: true },
+        { x: -1, y: 0, diagonal: false },
+        { x: -1, y: -1, diagonal: true },
     ];
 
 /**
@@ -72,12 +81,23 @@ export class FireManager {
     private readonly courseBoundaryDefinition:
         CourseBoundaryDefinition;
 
+    /**
+     * null = normal gameplay randomness.
+     * number = deterministic validation sequence.
+     */
+    private validationRandomState:
+        number | null =
+        null;
+
     constructor(
         private readonly surfaceSystem:
             SurfaceSystem,
 
         private readonly environmentField:
             EnvironmentField,
+
+        private readonly localWindSystem:
+            LocalWindSystem,
 
         definition:
             FireDefinition =
@@ -201,6 +221,33 @@ export class FireManager {
         this.occupiedCellKeys.clear();
     }
 
+    public setValidationRandomSeed(
+        seed:
+            number | null,
+    ): void {
+
+        if (seed === null) {
+            this.validationRandomState =
+                null;
+
+            return;
+        }
+
+        if (!Number.isFinite(seed)) {
+            throw new Error(
+                "Fire validation random seed must be finite or null.",
+            );
+        }
+
+        const normalizedSeed =
+            Math.floor(seed) >>> 0;
+
+        this.validationRandomState =
+            normalizedSeed === 0
+                ? 1
+                : normalizedSeed;
+    }
+
     // ---------------------------------------------------------------------
     // Ignition
     // ---------------------------------------------------------------------
@@ -306,7 +353,7 @@ export class FireManager {
             attempt += 1
         ) {
             const angle =
-                Math.random() *
+                this.random() *
                 Math.PI *
                 2;
 
@@ -317,7 +364,7 @@ export class FireManager {
              */
             const distance =
                 Math.sqrt(
-                    Math.random(),
+                    this.random(),
                 ) *
                 radius;
 
@@ -385,7 +432,44 @@ export class FireManager {
             sourceCell.getGeneration() +
             1;
 
-        for (const offset of FIRE_NEIGHBOUR_OFFSETS) {
+        const localWind =
+            this.localWindSystem
+                .getAccelerationAt(
+                    sourceCell.getWorldCenterX(),
+                    sourceCell.getWorldCenterY(),
+                );
+
+        const windMagnitude =
+            Math.sqrt(
+                localWind.x *
+                localWind.x +
+                localWind.y *
+                localWind.y,
+            );
+
+        const windBiasStrength =
+            this.getWindBiasStrength(
+                windMagnitude,
+            );
+
+        const normalizedWindX =
+            windMagnitude >
+                0
+                ? localWind.x /
+                windMagnitude
+                : 0;
+
+        const normalizedWindY =
+            windMagnitude >
+                0
+                ? localWind.y /
+                windMagnitude
+                : 0;
+
+        for (
+            const offset
+            of FIRE_NEIGHBOUR_OFFSETS
+        ) {
             const gridX =
                 sourceCell.getGridX() +
                 offset.x;
@@ -431,6 +515,23 @@ export class FireManager {
                 continue;
             }
 
+            const spreadProbability =
+                this.getDirectionalSpreadProbability(
+                    offset.x,
+                    offset.y,
+                    offset.diagonal,
+                    normalizedWindX,
+                    normalizedWindY,
+                    windBiasStrength,
+                );
+
+            if (
+                this.random() >
+                spreadProbability
+            ) {
+                continue;
+            }
+
             pendingIgnitions.set(
                 key,
                 {
@@ -441,6 +542,193 @@ export class FireManager {
                 },
             );
         }
+    }
+
+    /**
+     * Converts local airflow magnitude into a normalized directional
+     * influence in the range 0..1.
+     */
+    private getWindBiasStrength(
+        windMagnitude: number,
+    ): number {
+        if (
+            !Number.isFinite(
+                windMagnitude,
+            ) ||
+            windMagnitude <=
+            this.definition
+                .minimumWindAccelerationForBias
+        ) {
+            return 0;
+        }
+
+        const range =
+            this.definition
+                .windAccelerationForMaximumBias -
+            this.definition
+                .minimumWindAccelerationForBias;
+
+        return Math.min(
+            1,
+            Math.max(
+                0,
+                (
+                    windMagnitude -
+                    this.definition
+                        .minimumWindAccelerationForBias
+                ) /
+                Math.max(
+                    0.0001,
+                    range,
+                ),
+            ),
+        );
+    }
+
+    /**
+     * Computes one spread candidate's probability.
+     *
+     * Alignment is the dot product between the normalized candidate
+     * direction and the normalized local airflow direction:
+     *
+     * +1 = directly downwind
+     *  0 = crosswind
+     * -1 = directly upwind
+     */
+    private getDirectionalSpreadProbability(
+        offsetX: number,
+        offsetY: number,
+        diagonal: boolean,
+        normalizedWindX: number,
+        normalizedWindY: number,
+        windBiasStrength: number,
+    ): number {
+        const directionLength =
+            Math.sqrt(
+                offsetX *
+                offsetX +
+                offsetY *
+                offsetY,
+            );
+
+        if (
+            directionLength <=
+            0
+        ) {
+            return 0;
+        }
+
+        const directionX =
+            offsetX /
+            directionLength;
+
+        const directionY =
+            offsetY /
+            directionLength;
+
+        const alignment =
+            Math.min(
+                1,
+                Math.max(
+                    -1,
+                    directionX *
+                    normalizedWindX +
+                    directionY *
+                    normalizedWindY,
+                ),
+            );
+
+        let strongWindMultiplier:
+            number;
+
+        if (
+            alignment >=
+            0
+        ) {
+            strongWindMultiplier =
+                this.lerp(
+                    this.definition
+                        .crosswindSpreadMultiplier,
+                    this.definition
+                        .maximumDownwindSpreadMultiplier,
+                    alignment,
+                );
+        } else {
+            strongWindMultiplier =
+                this.lerp(
+                    this.definition
+                        .crosswindSpreadMultiplier,
+                    this.definition
+                        .maximumUpwindSpreadMultiplier,
+                    -alignment,
+                );
+        }
+
+        /*
+         * At zero Wind the multiplier is exactly one. As airflow
+         * strengthens, the candidate approaches the strong-Wind
+         * directional profile above.
+         */
+        /*
+         * Smoothstep keeps weak airflow subtle while making the
+         * transition into strong-Fan behavior more decisive.
+         *
+         * 0 stays 0, 1 stays 1, so No-Wind and maximum-Wind
+         * endpoints remain unchanged.
+         */
+        const shapedWindBiasStrength =
+            windBiasStrength *
+            windBiasStrength *
+            (
+                3 -
+                2 *
+                windBiasStrength
+            );
+
+        const directionalMultiplier =
+            this.lerp(
+                1,
+                strongWindMultiplier,
+                shapedWindBiasStrength,
+            );
+
+        const diagonalMultiplier =
+            diagonal
+                ? this.definition
+                    .diagonalSpreadMultiplier
+                : 1;
+
+        return Math.min(
+            1,
+            Math.max(
+                0,
+                this.definition
+                    .baseSpreadProbability *
+                directionalMultiplier *
+                diagonalMultiplier,
+            ),
+        );
+    }
+
+    private lerp(
+        start: number,
+        end: number,
+        amount: number,
+    ): number {
+        return (
+            start +
+            (
+                end -
+                start
+            ) *
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    amount,
+                ),
+            )
+        );
     }
 
     private commitPendingIgnitions(
@@ -799,6 +1087,34 @@ export class FireManager {
                     dyingProgress,
                 )
             ),
+        );
+    }
+
+    private random(): number {
+
+        if (
+            this.validationRandomState ===
+            null
+        ) {
+            return Math.random();
+        }
+
+        /*
+         * Small deterministic LCG used only by the development
+         * validation harness. It is not gameplay/network RNG.
+         */
+        this.validationRandomState =
+            (
+                Math.imul(
+                    1664525,
+                    this.validationRandomState,
+                ) +
+                1013904223
+            ) >>> 0;
+
+        return (
+            this.validationRandomState /
+            4294967296
         );
     }
 

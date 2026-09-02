@@ -21,6 +21,49 @@ export interface FireDefinition {
     readonly burnDepositPerSecond: number;
     readonly fuelConsumptionPerSecond: number;
     readonly minimumFuelForIgnition: number;
+
+    /**
+     * Directional spread tuning.
+     *
+     * Fire still spreads through coarse neighbour cells in this
+     * intermediate stage, but each candidate now receives a
+     * probability weight based on local airflow.
+     */
+    readonly baseSpreadProbability: number;
+
+    /**
+     * Local airflow below this acceleration does not influence
+     * spread direction.
+     */
+    readonly minimumWindAccelerationForBias: number;
+
+    /**
+     * Local airflow at or above this acceleration receives the
+     * full directional-bias strength.
+     */
+    readonly windAccelerationForMaximumBias: number;
+
+    /**
+     * Maximum multiplier for candidates aligned downwind.
+     */
+    readonly maximumDownwindSpreadMultiplier: number;
+
+    /**
+     * Minimum multiplier for candidates directly upwind.
+     */
+    readonly maximumUpwindSpreadMultiplier: number;
+
+    /**
+     * Multiplier applied to crosswind spread when local airflow
+     * is strong.
+     */
+    readonly crosswindSpreadMultiplier: number;
+
+    /**
+     * Diagonal candidates cover more distance than cardinal
+     * candidates, so they receive a small probability reduction.
+     */
+    readonly diagonalSpreadMultiplier: number;
 }
 
 export const DEFAULT_FIRE_DEFINITION: FireDefinition = {
@@ -30,7 +73,7 @@ export const DEFAULT_FIRE_DEFINITION: FireDefinition = {
 
     spreadInterval: 0.70,
 
-    maximumSpreadGeneration: 4,
+    maximumSpreadGeneration: 3,
 
     scorchAge: 2.60,
 
@@ -51,6 +94,26 @@ export const DEFAULT_FIRE_DEFINITION: FireDefinition = {
     fuelConsumptionPerSecond: 0.22,
 
     minimumFuelForIgnition: 0.08,
+
+    /*
+     * Eight-neighbour spread would grow too aggressively if every
+     * candidate ignited deterministically. A probability model also
+     * gives Fire a less grid-like, more organic footprint.
+     */
+    baseSpreadProbability: 0.48,
+
+    /*
+     * The current local Fans are roughly 1050-1150 px/s² near their
+     * strongest region, so they can reach full directional influence.
+     */
+    minimumWindAccelerationForBias: 120,
+    windAccelerationForMaximumBias: 1000,
+
+    maximumDownwindSpreadMultiplier: 2.08,
+    maximumUpwindSpreadMultiplier: 0.01,
+    crosswindSpreadMultiplier: 0.18,
+
+    diagonalSpreadMultiplier: 0.72,
 };
 
 export function validateFireDefinition(
@@ -155,4 +218,82 @@ export function validateFireDefinition(
             "Fire minimumFuelForIgnition must remain between zero and one.",
         );
     }
+    const probabilityValues:
+        Array<readonly [string, number]> = [
+            [
+                "baseSpreadProbability",
+                definition.baseSpreadProbability,
+            ],
+            [
+                "maximumUpwindSpreadMultiplier",
+                definition.maximumUpwindSpreadMultiplier,
+            ],
+            [
+                "crosswindSpreadMultiplier",
+                definition.crosswindSpreadMultiplier,
+            ],
+            [
+                "diagonalSpreadMultiplier",
+                definition.diagonalSpreadMultiplier,
+            ],
+        ];
+
+    for (
+        const [
+            name,
+            value,
+        ]
+        of probabilityValues
+    ) {
+        if (
+            !Number.isFinite(
+                value,
+            ) ||
+            value <
+            0 ||
+            value >
+            1
+        ) {
+            throw new Error(
+                `Fire ${name} must remain between zero and one.`,
+            );
+        }
+    }
+
+    if (
+        !Number.isFinite(
+            definition.maximumDownwindSpreadMultiplier,
+        ) ||
+        definition.maximumDownwindSpreadMultiplier <
+        1
+    ) {
+        throw new Error(
+            "Fire maximumDownwindSpreadMultiplier must be finite and at least one.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.minimumWindAccelerationForBias,
+        ) ||
+        definition.minimumWindAccelerationForBias <
+        0
+    ) {
+        throw new Error(
+            "Fire minimumWindAccelerationForBias must be finite and non-negative.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.windAccelerationForMaximumBias,
+        ) ||
+        definition.windAccelerationForMaximumBias <=
+        definition.minimumWindAccelerationForBias
+    ) {
+        throw new Error(
+            "Fire windAccelerationForMaximumBias must be finite and greater than minimumWindAccelerationForBias.",
+        );
+    }
+
 }

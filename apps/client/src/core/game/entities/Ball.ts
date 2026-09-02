@@ -14,6 +14,9 @@ import {
 import {
     DEFAULT_GAME_VIEWPORT_DEFINITION,
 } from "../config/GameViewportDefinition";
+import {
+    GAME_COLOR_PALETTE,
+} from "../config/GameColorPalette";
 
 import type {
     BallPhysicsDefinition,
@@ -128,7 +131,10 @@ export class Ball extends Entity {
     private readonly radius = 10;
 
     private readonly ballColor =
-        0xffffff;
+        GAME_COLOR_PALETTE.golf.ball;
+
+    private readonly ballShadowColor =
+        GAME_COLOR_PALETTE.golf.ballShadow;
 
     private readonly physicsDefinition:
         BallPhysicsDefinition;
@@ -3182,6 +3188,20 @@ export class Ball extends Entity {
             .fill(
                 this.ballColor,
             );
+
+        this.ballGraphics
+            .ellipse(
+                2.5,
+                3.5,
+                this.radius * 0.45,
+                this.radius * 0.24,
+            );
+
+        this.ballGraphics
+            .fill({
+                color: this.ballShadowColor,
+                alpha: 0.72,
+            });
     }
 
     // -------------------------------------------------------

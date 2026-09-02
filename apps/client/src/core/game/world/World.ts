@@ -34,13 +34,30 @@ import {
 } from "../config/WindVisualDefinition";
 
 import {
-    DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS,
     DEFAULT_LOCAL_WIND_VISUAL_DEFINITION,
 } from "../config/LocalWindDefinition";
 
 import {
     DEFAULT_HOLE_DEFINITION,
 } from "../config/HoleDefinition";
+
+import {
+    FireDirectionalValidation,
+} from "../debug/FireDirectionalValidation";
+
+import type {
+    FireDirectionalValidationState,
+    FireDirectionalValidationStateListener,
+} from "../debug/FireDirectionalValidation";
+
+import {
+    DEFAULT_FIRE_WIND_TEST_DEFINITION,
+    getFireWindTestConfiguration,
+} from "../config/FireWindTestDefinition";
+
+import type {
+    FireWindTestConfigurationId,
+} from "../config/FireWindTestDefinition";
 
 import {
     ProceduralObstacleFieldGenerator,
@@ -65,10 +82,6 @@ import {
 import {
     PerformanceDebugOverlay,
 } from "../debug/PerformanceDebugOverlay";
-
-import {
-    FireDebugController,
-} from "../debug/FireDebugController";
 
 import {
     AimIndicator,
@@ -200,36 +213,6 @@ const PHASE_2_SURFACE_ZONES = [
     },
 ] as const;
 
-const PHASE_2_SURFACE_VISUALS = {
-    normalGrass: {
-        fillColor: 0x82b53b,
-        fillAlpha: 0.18,
-        outlineColor: 0x6f9d31,
-    },
-    wetGrass: {
-        fillColor: 0x4aa6a6,
-        fillAlpha: 0.42,
-        outlineColor: 0x2f7f86,
-    },
-    scorchedGrass: {
-        fillColor: 0x5d3a24,
-        fillAlpha: 0.72,
-        outlineColor: 0x3d2417,
-    },
-    drySand: {
-        fillColor: 0xd7b36a,
-        fillAlpha: 0.82,
-        outlineColor: 0xb48a45,
-    },
-    wetSand: {
-        fillColor: 0x9f7b4f,
-        fillAlpha: 0.86,
-        outlineColor: 0x745638,
-    },
-    outlineAlpha: 0.9,
-    outlineWidth: 4,
-} as const;
-
 export class World {
 
     private readonly app:
@@ -313,11 +296,12 @@ export class World {
     private readonly fireManager:
         FireManager;
 
-    private readonly fireDebugController:
-        FireDebugController;
-
     private fireVisualizer:
         FireVisualizer | null =
+        null;
+
+    private fireDirectionalValidation:
+        FireDirectionalValidation | null =
         null;
 
     private readonly windTuningController:
@@ -406,7 +390,10 @@ export class World {
 
         this.localWindSystem =
             new LocalWindSystem(
-                DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS,
+                getFireWindTestConfiguration(
+                    DEFAULT_FIRE_WIND_TEST_DEFINITION
+                        .defaultConfigurationId,
+                ).sources,
             );
 
         this.surfaceSystem =
@@ -423,12 +410,7 @@ export class World {
             new FireManager(
                 this.surfaceSystem,
                 this.environmentField,
-            );
-
-        this.fireDebugController =
-            new FireDebugController(
-                this.camera,
-                this.fireManager,
+                this.localWindSystem,
             );
 
         this.windTuningController =
@@ -498,6 +480,8 @@ export class World {
         this.createEnvironmentFieldVisualizer();
 
         this.createFireVisualizer();
+
+        this.createFireDirectionalValidation();
 
         this.createCameraActivationDebugGraphics();
 
@@ -770,6 +754,9 @@ export class World {
                 deltaTime,
             );
 
+        this.fireDirectionalValidation
+            ?.update();
+
         this.windVisualizer
             ?.update(
                 deltaTime,
@@ -861,11 +848,22 @@ export class World {
         this.windTuningController
             .destroy();
 
+        this.fireDirectionalValidation
+            ?.destroy();
+
+        this.fireDirectionalValidation =
+            null;
+
         this.fireVisualizer
             ?.destroy();
 
         this.fireVisualizer =
             null;
+
+        this.fireManager
+            .setValidationRandomSeed(
+                null,
+            );
 
         this.fireManager
             .reset();
@@ -1000,35 +998,174 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Fire Debug
+    // Fire / Wind Test Harness
     // -------------------------------------------------------
 
-    /**
-     * Generates one randomized Fire cluster inside the
-     * currently visible camera rectangle.
-     *
-     * This is a development/test bridge only. The actual
-     * ignition rules remain authoritative in FireManager.
-     */
-    public generateRandomVisibleFire():
-        void {
+    public applyFireWindTestConfiguration(
+        configurationId:
+            FireWindTestConfigurationId,
+    ): void {
 
-        const result =
-            this.fireDebugController
-                .generateRandomVisibleFire();
-
-        if (!result) {
-            console.warn(
-                "Random Fire generation could not find an ignitable location in the visible viewport.",
+        const configuration =
+            getFireWindTestConfiguration(
+                configurationId,
             );
 
-            return;
+        this.resetFireTestState();
+        this.destroyFanEntities();
+        this.localWindSystem.replaceSources(configuration.sources);
+        this.createFanEntities();
+    }
+
+    public igniteTestFireAtScreenPosition(
+        screenX: number,
+        screenY: number,
+    ): boolean {
+
+        if (
+            !Number.isFinite(screenX) ||
+            !Number.isFinite(screenY)
+        ) {
+            return false;
         }
 
-        console.log(
-            "Random Fire generated.",
-            result,
+        const worldX =
+            screenX + this.camera.getPositionX();
+
+        const worldY =
+            screenY + this.camera.getPositionY();
+
+        const sampledWind =
+            this.localWindSystem
+                .getAccelerationAt(
+                    worldX,
+                    worldY,
+                );
+
+        this.fireManager
+            .setValidationRandomSeed(
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .deterministicSeed,
+            );
+
+        const ignited =
+            this.fireManager
+                .igniteArea(
+                    worldX,
+                    worldY,
+                    DEFAULT_FIRE_WIND_TEST_DEFINITION
+                        .ignitionRadius,
+                    DEFAULT_FIRE_WIND_TEST_DEFINITION
+                        .ignitionCount,
+                ) >
+            0;
+
+        if (ignited) {
+            this.fireDirectionalValidation
+                ?.begin(
+                    worldX,
+                    worldY,
+                    sampledWind.x,
+                    sampledWind.y,
+                );
+
+            console.log(
+                "Fire directional validation started.",
+                {
+                    ignitionX:
+                        worldX,
+                    ignitionY:
+                        worldY,
+                    windX:
+                        sampledWind.x,
+                    windY:
+                        sampledWind.y,
+                },
+            );
+        }
+
+        return ignited;
+    }
+
+    public resetFireTestState(): void {
+
+        this.fireManager.reset();
+
+        this.fireManager
+            .setValidationRandomSeed(
+                null,
+            );
+
+        this.fireDirectionalValidation
+            ?.reset();
+
+        this.environmentField.reset();
+
+        this.surfaceSystem.removeStateRegionsByIdPrefix(
+            "fire-scorch-",
         );
+
+        this.environmentFieldVisualizer?.update();
+    }
+
+    private createFireDirectionalValidation():
+        void {
+
+        if (
+            this.fireDirectionalValidation
+        ) {
+            throw new Error(
+                "World Fire directional validation has already been created.",
+            );
+        }
+
+        this.fireDirectionalValidation =
+            new FireDirectionalValidation(
+                this.fireManager,
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .minimumDirectionalDisplacement,
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .directionMatchThreshold,
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .minimumDownwindToUpwindRatio,
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .debugArrowLength,
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .debugArrowHeadLength,
+            );
+
+        this.worldContainer
+            .addChild(
+                this.fireDirectionalValidation
+                    .getGraphics(),
+            );
+    }
+
+    public getFireDirectionalValidationState():
+        FireDirectionalValidationState | null {
+
+        return this.fireDirectionalValidation
+            ?.getState() ??
+            null;
+    }
+
+    public subscribeToFireDirectionalValidation(
+        listener:
+            FireDirectionalValidationStateListener,
+    ): () => void {
+
+        if (
+            !this.fireDirectionalValidation
+        ) {
+            throw new Error(
+                "Fire directional validation is unavailable before World initialization.",
+            );
+        }
+
+        return this.fireDirectionalValidation
+            .subscribe(
+                listener,
+            );
     }
 
     // -------------------------------------------------------
@@ -1399,28 +1536,10 @@ export class World {
     private createPhase4FireTestSurfaceZones():
         void {
 
-        const wetDefinition =
-            DEFAULT_FIRE_TEST_DEFINITION
-                .wetGrassBlocker;
-
-        const sandDefinition =
-            DEFAULT_FIRE_TEST_DEFINITION
-                .sandBlocker;
-
         this.surfaceSystem
             .addZone(
-                wetDefinition,
-            );
-
-        this.surfaceSystem
-            .setZoneState(
-                wetDefinition.id,
-                SurfaceState.Wet,
-            );
-
-        this.surfaceSystem
-            .addZone(
-                sandDefinition,
+                DEFAULT_FIRE_TEST_DEFINITION
+                    .sandBlocker,
             );
     }
 
@@ -1465,6 +1584,23 @@ export class World {
             );
     }
 
+    private destroyFanEntities(): void {
+
+        for (
+            let index = this.fans.length - 1;
+            index >= 0;
+            index -= 1
+        ) {
+            const fan = this.fans[index];
+
+            if (fan) {
+                this.removeEntity(fan);
+            }
+        }
+
+        this.fans.length = 0;
+    }
+
     private createFanEntities():
         void {
 
@@ -1483,7 +1619,10 @@ export class World {
                 .getSources()
         ) {
             if (
-                !source.enabled
+                !source.enabled ||
+                source.id.startsWith(
+                    "fire-validation-field-",
+                )
             ) {
                 continue;
             }
@@ -1594,9 +1733,7 @@ export class World {
     private createSurfaceGraphics():
         void {
 
-        if (
-            this.surfaceGraphics
-        ) {
+        if (this.surfaceGraphics) {
             throw new Error(
                 "World surface graphics have already been created.",
             );
@@ -1605,253 +1742,20 @@ export class World {
         this.surfaceGraphics =
             new Graphics();
 
-        this.worldContainer
-            .addChildAt(
-                this.surfaceGraphics,
-                Math.min(
-                    1,
-                    this.worldContainer
-                        .children
-                        .length,
-                ),
-            );
-
-        this.drawSurfaceGraphics();
+        this.worldContainer.addChildAt(
+            this.surfaceGraphics,
+            Math.min(
+                2,
+                this.worldContainer.children.length,
+            ),
+        );
     }
 
     private drawSurfaceGraphics():
         void {
 
-        if (
-            !this.surfaceGraphics
-        ) {
-            return;
-        }
-
         this.surfaceGraphics
-            .clear();
-
-        for (
-            const zone
-            of this.surfaceSystem
-                .getZones()
-        ) {
-            const definition =
-                zone.getDefinition();
-
-            const sample =
-                this.surfaceSystem
-                    .getSurfaceAt(
-                        definition.x +
-                        definition.width /
-                        2,
-
-                        definition.y +
-                        definition.height /
-                        2,
-                    );
-
-            const visual =
-                this.getSurfaceVisual(
-                    sample.surfaceType,
-                    sample.surfaceState,
-                );
-
-            this.drawSurfaceRectangle(
-                definition.x,
-                definition.y,
-                definition.width,
-                definition.height,
-                visual,
-            );
-        }
-
-        for (
-            const region
-            of this.surfaceSystem
-                .getStateRegions()
-        ) {
-            const definition =
-                region.getDefinition();
-
-            /*
-             * Dynamic Fire scorch is presented by
-             * EnvironmentFieldVisualizer. Fire keeps a coarse
-             * compatibility SurfaceStateRegion so existing
-             * scorched-grass rolling resistance remains intact,
-             * but that rectangle is not rendered.
-             */
-            if (
-                definition.id
-                    .startsWith(
-                        "fire-scorch-",
-                    )
-            ) {
-                continue;
-            }
-
-            const sample =
-                this.surfaceSystem
-                    .getSurfaceAt(
-                        definition.x +
-                        definition.width /
-                        2,
-
-                        definition.y +
-                        definition.height /
-                        2,
-                    );
-
-            const visual =
-                this.getSurfaceVisual(
-                    sample.surfaceType,
-                    sample.surfaceState,
-                );
-
-            this.drawSurfaceRectangle(
-                definition.x,
-                definition.y,
-                definition.width,
-                definition.height,
-                visual,
-            );
-        }
-    }
-
-    private drawSurfaceRectangle(
-        x:
-            number,
-
-        y:
-            number,
-
-        width:
-            number,
-
-        height:
-            number,
-
-        visual: {
-            readonly fillColor:
-            number;
-
-            readonly fillAlpha:
-            number;
-
-            readonly outlineColor:
-            number;
-        },
-    ): void {
-
-        if (
-            !this.surfaceGraphics
-        ) {
-            return;
-        }
-
-        this.surfaceGraphics
-            .rect(
-                x,
-                y,
-                width,
-                height,
-            );
-
-        this.surfaceGraphics
-            .fill({
-                color:
-                    visual.fillColor,
-
-                alpha:
-                    visual.fillAlpha,
-            });
-
-        this.surfaceGraphics
-            .rect(
-                x,
-                y,
-                width,
-                height,
-            );
-
-        this.surfaceGraphics
-            .stroke({
-                width:
-                    PHASE_2_SURFACE_VISUALS
-                        .outlineWidth,
-
-                color:
-                    visual.outlineColor,
-
-                alpha:
-                    PHASE_2_SURFACE_VISUALS
-                        .outlineAlpha,
-            });
-    }
-
-    private getSurfaceVisual(
-        surfaceType:
-            SurfaceType,
-
-        surfaceState:
-            SurfaceState,
-    ): {
-        readonly fillColor: number;
-        readonly fillAlpha: number;
-        readonly outlineColor: number;
-    } {
-
-        if (
-            surfaceType ===
-            SurfaceType.Grass
-        ) {
-            switch (
-            surfaceState
-            ) {
-                case SurfaceState.Wet:
-                    return PHASE_2_SURFACE_VISUALS
-                        .wetGrass;
-
-                case SurfaceState.Scorched:
-                    return PHASE_2_SURFACE_VISUALS
-                        .scorchedGrass;
-
-                case SurfaceState.Normal:
-                    return PHASE_2_SURFACE_VISUALS
-                        .normalGrass;
-
-                default:
-                    throw new Error(
-                        `Unsupported Grass surface state '${surfaceState}'.`,
-                    );
-            }
-        }
-
-        if (
-            surfaceType ===
-            SurfaceType.Sand
-        ) {
-            switch (
-            surfaceState
-            ) {
-                case SurfaceState.Wet:
-                    return PHASE_2_SURFACE_VISUALS
-                        .wetSand;
-
-                case SurfaceState.Dry:
-                    return PHASE_2_SURFACE_VISUALS
-                        .drySand;
-
-                default:
-                    throw new Error(
-                        `Unsupported Sand surface state '${surfaceState}'.`,
-                    );
-            }
-        }
-
-        throw new Error(
-            `Unsupported surface type '${surfaceType}'.`,
-        );
+            ?.clear();
     }
 
     // -------------------------------------------------------
@@ -1991,78 +1895,100 @@ export class World {
     private createCourse():
         void {
 
-        if (
-            this.courseBackground
-        ) {
+        if (this.courseBackground) {
             throw new Error(
                 "World course background has already been created.",
             );
         }
 
-        const terrainTexture =
-            AssetLoader
-                .getTexture(
-                    this.courseVisualDefinition
-                        .terrainTextureKey,
-                );
+        const minX =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION.minimumX;
 
-        const courseWidth =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION
-                .maximumX -
-            DEFAULT_COURSE_BOUNDARY_DEFINITION
-                .minimumX;
+        const minY =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION.minimumY;
 
-        const courseHeight =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION
-                .maximumY -
-            DEFAULT_COURSE_BOUNDARY_DEFINITION
-                .minimumY;
+        const width =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION.maximumX -
+            minX;
+
+        const height =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION.maximumY -
+            minY;
 
         this.courseBackground =
             new TilingSprite({
                 texture:
-                    terrainTexture,
-
-                width:
-                    courseWidth,
-
-                height:
-                    courseHeight,
+                    AssetLoader.getTexture(
+                        this.courseVisualDefinition
+                            .grassTextureKey,
+                    ),
+                width,
+                height,
             });
 
-        this.courseBackground
-            .position
-            .set(
-                DEFAULT_COURSE_BOUNDARY_DEFINITION
-                    .minimumX,
+        this.courseBackground.position.set(
+            minX,
+            minY,
+        );
 
-                DEFAULT_COURSE_BOUNDARY_DEFINITION
-                    .minimumY,
-            );
-
-        this.courseBackground
-            .tileScale
-            .set(
-                this.courseVisualDefinition
-                    .terrainTileScaleX,
-
-                this.courseVisualDefinition
-                    .terrainTileScaleY,
-            );
+        this.courseBackground.tileScale.set(
+            this.courseVisualDefinition
+                .grassTileScale,
+        );
 
         this.courseBackground.alpha =
             this.courseVisualDefinition
                 .terrainAlpha;
 
-        this.courseBackground.tint =
-            this.courseVisualDefinition
-                .terrainTint;
+        this.worldContainer.addChildAt(
+            this.courseBackground,
+            0,
+        );
 
-        this.worldContainer
-            .addChildAt(
-                this.courseBackground,
-                0,
-            );
+        this.createSandTexture();
+    }
+
+    private createSandTexture():
+        void {
+
+        const definition =
+            DEFAULT_FIRE_TEST_DEFINITION
+                .sandBlocker;
+
+        const sand =
+            new TilingSprite({
+                texture:
+                    AssetLoader.getTexture(
+                        this.courseVisualDefinition
+                            .sandTextureKey,
+                    ),
+                width:
+                    definition.width,
+                height:
+                    definition.height,
+            });
+
+        sand.position.set(
+            definition.x,
+            definition.y,
+        );
+
+        sand.tileScale.set(
+            this.courseVisualDefinition
+                .sandTileScale,
+        );
+
+        sand.alpha =
+            this.courseVisualDefinition
+                .terrainAlpha;
+
+        this.worldContainer.addChildAt(
+            sand,
+            Math.min(
+                1,
+                this.worldContainer.children.length,
+            ),
+        );
     }
 
     // -------------------------------------------------------
@@ -2075,71 +2001,41 @@ export class World {
     ): void {
 
         if (
-            definition
-                .terrainTextureKey
-                .trim()
-                .length ===
-            0
+            definition.grassTextureKey.trim().length === 0 ||
+            definition.sandTextureKey.trim().length === 0
         ) {
             throw new Error(
-                "Course terrain texture key cannot be empty.",
+                "Course terrain texture keys cannot be empty.",
             );
         }
 
         if (
-            !Number.isFinite(
-                definition
-                    .terrainTileScaleX,
-            ) ||
-            definition
-                .terrainTileScaleX <=
-            0
+            !Number.isFinite(definition.grassTileScale) ||
+            !Number.isFinite(definition.sandTileScale) ||
+            !Number.isFinite(definition.terrainAlpha)
         ) {
             throw new Error(
-                "Course terrainTileScaleX must be a finite number greater than zero.",
+                "Course visual definition values must be finite.",
             );
         }
 
         if (
-            !Number.isFinite(
-                definition
-                    .terrainTileScaleY,
-            ) ||
-            definition
-                .terrainTileScaleY <=
-            0
+            definition.grassTileScale <= 0 ||
+            definition.sandTileScale <= 0
         ) {
             throw new Error(
-                "Course terrainTileScaleY must be a finite number greater than zero.",
+                "Course terrain tile scales must be greater than zero.",
             );
         }
 
         if (
-            !Number.isFinite(
-                definition
-                    .terrainAlpha,
-            ) ||
-            definition
-                .terrainAlpha <
-            0 ||
-            definition
-                .terrainAlpha >
-            1
+            definition.terrainAlpha < 0 ||
+            definition.terrainAlpha > 1
         ) {
             throw new Error(
-                "Course terrainAlpha must remain between zero and one.",
-            );
-        }
-
-        if (
-            !Number.isFinite(
-                definition
-                    .terrainTint,
-            )
-        ) {
-            throw new Error(
-                "Course terrainTint must be a finite number.",
+                "Course terrain alpha must be between zero and one.",
             );
         }
     }
+
 }

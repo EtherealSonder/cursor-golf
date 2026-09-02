@@ -17,12 +17,14 @@ import {
 } from "../Entity";
 
 /**
- * Presentation entity for one local airflow source.
+ * Simple top-down procedural Fan.
  *
- * The Fan does not calculate environmental force.
- * LocalWindSystem remains the authoritative physics
- * owner. This entity only represents the mechanism
- * in the world.
+ * The art is authored pointing to the right. The
+ * complete Entity rotates with directionRadians, so
+ * the silhouette itself communicates airflow
+ * direction without a separate arrow.
+ *
+ * Physics remains owned by LocalWindSystem.
  */
 export class Fan extends Entity {
 
@@ -31,6 +33,10 @@ export class Fan extends Entity {
 
     private readonly visualDefinition:
         FanVisualDefinition;
+
+    private shadowGraphics:
+        Graphics | null =
+        null;
 
     private housingGraphics:
         Graphics | null =
@@ -81,14 +87,12 @@ export class Fan extends Entity {
                 .positionY,
         );
 
-        /*
-         * Fan art is authored pointing to the right.
-         * Rotating the root aligns it with the source
-         * direction.
-         */
         this.container.rotation =
             this.sourceDefinition
                 .directionRadians;
+
+        this.shadowGraphics =
+            new Graphics();
 
         this.housingGraphics =
             new Graphics();
@@ -104,6 +108,15 @@ export class Fan extends Entity {
                 this.bladeGraphics,
             );
 
+        /*
+         * Shadow first, then housing, then moving
+         * internal blade hint.
+         */
+        this.container
+            .addChild(
+                this.shadowGraphics,
+            );
+
         this.container
             .addChild(
                 this.housingGraphics,
@@ -114,6 +127,7 @@ export class Fan extends Entity {
                 this.bladeContainer,
             );
 
+        this.drawShadow();
         this.drawHousing();
         this.drawBlades();
     }
@@ -151,10 +165,16 @@ export class Fan extends Entity {
         this.housingGraphics
             ?.destroy();
 
+        this.shadowGraphics
+            ?.destroy();
+
         this.bladeGraphics =
             null;
 
         this.housingGraphics =
+            null;
+
+        this.shadowGraphics =
             null;
 
         this.bladeContainer =
@@ -165,242 +185,149 @@ export class Fan extends Entity {
         });
     }
 
-    private drawHousing():
+    private drawShadow():
         void {
 
-        if (
-            !this.housingGraphics
-        ) {
+        if (!this.shadowGraphics) {
             return;
         }
 
-        const definition =
-            this.visualDefinition;
+        const d = this.visualDefinition;
+        const rearX = -d.bodyLength * 0.50;
+        const frontX = d.bodyLength * 0.50;
 
-        this.housingGraphics
-            .clear();
+        this.shadowGraphics.clear();
 
-        this.housingGraphics
-            .circle(
-                0,
-                0,
-                definition
-                    .housingRadius,
-            );
-
-        this.housingGraphics
-            .fill(
-                definition
-                    .housingFillColor,
-            );
-
-        this.housingGraphics
-            .stroke({
-                width:
-                    definition
-                        .outlineWidth,
-
-                color:
-                    definition
-                        .housingOutlineColor,
+        this.shadowGraphics
+            .roundRect(
+                rearX + d.shadowOffsetX,
+                -d.bodyHalfHeight + d.shadowOffsetY,
+                d.bodyLength,
+                d.bodyHalfHeight * 2,
+                12,
+            )
+            .fill({
+                color: d.bodyShadowColor,
+                alpha: 0.24,
             });
 
-        /*
-         * Small nozzle/direction marker on the
-         * downwind side of the housing.
-         */
-        const markerStartX =
-            definition
-                .housingRadius +
-            4;
-
-        const markerEndX =
-            markerStartX +
-            22;
-
-        this.housingGraphics
-            .moveTo(
-                markerStartX,
-                0,
-            );
-
-        this.housingGraphics
-            .lineTo(
-                markerEndX,
-                0,
-            );
-
-        this.housingGraphics
-            .lineTo(
-                markerEndX -
-                7,
-                -6,
-            );
-
-        this.housingGraphics
-            .moveTo(
-                markerEndX,
-                0,
-            );
-
-        this.housingGraphics
-            .lineTo(
-                markerEndX -
-                7,
-                6,
-            );
-
-        this.housingGraphics
-            .stroke({
-                width: 3,
-
-                color:
-                    definition
-                        .directionIndicatorColor,
+        this.shadowGraphics
+            .ellipse(
+                frontX + d.shadowOffsetX,
+                d.shadowOffsetY,
+                12,
+                d.bodyHalfHeight,
+            )
+            .fill({
+                color: d.bodyShadowColor,
+                alpha: 0.24,
             });
+    }
+
+    private drawHousing():
+        void {
+
+        if (!this.housingGraphics) {
+            return;
+        }
+
+        const d = this.visualDefinition;
+        const rearX = -d.bodyLength * 0.50;
+        const frontX = d.bodyLength * 0.50;
+
+        this.housingGraphics.clear();
+
+        // One simple saturated drum body.
+        this.housingGraphics
+            .roundRect(
+                rearX,
+                -d.bodyHalfHeight,
+                d.bodyLength,
+                d.bodyHalfHeight * 2,
+                12,
+            )
+            .fill(d.bodyFillColor)
+            .stroke({
+                width: d.outlineWidth,
+                color: d.housingOutlineColor,
+                join: "round",
+            });
+
+        // Minimal darker rear band for cylindrical depth.
+        this.housingGraphics
+            .roundRect(
+                rearX + 7,
+                -d.bodyHalfHeight + 5,
+                10,
+                d.bodyHalfHeight * 2 - 10,
+                5,
+            )
+            .fill(d.bodyShadowColor);
+
+        // Large oval front opening is the main directional cue.
+        this.housingGraphics
+            .ellipse(
+                frontX,
+                0,
+                13,
+                d.bodyHalfHeight + 2,
+            )
+            .fill(d.bladeColor)
+            .stroke({
+                width: d.outlineWidth,
+                color: d.housingOutlineColor,
+            });
+
+        this.housingGraphics
+            .ellipse(
+                frontX,
+                0,
+                9,
+                d.bodyHalfHeight - 4,
+            )
+            .fill(d.outletColor);
     }
 
     private drawBlades():
         void {
 
-        if (
-            !this.bladeGraphics
-        ) {
+        if (!this.bladeGraphics || !this.bladeContainer) {
             return;
         }
 
-        const definition =
-            this.visualDefinition;
+        const d = this.visualDefinition;
+        const frontX = d.bodyLength * 0.50;
 
-        this.bladeGraphics
-            .clear();
+        this.bladeContainer.position.set(
+            frontX,
+            0,
+        );
 
-        for (
-            let bladeIndex = 0;
-            bladeIndex <
-            definition
-                .bladeCount;
-            bladeIndex += 1
-        ) {
-            const bladeAngle =
-                (
-                    Math.PI *
-                    2 *
-                    bladeIndex
-                ) /
-                definition
-                    .bladeCount;
+        this.bladeGraphics.clear();
 
-            const cosine =
-                Math.cos(
-                    bladeAngle,
-                );
-
-            const sine =
-                Math.sin(
-                    bladeAngle,
-                );
-
-            const innerRadius =
-                7;
-
-            const outerRadius =
-                definition
-                    .bladeLength;
-
-            const halfWidth =
-                definition
-                    .bladeWidth /
-                2;
-
-            const perpendicularX =
-                -sine;
-
-            const perpendicularY =
-                cosine;
-
-            const innerX =
-                cosine *
-                innerRadius;
-
-            const innerY =
-                sine *
-                innerRadius;
-
-            const outerX =
-                cosine *
-                outerRadius;
-
-            const outerY =
-                sine *
-                outerRadius;
+        // Only a symbolic three-spoke fan element.
+        for (let i = 0; i < 3; i += 1) {
+            const angle = (Math.PI * 2 * i) / 3;
 
             this.bladeGraphics
                 .moveTo(
-                    innerX +
-                    perpendicularX *
-                    halfWidth,
-                    innerY +
-                    perpendicularY *
-                    halfWidth,
-                );
-
-            this.bladeGraphics
+                    Math.cos(angle) * 5,
+                    Math.sin(angle) * 5,
+                )
                 .lineTo(
-                    outerX +
-                    perpendicularX *
-                    halfWidth *
-                    0.55,
-                    outerY +
-                    perpendicularY *
-                    halfWidth *
-                    0.55,
-                );
-
-            this.bladeGraphics
-                .lineTo(
-                    outerX -
-                    perpendicularX *
-                    halfWidth *
-                    0.55,
-                    outerY -
-                    perpendicularY *
-                    halfWidth *
-                    0.55,
-                );
-
-            this.bladeGraphics
-                .lineTo(
-                    innerX -
-                    perpendicularX *
-                    halfWidth,
-                    innerY -
-                    perpendicularY *
-                    halfWidth,
-                );
-
-            this.bladeGraphics
-                .closePath();
-
-            this.bladeGraphics
-                .fill(
-                    definition
-                        .bladeColor,
-                );
+                    Math.cos(angle) * 16,
+                    Math.sin(angle) * 16,
+                )
+                .stroke({
+                    width: 6,
+                    color: d.bladeColor,
+                    cap: "round",
+                });
         }
 
         this.bladeGraphics
-            .circle(
-                0,
-                0,
-                7,
-            );
-
-        this.bladeGraphics
-            .fill(
-                definition
-                    .hubColor,
-            );
+            .circle(0, 0, 5)
+            .fill(d.hubColor);
     }
 
     private validateSourceDefinition(

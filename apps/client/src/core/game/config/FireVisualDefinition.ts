@@ -1,3 +1,7 @@
+import {
+    GAME_COLOR_PALETTE,
+} from "./GameColorPalette";
+
 /**
  * Presentation-only configuration for the temporary PixiJS Graphics
  * Fire renderer.
@@ -38,9 +42,9 @@ export const DEFAULT_FIRE_VISUAL_DEFINITION:
 
     enabled: true,
 
-    outerColor: 0xff5a00,
-    middleColor: 0xff9800,
-    innerColor: 0xffe15a,
+    outerColor: GAME_COLOR_PALETTE.fire.accent,
+    middleColor: GAME_COLOR_PALETTE.fire.main,
+    innerColor: GAME_COLOR_PALETTE.fire.hot,
 
     outerAlpha: 0.24,
     middleAlpha: 0.76,

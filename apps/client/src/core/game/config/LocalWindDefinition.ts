@@ -1,3 +1,7 @@
+import {
+    GAME_COLOR_PALETTE,
+} from "./GameColorPalette";
+
 /**
  * Immutable definition for one local directional
  * airflow source.
@@ -12,11 +16,6 @@ export interface LocalWindSourceDefinition {
 
     readonly id: string;
 
-    /**
-     * World-space origin of the airflow.
-     *
-     * For a Fan this is the centre of the Fan entity.
-     */
     readonly positionX: number;
     readonly positionY: number;
 
@@ -31,48 +30,36 @@ export interface LocalWindSourceDefinition {
     readonly directionRadians: number;
 
     /**
-     * Distance the airflow extends from its origin.
-     *
-     * Units: world pixels.
+     * World-space airflow length.
      */
     readonly range: number;
 
     /**
-     * Half-width of the airflow at the source.
-     *
-     * The complete source width is twice this value.
+     * Half-width at the Fan outlet.
      */
     readonly startHalfWidth: number;
 
     /**
-     * Half-width of the airflow at maximum range.
-     *
-     * A value larger than startHalfWidth creates the
-     * intended widening fan/cone shape.
+     * Half-width at maximum range.
      */
     readonly endHalfWidth: number;
 
     /**
-     * Maximum acceleration near the source centre.
+     * Maximum authored gameplay acceleration.
      *
-     * Units: pixels per second squared.
+     * Units: world pixels per second squared.
      */
     readonly acceleration: number;
 
     /**
-     * Fraction of source acceleration retained at the
-     * far end of the airflow.
-     *
-     * Expected range: 0 to 1.
+     * Fraction of source acceleration retained at
+     * maximum range.
      */
     readonly endStrengthMultiplier: number;
 
     /**
-     * Fraction of the half-width used for smooth edge
-     * falloff.
-     *
-     * Example:
-     * 0.25 = outer 25 percent fades toward zero.
+     * Fraction of the outer stream width used for
+     * smooth lateral falloff.
      */
     readonly edgeFalloffFraction: number;
 
@@ -84,8 +71,10 @@ export interface LocalWindVisualDefinition {
     readonly enabled: boolean;
 
     /**
-     * Number of reusable particles allocated per
-     * enabled source.
+     * Total reusable gust records per source.
+     *
+     * A gust is drawn as a short curved ribbon rather
+     * than a single rain-like line.
      */
     readonly particlesPerSource: number;
 
@@ -104,43 +93,66 @@ export interface LocalWindVisualDefinition {
     readonly lineColor: number;
 
     /**
-     * Small distance beyond the source range before a
-     * particle is recycled. This prevents visible
-     * popping exactly at the force boundary.
+     * Probability that a gust becomes a short wisp.
      */
+    readonly wispProbability: number;
+
+    /**
+     * Controls the sideways bend of each gust.
+     */
+    readonly minimumCurveAmount: number;
+    readonly maximumCurveAmount: number;
+
+    /**
+     * Visual density is intentionally biased toward
+     * the Fan outlet.
+     */
+    readonly sourceDensityBias: number;
+
     readonly recyclePadding: number;
 }
 
 export interface FanVisualDefinition {
 
-    readonly housingRadius: number;
+    /**
+     * Fan art is authored pointing to the right and
+     * the complete Entity is rotated to match airflow.
+     *
+     * The silhouette is intentionally directional:
+     * a rounded body with a narrower intake/rear and
+     * an obvious open outlet on the downwind side.
+     */
+    readonly bodyLength: number;
+    readonly bodyHalfHeight: number;
+    readonly rearHalfHeight: number;
+    readonly outletDepth: number;
+
     readonly bladeLength: number;
     readonly bladeWidth: number;
     readonly bladeCount: number;
 
-    readonly housingFillColor: number;
+    readonly bodyFillColor: number;
+    readonly bodyShadowColor: number;
     readonly housingOutlineColor: number;
+    readonly outletColor: number;
     readonly bladeColor: number;
     readonly hubColor: number;
-    readonly directionIndicatorColor: number;
+    readonly accentColor: number;
 
     readonly outlineWidth: number;
+    readonly shadowOffsetX: number;
+    readonly shadowOffsetY: number;
 
-    /**
-     * Purely visual blade rotation speed.
-     *
-     * Units: radians per second.
-     */
     readonly bladeRotationSpeed: number;
 }
 
 /**
  * Temporary fixed local-wind test layout.
  *
- * These are intentionally data definitions rather
- * than hardcoded logic in World. Later level loading
- * can replace this array without changing the
- * LocalWindSystem.
+ * These values are deliberately exaggerated. Fans
+ * are gameplay hazards, not ordinary ambient wind.
+ * A fast golf shot should still visibly bend while
+ * crossing one of these streams.
  */
 export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
     readonly LocalWindSourceDefinition[] = [
@@ -150,12 +162,12 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 170,
             positionY: 150,
             directionRadians: 0,
-            range: 520,
-            startHalfWidth: 48,
-            endHalfWidth: 120,
-            acceleration: 760,
-            endStrengthMultiplier: 0.55,
-            edgeFalloffFraction: 0.24,
+            range: 760,
+            startHalfWidth: 62,
+            endHalfWidth: 168,
+            acceleration: 1100,
+            endStrengthMultiplier: 0.60,
+            edgeFalloffFraction: 0.22,
             enabled: true,
         },
 
@@ -164,12 +176,12 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 820,
             positionY: 110,
             directionRadians: Math.PI / 2,
-            range: 470,
-            startHalfWidth: 46,
-            endHalfWidth: 112,
-            acceleration: 700,
-            endStrengthMultiplier: 0.55,
-            edgeFalloffFraction: 0.24,
+            range: 760,
+            startHalfWidth: 62,
+            endHalfWidth: 168,
+            acceleration: 1050,
+            endStrengthMultiplier: 0.60,
+            edgeFalloffFraction: 0.22,
             enabled: true,
         },
 
@@ -178,12 +190,12 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 1030,
             positionY: 545,
             directionRadians: Math.PI,
-            range: 500,
-            startHalfWidth: 50,
-            endHalfWidth: 125,
-            acceleration: 780,
-            endStrengthMultiplier: 0.52,
-            edgeFalloffFraction: 0.24,
+            range: 760,
+            startHalfWidth: 62,
+            endHalfWidth: 168,
+            acceleration: 1150,
+            endStrengthMultiplier: 0.60,
+            edgeFalloffFraction: 0.22,
             enabled: true,
         },
 
@@ -192,12 +204,12 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 250,
             positionY: 610,
             directionRadians: -Math.PI / 4,
-            range: 480,
-            startHalfWidth: 44,
-            endHalfWidth: 110,
-            acceleration: 720,
-            endStrengthMultiplier: 0.55,
-            edgeFalloffFraction: 0.24,
+            range: 760,
+            startHalfWidth: 60,
+            endHalfWidth: 160,
+            acceleration: 1100,
+            endStrengthMultiplier: 0.60,
+            edgeFalloffFraction: 0.22,
             enabled: true,
         },
     ];
@@ -207,41 +219,56 @@ export const DEFAULT_LOCAL_WIND_VISUAL_DEFINITION:
 
     enabled: true,
 
-    particlesPerSource: 24,
+    particlesPerSource: 28,
 
-    minimumParticleSpeed: 210,
-    maximumParticleSpeed: 390,
+    minimumParticleSpeed: 260,
+    maximumParticleSpeed: 440,
 
-    minimumParticleLength: 20,
-    maximumParticleLength: 54,
+    minimumParticleLength: 45,
+    maximumParticleLength: 100,
 
-    minimumParticleWidth: 1.5,
-    maximumParticleWidth: 2.8,
+    minimumParticleWidth: 3,
+    maximumParticleWidth: 6,
 
-    minimumOpacity: 0.30,
-    maximumOpacity: 0.68,
+    minimumOpacity: 0.15,
+    maximumOpacity: 0.55,
 
-    lineColor: 0xffffff,
+    lineColor: 0xf4fbff,
 
-    recyclePadding: 18,
+    wispProbability: 0.30,
+
+    minimumCurveAmount: 5,
+    maximumCurveAmount: 16,
+
+    sourceDensityBias: 1.65,
+
+    recyclePadding: 24,
 };
 
 export const DEFAULT_FAN_VISUAL_DEFINITION:
     FanVisualDefinition = {
 
-    housingRadius: 34,
+    bodyLength: 59,
+    bodyHalfHeight: 26,
+    rearHalfHeight: 21,
+    outletDepth: 12,
 
-    bladeLength: 22,
-    bladeWidth: 8,
-    bladeCount: 4,
+    bladeLength: 15,
+    bladeWidth: 7,
+    bladeCount: 3,
 
-    housingFillColor: 0x3f4d56,
-    housingOutlineColor: 0x1f292f,
-    bladeColor: 0xb8c5cc,
-    hubColor: 0x263238,
-    directionIndicatorColor: 0xd9f3ff,
+    bodyFillColor: GAME_COLOR_PALETTE.terrain.water,
+    bodyShadowColor: GAME_COLOR_PALETTE.terrain.waterShadow,
+    housingOutlineColor: GAME_COLOR_PALETTE.ink.outline,
+    outletColor: GAME_COLOR_PALETTE.golf.hole,
+    bladeColor: GAME_COLOR_PALETTE.golf.ball,
+    hubColor: GAME_COLOR_PALETTE.ink.outline,
+    accentColor: GAME_COLOR_PALETTE.fire.hot,
 
     outlineWidth: 3,
 
-    bladeRotationSpeed: 5.2,
+    shadowOffsetX: 4,
+    shadowOffsetY: 5,
+
+    bladeRotationSpeed: 5.8,
 };

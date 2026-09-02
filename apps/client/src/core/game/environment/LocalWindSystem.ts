@@ -27,7 +27,7 @@ export interface LocalWindSample {
  */
 export class LocalWindSystem {
 
-    private readonly sources:
+    private sources:
         readonly LocalWindSourceDefinition[];
 
     constructor(
@@ -53,6 +53,21 @@ export class LocalWindSystem {
         readonly LocalWindSourceDefinition[] {
 
         return this.sources;
+    }
+
+    public replaceSources(
+        sources:
+            readonly LocalWindSourceDefinition[],
+    ): void {
+
+        this.validateSources(sources);
+
+        this.sources =
+            sources.map(
+                (source) => ({
+                    ...source,
+                }),
+            );
     }
 
     public getAccelerationAt(

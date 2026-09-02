@@ -17,9 +17,18 @@ import type {
 } from "./debug/WindValidationMetrics";
 
 import type {
+    FireDirectionalValidationState,
+    FireDirectionalValidationStateListener,
+} from "./debug/FireDirectionalValidation";
+
+import type {
     WindState,
     WindStateListener,
 } from "./environment/WindManager";
+
+import type {
+    FireWindTestConfigurationId,
+} from "./config/FireWindTestDefinition";
 
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
@@ -304,18 +313,46 @@ export class Game {
     }
 
     // -------------------------------------------------------------------------
-    // Fire Debug Bridge
+    // Fire / Wind Test Bridge
     // -------------------------------------------------------------------------
 
-    public generateRandomFire():
-        void {
+    public applyFireWindTestConfiguration(
+        configurationId:
+            FireWindTestConfigurationId,
+    ): void {
+
+        this.world?.applyFireWindTestConfiguration(
+            configurationId,
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Fire Directional Validation Bridge
+    // -------------------------------------------------------------------------
+
+    public getFireDirectionalValidationState():
+        FireDirectionalValidationState | null {
+
+        return this.world
+            ?.getFireDirectionalValidationState() ??
+            null;
+    }
+
+    public subscribeToFireDirectionalValidation(
+        listener:
+            FireDirectionalValidationStateListener,
+    ): () => void {
 
         if (!this.world) {
-            return;
+            throw new Error(
+                "Cannot subscribe to Fire directional validation before the Game has started.",
+            );
         }
 
-        this.world
-            .generateRandomVisibleFire();
+        return this.world
+            .subscribeToFireDirectionalValidation(
+                listener,
+            );
     }
 
     // -------------------------------------------------------------------------
@@ -410,6 +447,16 @@ export class Game {
             EngineState.Running
         ) {
             return;
+        }
+
+        if (
+            this.inputManager.wasContextActionPressed() &&
+            !(this.shotController?.isPreparingShot() ?? false)
+        ) {
+            this.world?.igniteTestFireAtScreenPosition(
+                this.inputManager.getMouseX(),
+                this.inputManager.getMouseY(),
+            );
         }
 
         this.cameraController

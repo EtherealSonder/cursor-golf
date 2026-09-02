@@ -325,6 +325,15 @@ export class InputManager {
         return this.rightMousePressed;
     }
 
+    public wasContextActionPressed():
+        boolean {
+
+        return (
+            this.pointerInsideTarget &&
+            this.rightMousePressed
+        );
+    }
+
     public wasRightMouseReleased():
         boolean {
 

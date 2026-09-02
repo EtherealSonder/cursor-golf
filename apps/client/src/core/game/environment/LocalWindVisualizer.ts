@@ -16,29 +16,25 @@ import type {
 } from "./LocalWindSystem";
 
 interface LocalWindParticle {
-
     sourceIndex: number;
-
     distance: number;
-
     lateralRatio: number;
-
     speed: number;
-
     length: number;
-
     width: number;
-
     opacity: number;
 }
 
 /**
- * Presentation-only visualization for local airflow.
+ * Development/local-Wind presentation.
  *
- * One reusable PixiJS Graphics object renders all
- * local streams. Particles are stored as lightweight
- * plain records and recycle inside their owning
- * source.
+ * The simulation authority remains LocalWindSystem. This visualizer
+ * deliberately uses a simple, readable stream:
+ *
+ * Fan/source -> straight forward streaks -> end of source range.
+ *
+ * Streaks never extend behind the source and the stream starts narrow
+ * at the source opening before widening with the LocalWind field.
  */
 export class LocalWindVisualizer {
 
@@ -54,8 +50,19 @@ export class LocalWindVisualizer {
     private readonly particles:
         LocalWindParticle[] = [];
 
+    private sourceSignature =
+        "";
+
     private destroyed =
         false;
+
+    /**
+     * Keeps the first visible streak just in front of the Fan opening.
+     * LocalWindSourceDefinition.position is also the airflow origin, so
+     * this is presentation-only and does not change physics.
+     */
+    private readonly frontOffset =
+        34;
 
     constructor(
         localWindSystem:
@@ -78,7 +85,7 @@ export class LocalWindVisualizer {
         this.graphics =
             new Graphics();
 
-        this.createParticlePool();
+        this.synchronizeParticlePool();
     }
 
     public getGraphics():
@@ -93,19 +100,13 @@ export class LocalWindVisualizer {
 
         if (
             this.destroyed ||
-            !this.definition
-                .enabled
+            !this.definition.enabled ||
+            !Number.isFinite(deltaTime)
         ) {
             return;
         }
 
-        if (
-            !Number.isFinite(
-                deltaTime,
-            )
-        ) {
-            return;
-        }
+        this.synchronizeParticlePool();
 
         const safeDeltaTime =
             Math.max(
@@ -139,9 +140,7 @@ export class LocalWindVisualizer {
 
             if (
                 particle.distance >
-                source.range +
-                this.definition
-                    .recyclePadding
+                source.range
             ) {
                 this.recycleParticle(
                     particle,
@@ -156,9 +155,7 @@ export class LocalWindVisualizer {
     public destroy():
         void {
 
-        if (
-            this.destroyed
-        ) {
+        if (this.destroyed) {
             return;
         }
 
@@ -175,13 +172,58 @@ export class LocalWindVisualizer {
             .destroy();
     }
 
+    private synchronizeParticlePool():
+        void {
+
+        const sources =
+            this.localWindSystem
+                .getSources();
+
+        const nextSignature =
+            sources
+                .filter(
+                    (source): boolean =>
+                        !source.id.startsWith(
+                            "fire-validation-field-",
+                        ),
+                )
+                .map(
+                    (source): string =>
+                        [
+                            source.id,
+                            source.enabled ? "1" : "0",
+                            source.positionX,
+                            source.positionY,
+                            source.directionRadians,
+                            source.range,
+                            source.startHalfWidth,
+                            source.endHalfWidth,
+                        ].join(":"),
+                )
+                .join("|");
+
+        if (
+            nextSignature ===
+            this.sourceSignature
+        ) {
+            return;
+        }
+
+        this.sourceSignature =
+            nextSignature;
+
+        this.particles.length =
+            0;
+
+        this.createParticlePool();
+
+        this.graphics.clear();
+    }
+
     private createParticlePool():
         void {
 
-        if (
-            !this.definition
-                .enabled
-        ) {
+        if (!this.definition.enabled) {
             return;
         }
 
@@ -191,18 +233,18 @@ export class LocalWindVisualizer {
 
         for (
             let sourceIndex = 0;
-            sourceIndex <
-            sources.length;
+            sourceIndex < sources.length;
             sourceIndex += 1
         ) {
             const source =
-                sources[
-                sourceIndex
-                ];
+                sources[sourceIndex];
 
             if (
                 !source ||
-                !source.enabled
+                !source.enabled ||
+                source.id.startsWith(
+                    "fire-validation-field-",
+                )
             ) {
                 continue;
             }
@@ -210,120 +252,113 @@ export class LocalWindVisualizer {
             for (
                 let particleIndex = 0;
                 particleIndex <
-                this.definition
-                    .particlesPerSource;
+                this.definition.particlesPerSource;
                 particleIndex += 1
             ) {
-                const particle:
-                    LocalWindParticle = {
-
-                    sourceIndex,
-
-                    distance:
-                        Math.random() *
-                        source.range,
-
-                    lateralRatio:
-                        this.randomBetween(
-                            -0.92,
-                            0.92,
-                        ),
-
-                    speed:
-                        this.randomBetween(
-                            this.definition
-                                .minimumParticleSpeed,
-                            this.definition
-                                .maximumParticleSpeed,
-                        ),
-
-                    length:
-                        this.randomBetween(
-                            this.definition
-                                .minimumParticleLength,
-                            this.definition
-                                .maximumParticleLength,
-                        ),
-
-                    width:
-                        this.randomBetween(
-                            this.definition
-                                .minimumParticleWidth,
-                            this.definition
-                                .maximumParticleWidth,
-                        ),
-
-                    opacity:
-                        this.randomBetween(
-                            this.definition
-                                .minimumOpacity,
-                            this.definition
-                                .maximumOpacity,
-                        ),
-                };
-
                 this.particles.push(
-                    particle,
+                    this.createParticle(
+                        sourceIndex,
+                        source,
+                        false,
+                    ),
                 );
             }
         }
     }
 
-    private recycleParticle(
-        particle:
-            LocalWindParticle,
+    private createParticle(
+        sourceIndex: number,
+        source: LocalWindSourceDefinition,
+        nearSource: boolean,
+    ): LocalWindParticle {
 
-        source:
-            LocalWindSourceDefinition,
+        const length =
+            this.randomBetween(
+                this.definition.minimumParticleLength,
+                this.definition.maximumParticleLength,
+            );
+
+        const minimumDistance =
+            this.getMinimumHeadDistance(
+                length,
+                source,
+            );
+
+        return {
+            sourceIndex,
+
+            distance:
+                nearSource
+                    ? minimumDistance
+                    : this.randomBetween(
+                        minimumDistance,
+                        Math.max(
+                            minimumDistance,
+                            source.range,
+                        ),
+                    ),
+
+            /*
+             * Keep the source mouth visually narrow. The actual world
+             * stream widens later through interpolation in drawParticle.
+             */
+            lateralRatio:
+                this.randomBetween(
+                    -0.72,
+                    0.72,
+                ),
+
+            speed:
+                this.randomBetween(
+                    this.definition.minimumParticleSpeed,
+                    this.definition.maximumParticleSpeed,
+                ),
+
+            length,
+
+            width:
+                this.randomBetween(
+                    this.definition.minimumParticleWidth,
+                    this.definition.maximumParticleWidth,
+                ),
+
+            opacity:
+                this.randomBetween(
+                    this.definition.minimumOpacity,
+                    this.definition.maximumOpacity,
+                ),
+        };
+    }
+
+    private recycleParticle(
+        particle: LocalWindParticle,
+        source: LocalWindSourceDefinition,
     ): void {
 
-        particle.distance =
-            this.randomBetween(
-                0,
-                Math.min(
-                    28,
-                    source.range *
-                    0.08,
-                ),
+        const replacement =
+            this.createParticle(
+                particle.sourceIndex,
+                source,
+                true,
             );
+
+        particle.distance =
+            replacement.distance;
 
         particle.lateralRatio =
-            this.randomBetween(
-                -0.92,
-                0.92,
-            );
+            replacement.lateralRatio;
 
         particle.speed =
-            this.randomBetween(
-                this.definition
-                    .minimumParticleSpeed,
-                this.definition
-                    .maximumParticleSpeed,
-            );
+            replacement.speed;
 
         particle.length =
-            this.randomBetween(
-                this.definition
-                    .minimumParticleLength,
-                this.definition
-                    .maximumParticleLength,
-            );
+            replacement.length;
 
         particle.width =
-            this.randomBetween(
-                this.definition
-                    .minimumParticleWidth,
-                this.definition
-                    .maximumParticleWidth,
-            );
+            replacement.width;
 
         particle.opacity =
-            this.randomBetween(
-                this.definition
-                    .minimumOpacity,
-                this.definition
-                    .maximumOpacity,
-            );
+            replacement.opacity;
     }
 
     private drawParticles():
@@ -346,137 +381,196 @@ export class LocalWindVisualizer {
 
             if (
                 !source ||
-                !source.enabled
+                !source.enabled ||
+                source.id.startsWith(
+                    "fire-validation-field-",
+                )
             ) {
                 continue;
             }
 
-            const clampedDistance =
-                Math.min(
-                    Math.max(
-                        particle.distance,
-                        0,
-                    ),
-                    source.range,
-                );
-
-            const progress =
-                source.range >
-                    0
-                    ? clampedDistance /
-                    source.range
-                    : 0;
-
-            const currentHalfWidth =
-                this.lerp(
-                    source.startHalfWidth,
-                    source.endHalfWidth,
-                    progress,
-                );
-
-            const lateralOffset =
-                particle.lateralRatio *
-                currentHalfWidth;
-
-            const directionX =
-                Math.cos(
-                    source.directionRadians,
-                );
-
-            const directionY =
-                Math.sin(
-                    source.directionRadians,
-                );
-
-            const perpendicularX =
-                -directionY;
-
-            const perpendicularY =
-                directionX;
-
-            const headX =
-                source.positionX +
-                directionX *
-                clampedDistance +
-                perpendicularX *
-                lateralOffset;
-
-            const headY =
-                source.positionY +
-                directionY *
-                clampedDistance +
-                perpendicularY *
-                lateralOffset;
-
-            const tailX =
-                headX -
-                directionX *
-                particle.length;
-
-            const tailY =
-                headY -
-                directionY *
-                particle.length;
-
-            const edgeFade =
-                1 -
-                Math.pow(
-                    Math.abs(
-                        particle.lateralRatio,
-                    ),
-                    4,
-                );
-
-            const endFade =
-                progress >
-                    0.88
-                    ? Math.max(
-                        0,
-                        (
-                            1 -
-                            progress
-                        ) /
-                        0.12,
-                    )
-                    : 1;
-
-            const renderedOpacity =
-                particle.opacity *
-                edgeFade *
-                endFade;
-
-            if (
-                renderedOpacity <=
-                0
-            ) {
-                continue;
-            }
-
-            this.graphics
-                .moveTo(
-                    tailX,
-                    tailY,
-                );
-
-            this.graphics
-                .lineTo(
-                    headX,
-                    headY,
-                );
-
-            this.graphics
-                .stroke({
-                    width:
-                        particle.width,
-
-                    color:
-                        this.definition
-                            .lineColor,
-
-                    alpha:
-                        renderedOpacity,
-                });
+            this.drawParticle(
+                particle,
+                source,
+            );
         }
+    }
+
+    private drawParticle(
+        particle: LocalWindParticle,
+        source: LocalWindSourceDefinition,
+    ): void {
+
+        const minimumHeadDistance =
+            this.getMinimumHeadDistance(
+                particle.length,
+                source,
+            );
+
+        const distance =
+            Math.min(
+                Math.max(
+                    particle.distance,
+                    minimumHeadDistance,
+                ),
+                source.range,
+            );
+
+        const progress =
+            source.range > 0
+                ? Math.min(
+                    1,
+                    Math.max(
+                        0,
+                        distance /
+                        source.range,
+                    ),
+                )
+                : 0;
+
+        const directionX =
+            Math.cos(
+                source.directionRadians,
+            );
+
+        const directionY =
+            Math.sin(
+                source.directionRadians,
+            );
+
+        const perpendicularX =
+            -directionY;
+
+        const perpendicularY =
+            directionX;
+
+        /*
+         * The stream begins at only 28% of the simulation half-width
+         * and gradually opens toward the configured field width.
+         * This makes particles visibly emerge from the Fan opening.
+         */
+        const visualHalfWidth =
+            this.lerp(
+                Math.max(
+                    8,
+                    source.startHalfWidth *
+                    0.22,
+                ),
+                Math.max(
+                    12,
+                    source.endHalfWidth *
+                    0.48,
+                ),
+                progress,
+            );
+
+        const lateral =
+            particle.lateralRatio *
+            visualHalfWidth;
+
+        const headX =
+            source.positionX +
+            directionX *
+            distance +
+            perpendicularX *
+            lateral;
+
+        const headY =
+            source.positionY +
+            directionY *
+            distance +
+            perpendicularY *
+            lateral;
+
+        /*
+         * Because distance is always >= frontOffset + length, the tail
+         * can never cross behind the source/Fan.
+         */
+        const tailDistance =
+            Math.max(
+                this.frontOffset,
+                distance -
+                particle.length,
+            );
+
+        const tailX =
+            source.positionX +
+            directionX *
+            tailDistance +
+            perpendicularX *
+            lateral;
+
+        const tailY =
+            source.positionY +
+            directionY *
+            tailDistance +
+            perpendicularY *
+            lateral;
+
+        const sourceFade =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    (
+                        distance -
+                        minimumHeadDistance
+                    ) /
+                    34,
+                ),
+            );
+
+        const endFade =
+            progress > 0.92
+                ? Math.max(
+                    0,
+                    (1 - progress) /
+                    0.08,
+                )
+                : 1;
+
+        const alpha =
+            particle.opacity *
+            Math.max(
+                0.22,
+                sourceFade,
+            ) *
+            endFade;
+
+        if (alpha <= 0.01) {
+            return;
+        }
+
+        this.graphics
+            .moveTo(
+                tailX,
+                tailY,
+            )
+            .lineTo(
+                headX,
+                headY,
+            )
+            .stroke({
+                width:
+                    particle.width,
+                color:
+                    this.definition.lineColor,
+                alpha,
+                cap:
+                    "round",
+            });
+    }
+
+    private getMinimumHeadDistance(
+        particleLength: number,
+        source: LocalWindSourceDefinition,
+    ): number {
+
+        return Math.min(
+            source.range,
+            this.frontOffset +
+            particleLength,
+        );
     }
 
     private lerp(
@@ -487,16 +581,13 @@ export class LocalWindVisualizer {
 
         return (
             start +
-            (
-                end -
-                start
-            ) *
+            (end - start) *
             Math.min(
-                Math.max(
-                    amount,
-                    0,
-                ),
                 1,
+                Math.max(
+                    0,
+                    amount,
+                ),
             )
         );
     }
@@ -509,10 +600,7 @@ export class LocalWindVisualizer {
         return (
             minimum +
             Math.random() *
-            (
-                maximum -
-                minimum
-            )
+            (maximum - minimum)
         );
     }
 
@@ -523,12 +611,9 @@ export class LocalWindVisualizer {
 
         if (
             !Number.isInteger(
-                definition
-                    .particlesPerSource,
+                definition.particlesPerSource,
             ) ||
-            definition
-                .particlesPerSource <
-            0
+            definition.particlesPerSource < 0
         ) {
             throw new Error(
                 "Local wind particlesPerSource must be a non-negative integer.",
@@ -542,22 +627,18 @@ export class LocalWindVisualizer {
             definition.maximumParticleLength,
             definition.minimumParticleWidth,
             definition.maximumParticleWidth,
+            definition.sourceDensityBias,
         ];
 
         if (
             !positiveValues.every(
-                (
-                    value,
-                ) =>
-                    Number.isFinite(
-                        value,
-                    ) &&
-                    value >
-                    0,
+                (value) =>
+                    Number.isFinite(value) &&
+                    value > 0,
             )
         ) {
             throw new Error(
-                "Local wind particle speed, length, and width values must be finite and positive.",
+                "Local wind visual speed, length, width, and density values must be finite and positive.",
             );
         }
 
@@ -575,29 +656,13 @@ export class LocalWindVisualizer {
         }
 
         if (
-            definition.minimumOpacity <
-            0 ||
-            definition.maximumOpacity >
-            1 ||
+            definition.minimumOpacity < 0 ||
+            definition.maximumOpacity > 1 ||
             definition.maximumOpacity <
             definition.minimumOpacity
         ) {
             throw new Error(
                 "Local wind opacity range must remain between zero and one.",
-            );
-        }
-
-        if (
-            !Number.isFinite(
-                definition
-                    .recyclePadding,
-            ) ||
-            definition
-                .recyclePadding <
-            0
-        ) {
-            throw new Error(
-                "Local wind recyclePadding must be finite and non-negative.",
             );
         }
     }

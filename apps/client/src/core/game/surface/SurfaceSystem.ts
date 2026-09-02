@@ -357,6 +357,42 @@ export class SurfaceSystem {
         this.notifyChanged();
     }
 
+    public removeStateRegionsByIdPrefix(
+        idPrefix:
+            string,
+    ): number {
+
+        if (idPrefix.length === 0) {
+            return 0;
+        }
+
+        let removedCount = 0;
+
+        for (
+            let index = this.stateRegions.length - 1;
+            index >= 0;
+            index -= 1
+        ) {
+            const region = this.stateRegions[index];
+
+            if (
+                !region ||
+                !region.getDefinition().id.startsWith(idPrefix)
+            ) {
+                continue;
+            }
+
+            this.stateRegions.splice(index, 1);
+            removedCount += 1;
+        }
+
+        if (removedCount > 0) {
+            this.notifyChanged();
+        }
+
+        return removedCount;
+    }
+
     public getStateRegions():
         readonly SurfaceStateRegion[] {
 
