@@ -1,132 +1,106 @@
 import {
-    Container,
     Graphics,
-    RenderTexture,
-    Sprite,
 } from "pixi.js";
 
+import {
+    DEFAULT_SCORCH_VFX_DEFINITION,
+} from "../config/ScorchVfxDefinition";
+
 import type {
-    Application,
-} from "pixi.js";
+    ScorchVfxDefinition,
+} from "../config/ScorchVfxDefinition";
 
 import type {
     EnvironmentField,
 } from "./EnvironmentField";
 
 /**
- * Incremental persistent scorch renderer.
+ * Presentation-only renderer for persistent burn/scorch state.
  *
- * EnvironmentField remains the simulation authority. This renderer only
- * consumes dirty burn cells, quantizes their visual state, batches the
- * changed brush shapes, and paints them into one persistent RenderTexture.
+ * Target:
+ * - stronger continuous damage trail than the previous refinement
+ * - fresh high-burn regions read as dark char
+ * - medium burn reads dark brown
+ * - lighter burn preserves more grass
+ * - irregular edges remain, but the footprint no longer dissolves into
+ *   isolated dirt dots
  */
 export class EnvironmentFieldVisualizer {
-    private readonly container:
-        Container;
-
-    private readonly burnSprite:
-        Sprite;
-
-    private readonly burnTexture:
-        RenderTexture;
-
-    private readonly brush:
+    private readonly graphics:
         Graphics;
+
+    private lastBurnRevision =
+        -1;
 
     private destroyed =
         false;
 
-    constructor(
-        private readonly app:
-            Application,
-
+    public constructor(
         private readonly environmentField:
             EnvironmentField,
+
+        private readonly scorch:
+            ScorchVfxDefinition =
+            DEFAULT_SCORCH_VFX_DEFINITION,
     ) {
-        this.container =
-            new Container();
-
-        const definition =
-            this.environmentField
-                .getDefinition();
-
-        const courseWidth =
-            this.environmentField
-                .getColumnCount() *
-            definition.cellSize;
-
-        const courseHeight =
-            this.environmentField
-                .getRowCount() *
-            definition.cellSize;
-
-        this.burnTexture =
-            RenderTexture.create({
-                width:
-                    Math.max(
-                        1,
-                        Math.ceil(
-                            courseWidth *
-                            definition.visual.renderTextureScale,
-                        ),
-                    ),
-
-                height:
-                    Math.max(
-                        1,
-                        Math.ceil(
-                            courseHeight *
-                            definition.visual.renderTextureScale,
-                        ),
-                    ),
-            });
-
-        this.burnSprite =
-            new Sprite(
-                this.burnTexture,
-            );
-
-        this.burnSprite.scale.set(
-            1 /
-            definition.visual.renderTextureScale,
-        );
-
-        this.burnSprite.position.set(
-            this.environmentField
-                .getMinimumWorldX(),
-
-            this.environmentField
-                .getMinimumWorldY(),
-        );
-
-        this.brush =
+        this.graphics =
             new Graphics();
-
-        this.container
-            .addChild(
-                this.burnSprite,
-            );
     }
 
     public update(): void {
+
         if (
             this.destroyed ||
             !this.environmentField
                 .getDefinition()
-                .visual.enabled
+                .visual
+                .enabled
         ) {
             return;
         }
 
-        const dirtyIndices =
+        const revision =
             this.environmentField
-                .consumeDirtyBurnIndices();
+                .getBurnRevision();
 
         if (
-            dirtyIndices.length === 0
+            revision ===
+            this.lastBurnRevision
         ) {
             return;
         }
+
+        this.lastBurnRevision =
+            revision;
+
+        this.redraw();
+    }
+
+    public destroy(): void {
+
+        if (this.destroyed) {
+            return;
+        }
+
+        this.destroyed =
+            true;
+
+        this.graphics
+            .removeFromParent();
+
+        this.graphics.destroy();
+    }
+
+    public getGraphics():
+        Graphics {
+
+        return this.graphics;
+    }
+
+    private redraw():
+        void {
+
+        this.graphics.clear();
 
         const definition =
             this.environmentField
@@ -135,17 +109,10 @@ export class EnvironmentFieldVisualizer {
         const visual =
             definition.visual;
 
-        const bucketCount =
-            visual.burnVisualBucketCount;
-
-        this.brush.clear();
-
-        let paintedAny =
-            false;
-
         for (
             const index
-            of dirtyIndices
+            of this.environmentField
+                .getTrackedBurnIndices()
         ) {
             const burnAmount =
                 this.environmentField
@@ -155,259 +122,269 @@ export class EnvironmentFieldVisualizer {
 
             if (
                 burnAmount <
-                visual.minimumVisibleBurnAmount
+                visual
+                    .minimumVisibleBurnAmount
             ) {
                 continue;
             }
 
-            const bucket =
-                Math.min(
-                    bucketCount,
-                    Math.max(
-                        1,
-                        Math.ceil(
-                            burnAmount *
-                            bucketCount,
-                        ),
-                    ),
+            const center =
+                this.environmentField
+                    .getWorldCenterByIndex(
+                        index,
+                    );
+
+            if (!center) {
+                continue;
+            }
+
+            const burn =
+                this.clamp01(
+                    burnAmount,
+                );
+
+            const skipChance =
+                this.lerp(
+                    this.scorch
+                        .lowBurnSkipChance,
+                    this.scorch
+                        .highBurnSkipChance,
+                    burn,
                 );
 
             if (
-                bucket <=
-                this.environmentField
-                    .getVisualBurnBucket(
-                        index,
-                    )
+                this.seededUnit(
+                    index *
+                    71 +
+                    5,
+                ) <
+                skipChance
             ) {
                 continue;
             }
 
-            this.environmentField
-                .setVisualBurnBucket(
-                    index,
-                    bucket,
-                );
+            const jitter =
+                definition.cellSize *
+                this.scorch
+                    .positionJitterMultiplier;
 
-            this.appendBurnSample(
-                index,
-                bucket /
-                bucketCount,
-            );
-
-            paintedAny =
-                true;
-        }
-
-        if (
-            !paintedAny
-        ) {
-            return;
-        }
-
-        this.app.renderer.render({
-            container:
-                this.brush,
-
-            target:
-                this.burnTexture,
-
-            clear:
-                false,
-        });
-    }
-
-    public destroy(): void {
-        if (
-            this.destroyed
-        ) {
-            return;
-        }
-
-        this.destroyed =
-            true;
-
-        this.brush.destroy();
-
-        this.burnSprite
-            .removeFromParent();
-
-        this.burnSprite
-            .destroy();
-
-        this.burnTexture
-            .destroy(
-                true,
-            );
-
-        this.container
-            .removeFromParent();
-
-        this.container
-            .destroy({
-                children:
-                    false,
-            });
-    }
-
-    public getContainer():
-        Container {
-        return this.container;
-    }
-
-    private appendBurnSample(
-        index: number,
-        normalizedBurn: number,
-    ): void {
-        const definition =
-            this.environmentField
-                .getDefinition();
-
-        const visual =
-            definition.visual;
-
-        const center =
-            this.environmentField
-                .getWorldCenterByIndex(
-                    index,
-                );
-
-        if (!center) {
-            return;
-        }
-
-        const offsetRange =
-            definition.cellSize *
-            visual.positionJitterMultiplier;
-
-        const offsetX =
-            this.seededRange(
-                index * 13 + 17,
-                -offsetRange,
-                offsetRange,
-            );
-
-        const offsetY =
-            this.seededRange(
-                index * 19 + 31,
-                -offsetRange,
-                offsetRange,
-            );
-
-        const baseRadius =
-            definition.cellSize *
-            this.seededRange(
-                index * 29 + 47,
-                visual.minimumRadiusMultiplier,
-                visual.maximumRadiusMultiplier,
-            ) *
-            (
-                0.72 +
-                normalizedBurn * 0.38
-            );
-
-        const color =
-            this.interpolateColor(
-                visual.lowBurnColor,
-                visual.highBurnColor,
-                normalizedBurn,
-            );
-
-        const alpha =
-            visual.minimumAlpha +
-            (
-                visual.maximumAlpha -
-                visual.minimumAlpha
-            ) *
-            normalizedBurn;
-
-        const localX =
-            (
+            const x =
                 center.x +
-                offsetX -
-                this.environmentField
-                    .getMinimumWorldX()
-            ) *
-            visual.renderTextureScale;
+                this.seededRange(
+                    index *
+                    13 +
+                    17,
+                    -jitter,
+                    jitter,
+                );
 
-        const localY =
-            (
+            const y =
                 center.y +
-                offsetY -
-                this.environmentField
-                    .getMinimumWorldY()
-            ) *
-            visual.renderTextureScale;
+                this.seededRange(
+                    index *
+                    19 +
+                    31,
+                    -jitter,
+                    jitter,
+                );
 
-        const scaledRadius =
-            baseRadius *
-            visual.renderTextureScale;
+            const radius =
+                definition.cellSize *
+                this.seededRange(
+                    index *
+                    29 +
+                    47,
+                    this.scorch
+                        .minimumRadiusMultiplier,
+                    this.scorch
+                        .maximumRadiusMultiplier,
+                ) *
+                this.lerp(
+                    0.82,
+                    1.08,
+                    burn,
+                );
 
-        this.brush
-            .circle(
-                localX,
-                localY,
-                scaledRadius,
+            const style =
+                this.getStyle(
+                    burn,
+                );
+
+            this.graphics
+                .circle(
+                    x,
+                    y,
+                    radius,
+                )
+                .fill({
+                    color:
+                        style.color,
+
+                    alpha:
+                        style.alpha,
+                });
+
+            if (
+                this.seededUnit(
+                    index *
+                    97 +
+                    61,
+                ) <
+                this.scorch
+                    .secondaryPatchChance
+            ) {
+                const angle =
+                    this.seededUnit(
+                        index *
+                        101 +
+                        73,
+                    ) *
+                    Math.PI *
+                    2;
+
+                const distance =
+                    radius *
+                    0.72;
+
+                this.graphics
+                    .circle(
+                        x +
+                        Math.cos(
+                            angle,
+                        ) *
+                        distance,
+
+                        y +
+                        Math.sin(
+                            angle,
+                        ) *
+                        distance,
+
+                        radius *
+                        this.scorch
+                            .secondaryPatchRadiusMultiplier,
+                    )
+                    .fill({
+                        color:
+                            style.color,
+
+                        alpha:
+                            style.alpha *
+                            this.scorch
+                                .secondaryPatchAlphaMultiplier,
+                    });
+            }
+        }
+    }
+
+    private getStyle(
+        burn: number,
+    ): {
+        color: number;
+        alpha: number;
+    } {
+
+        if (
+            burn >=
+            this.scorch
+                .freshBurnThreshold
+        ) {
+            const amount =
+                (
+                    burn -
+                    this.scorch
+                        .freshBurnThreshold
+                ) /
+                Math.max(
+                    0.001,
+                    1 -
+                    this.scorch
+                        .freshBurnThreshold,
+                );
+
+            return {
+                color:
+                    this.interpolateColor(
+                        this.scorch
+                            .recentCharColor,
+                        this.scorch
+                            .freshCharColor,
+                        amount,
+                    ),
+
+                alpha:
+                    this.lerp(
+                        this.scorch
+                            .recentCharAlpha,
+                        this.scorch
+                            .freshCharAlpha,
+                        amount,
+                    ),
+            };
+        }
+
+        if (
+            burn >=
+            this.scorch
+                .recentBurnThreshold
+        ) {
+            const amount =
+                (
+                    burn -
+                    this.scorch
+                        .recentBurnThreshold
+                ) /
+                Math.max(
+                    0.001,
+                    this.scorch
+                        .freshBurnThreshold -
+                    this.scorch
+                        .recentBurnThreshold,
+                );
+
+            return {
+                color:
+                    this.interpolateColor(
+                        this.scorch
+                            .oldCharColor,
+                        this.scorch
+                            .recentCharColor,
+                        amount,
+                    ),
+
+                alpha:
+                    this.lerp(
+                        this.scorch
+                            .oldCharAlpha,
+                        this.scorch
+                            .recentCharAlpha,
+                        amount,
+                    ),
+            };
+        }
+
+        const amount =
+            burn /
+            Math.max(
+                0.001,
+                this.scorch
+                    .recentBurnThreshold,
             );
 
-        this.brush
-            .fill({
-                color,
-                alpha,
-            });
+        return {
+            color:
+                this.scorch
+                    .oldCharColor,
 
-        for (
-            let lobeIndex = 0;
-            lobeIndex < visual.brushLobeCount;
-            lobeIndex += 1
-        ) {
-            const seed =
-                index * 71 +
-                lobeIndex * 97 +
-                53;
-
-            const lobeOffset =
-                scaledRadius *
-                visual.brushLobeOffsetMultiplier;
-
-            const lobeX =
-                localX +
-                this.seededRange(
-                    seed + 3,
-                    -lobeOffset,
-                    lobeOffset,
-                );
-
-            const lobeY =
-                localY +
-                this.seededRange(
-                    seed + 7,
-                    -lobeOffset,
-                    lobeOffset,
-                );
-
-            const lobeRadius =
-                scaledRadius *
-                visual.brushLobeRadiusMultiplier *
-                this.seededRange(
-                    seed + 11,
-                    0.72,
-                    1.18,
-                );
-
-            this.brush
-                .circle(
-                    lobeX,
-                    lobeY,
-                    lobeRadius,
-                );
-
-            this.brush
-                .fill({
-                    color,
-                    alpha:
-                        alpha * 0.72,
-                });
-        }
+            alpha:
+                this.scorch
+                    .oldCharAlpha *
+                this.lerp(
+                    0.62,
+                    1,
+                    amount,
+                ),
+        };
     }
 
     private interpolateColor(
@@ -415,65 +392,74 @@ export class EnvironmentFieldVisualizer {
         endColor: number,
         amount: number,
     ): number {
-        const safeAmount =
-            Math.min(
-                1,
-                Math.max(
-                    0,
-                    amount,
-                ),
+
+        const safe =
+            this.clamp01(
+                amount,
             );
 
-        const sr =
+        const startRed =
             (
-                startColor >> 16
-            ) & 0xff;
+                startColor >>
+                16
+            ) &
+            0xff;
 
-        const sg =
+        const startGreen =
             (
-                startColor >> 8
-            ) & 0xff;
+                startColor >>
+                8
+            ) &
+            0xff;
 
-        const sb =
-            startColor & 0xff;
+        const startBlue =
+            startColor &
+            0xff;
 
-        const er =
+        const endRed =
             (
-                endColor >> 16
-            ) & 0xff;
+                endColor >>
+                16
+            ) &
+            0xff;
 
-        const eg =
+        const endGreen =
             (
-                endColor >> 8
-            ) & 0xff;
+                endColor >>
+                8
+            ) &
+            0xff;
 
-        const eb =
-            endColor & 0xff;
+        const endBlue =
+            endColor &
+            0xff;
 
         return (
             Math.round(
-                sr +
-                (
-                    er - sr
-                ) *
-                safeAmount,
-            ) << 16
+                this.lerp(
+                    startRed,
+                    endRed,
+                    safe,
+                ),
+            ) <<
+            16
         ) |
             (
                 Math.round(
-                    sg +
-                    (
-                        eg - sg
-                    ) *
-                    safeAmount,
-                ) << 8
+                    this.lerp(
+                        startGreen,
+                        endGreen,
+                        safe,
+                    ),
+                ) <<
+                8
             ) |
             Math.round(
-                sb +
-                (
-                    eb - sb
-                ) *
-                safeAmount,
+                this.lerp(
+                    startBlue,
+                    endBlue,
+                    safe,
+                ),
             );
     }
 
@@ -482,22 +468,23 @@ export class EnvironmentFieldVisualizer {
         minimum: number,
         maximum: number,
     ): number {
-        return (
-            minimum +
-            (
-                maximum - minimum
-            ) *
+
+        return this.lerp(
+            minimum,
+            maximum,
             this.seededUnit(
                 seed,
-            )
+            ),
         );
     }
 
     private seededUnit(
         seed: number,
     ): number {
+
         let value =
-            seed >>> 0;
+            seed >>>
+            0;
 
         value +=
             0x6d2b79f5;
@@ -505,24 +492,59 @@ export class EnvironmentFieldVisualizer {
         value =
             Math.imul(
                 value ^
-                value >>> 15,
-                value | 1,
+                value >>>
+                15,
+                value |
+                1,
             );
 
         value ^=
             value +
             Math.imul(
                 value ^
-                value >>> 7,
-                value | 61,
+                value >>>
+                7,
+                value |
+                61,
             );
 
         return (
             (
                 value ^
-                value >>> 14
-            ) >>> 0
+                value >>>
+                14
+            ) >>>
+            0
         ) /
             4294967296;
+    }
+
+    private lerp(
+        start: number,
+        end: number,
+        amount: number,
+    ): number {
+
+        return (
+            start +
+            (
+                end -
+                start
+            ) *
+            amount
+        );
+    }
+
+    private clamp01(
+        value: number,
+    ): number {
+
+        return Math.max(
+            0,
+            Math.min(
+                1,
+                value,
+            ),
+        );
     }
 }

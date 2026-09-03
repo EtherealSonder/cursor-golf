@@ -24,6 +24,19 @@ export interface EnvironmentFieldDefinition {
 
     readonly minimumTrackedBurnAmount: number;
 
+    /**
+     * Heat is tracked sparsely once it reaches this amount.
+     * When cooling drops below this threshold the value is cleared
+     * and removed from the active thermal set.
+     */
+    readonly minimumTrackedHeat: number;
+
+    /**
+     * Passive heat loss per second. Active Water cooling is a later
+     * phase and will apply additional cooling on top of this value.
+     */
+    readonly heatDecayPerSecond: number;
+
     readonly minimumBurnNoiseMultiplier: number;
     readonly maximumBurnNoiseMultiplier: number;
 
@@ -81,6 +94,10 @@ export const DEFAULT_ENVIRONMENT_FIELD_DEFINITION:
 
     minimumTrackedBurnAmount: 0.025,
 
+    minimumTrackedHeat: 0.01,
+
+    heatDecayPerSecond: 0.04,
+
     minimumBurnNoiseMultiplier: 0.72,
     maximumBurnNoiseMultiplier: 1.16,
 
@@ -125,6 +142,8 @@ export function validateEnvironmentFieldDefinition(
         ["drySandInitialMoisture", definition.drySandInitialMoisture],
         ["wetSandInitialMoisture", definition.wetSandInitialMoisture],
         ["minimumTrackedBurnAmount", definition.minimumTrackedBurnAmount],
+        ["minimumTrackedHeat", definition.minimumTrackedHeat],
+        ["heatDecayPerSecond", definition.heatDecayPerSecond],
         ["minimumBurnNoiseMultiplier", definition.minimumBurnNoiseMultiplier],
         ["maximumBurnNoiseMultiplier", definition.maximumBurnNoiseMultiplier],
     ];

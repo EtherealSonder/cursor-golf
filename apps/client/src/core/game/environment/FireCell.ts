@@ -10,6 +10,10 @@ export class FireCell {
 
     private intensity: number;
 
+    private fuelLevel = 1;
+
+    private fuelIntensityMultiplier = 1;
+
     private nextSpreadAge: number;
 
     private scorchedSurface = false;
@@ -72,6 +76,40 @@ export class FireCell {
                 0,
                 Number.isFinite(intensity)
                     ? intensity
+                    : 0,
+            ),
+        );
+    }
+
+    public getFuelLevel(): number {
+        return this.fuelLevel;
+    }
+
+    public setFuelLevel(fuelLevel: number): void {
+        this.fuelLevel = Math.min(
+            1,
+            Math.max(
+                0,
+                Number.isFinite(fuelLevel)
+                    ? fuelLevel
+                    : 0,
+            ),
+        );
+    }
+
+    public getFuelIntensityMultiplier(): number {
+        return this.fuelIntensityMultiplier;
+    }
+
+    public setFuelIntensityMultiplier(
+        multiplier: number,
+    ): void {
+        this.fuelIntensityMultiplier = Math.min(
+            1,
+            Math.max(
+                0,
+                Number.isFinite(multiplier)
+                    ? multiplier
                     : 0,
             ),
         );

@@ -30,6 +30,14 @@ import type {
     FireWindTestConfigurationId,
 } from "./config/FireWindTestDefinition";
 
+import {
+    FireSourcePlacementMode,
+} from "./config/FireSourcePlacementMode";
+
+import type {
+    FireSourcePlacementModeListener,
+} from "./config/FireSourcePlacementMode";
+
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
 
@@ -58,6 +66,21 @@ export class Game {
 
     private shotController:
         ShotController | null = null;
+
+    private fireSourcePlacementMode:
+        FireSourcePlacementMode =
+        FireSourcePlacementMode.None;
+
+    private readonly fireSourcePlacementModeListeners:
+        Set<FireSourcePlacementModeListener> =
+        new Set<FireSourcePlacementModeListener>();
+
+    private directionalFirePlacementStart:
+        {
+            readonly x: number;
+            readonly y: number;
+        } | null =
+        null;
 
     private state:
         EngineState =
@@ -356,6 +379,172 @@ export class Game {
     }
 
     // -------------------------------------------------------------------------
+    // Fire Source Placement Mode
+    // -------------------------------------------------------------------------
+
+    public getFireSourcePlacementMode():
+        FireSourcePlacementMode {
+
+        return this.fireSourcePlacementMode;
+    }
+
+    public setFireSourcePlacementMode(
+        mode:
+            FireSourcePlacementMode,
+    ): void {
+
+        if (
+            this.fireSourcePlacementMode ===
+            mode
+        ) {
+            return;
+        }
+
+        this.fireSourcePlacementMode =
+            mode;
+
+        this.directionalFirePlacementStart =
+            null;
+
+        this.emitFireSourcePlacementMode();
+    }
+
+    public subscribeToFireSourcePlacementMode(
+        listener:
+            FireSourcePlacementModeListener,
+    ): () => void {
+
+        this.fireSourcePlacementModeListeners
+            .add(
+                listener,
+            );
+
+        listener(
+            this.fireSourcePlacementMode,
+        );
+
+        return (): void => {
+
+            this.fireSourcePlacementModeListeners
+                .delete(
+                    listener,
+                );
+        };
+    }
+
+    private emitFireSourcePlacementMode():
+        void {
+
+        for (
+            const listener
+            of this.fireSourcePlacementModeListeners
+        ) {
+            listener(
+                this.fireSourcePlacementMode,
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Fire Source Test Bridge
+    // -------------------------------------------------------------------------
+
+    public placePointFireSourceAtScreenPosition(
+        screenX: number,
+        screenY: number,
+    ): boolean {
+
+        return (
+            this.world
+                ?.placePointFireSourceAtScreenPosition(
+                    screenX,
+                    screenY,
+                ) ??
+            false
+        );
+    }
+
+    public placePersistentFireSourceAtScreenPosition(
+        screenX: number,
+        screenY: number,
+    ): boolean {
+
+        return (
+            this.world
+                ?.placePersistentFireSourceAtScreenPosition(
+                    screenX,
+                    screenY,
+                ) ??
+            false
+        );
+    }
+
+    public placeDirectionalFireSourceAtScreenPositions(
+        originScreenX: number,
+        originScreenY: number,
+        targetScreenX: number,
+        targetScreenY: number,
+    ): boolean {
+
+        return (
+            this.world
+                ?.placeDirectionalFireSourceAtScreenPositions(
+                    originScreenX,
+                    originScreenY,
+                    targetScreenX,
+                    targetScreenY,
+                ) ??
+            false
+        );
+    }
+
+    public placeSweepingFireSourceAtScreenPositions(
+        originScreenX: number, originScreenY: number, targetScreenX: number, targetScreenY: number,
+    ): boolean {
+        return this.world?.placeSweepingFireSourceAtScreenPositions(
+            originScreenX, originScreenY, targetScreenX, targetScreenY,
+        ) ?? false;
+    }
+
+    public clearFireSources():
+        void {
+
+        this.world
+            ?.clearFireSources();
+    }
+
+    public setAllFireSourcesEnabled(
+        enabled: boolean,
+    ): void {
+
+        this.world
+            ?.setAllFireSourcesEnabled(
+                enabled,
+            );
+    }
+
+    public getActiveFireSourceCount(): number {
+        return this.world?.getActiveFireSourceCount() ?? 0;
+    }
+
+    public setFireSourceDebugVisible(visible: boolean): void {
+        this.world?.setFireSourceDebugVisible(visible);
+    }
+
+    public isFireSourceDebugVisible(): boolean {
+        return this.world?.isFireSourceDebugVisible() ?? false;
+    }
+
+    public clearActiveFire(): void {
+        this.world?.resetActiveFireOnly();
+    }
+
+    public resetFireSourceTestEnvironment(): void {
+        this.world?.resetFireEnvironment();
+        this.setFireSourcePlacementMode(FireSourcePlacementMode.None);
+    }
+
+    // -------------------------------------------------------------------------
     // C7 Validation Metrics Bridge
     // -------------------------------------------------------------------------
 
@@ -449,15 +638,136 @@ export class Game {
             return;
         }
 
+        let fireSourcePlacementHandled =
+            false;
+
+        const placementMode =
+            this.fireSourcePlacementMode;
+
         if (
-            this.inputManager.wasContextActionPressed() &&
-            !(this.shotController?.isPreparingShot() ?? false)
+            (
+                placementMode === FireSourcePlacementMode.Directional ||
+                placementMode === FireSourcePlacementMode.Sweeping
+            ) &&
+            this.inputManager
+                .isPointerInsideTarget() &&
+            !(this.shotController
+                ?.isPreparingShot() ?? false)
         ) {
-            this.world?.igniteTestFireAtScreenPosition(
-                this.inputManager.getMouseX(),
-                this.inputManager.getMouseY(),
-            );
+            if (
+                this.inputManager
+                    .wasLeftMousePressed()
+            ) {
+                this.directionalFirePlacementStart = {
+                    x:
+                        this.inputManager
+                            .getMouseX(),
+                    y:
+                        this.inputManager
+                            .getMouseY(),
+                };
+
+                /*
+                 * Suppress normal golf interaction from the press that
+                 * begins the Fire-jet placement drag.
+                 */
+                fireSourcePlacementHandled =
+                    true;
+            }
+
+            if (
+                this.directionalFirePlacementStart &&
+                this.inputManager
+                    .isLeftMouseDown()
+            ) {
+                fireSourcePlacementHandled =
+                    true;
+            }
+
+            if (
+                this.directionalFirePlacementStart &&
+                this.inputManager
+                    .wasLeftMouseReleased()
+            ) {
+                const start =
+                    this.directionalFirePlacementStart;
+
+                const targetX = this.inputManager.getMouseX();
+                const targetY = this.inputManager.getMouseY();
+                const placed = placementMode === FireSourcePlacementMode.Sweeping
+                    ? this.placeSweepingFireSourceAtScreenPositions(start.x, start.y, targetX, targetY)
+                    : this.placeDirectionalFireSourceAtScreenPositions(start.x, start.y, targetX, targetY);
+
+                this.directionalFirePlacementStart =
+                    null;
+
+                fireSourcePlacementHandled =
+                    true;
+
+                if (placed) {
+                    this.setFireSourcePlacementMode(
+                        FireSourcePlacementMode.None,
+                    );
+                }
+            }
+        } else if (
+            placementMode !==
+            FireSourcePlacementMode.None &&
+            this.inputManager
+                .wasLeftMousePressed() &&
+            this.inputManager
+                .isPointerInsideTarget() &&
+            !(this.shotController
+                ?.isPreparingShot() ?? false)
+        ) {
+            const screenX =
+                this.inputManager
+                    .getMouseX();
+
+            const screenY =
+                this.inputManager
+                    .getMouseY();
+
+            switch (placementMode) {
+                case FireSourcePlacementMode.Point:
+                    fireSourcePlacementHandled =
+                        this.placePointFireSourceAtScreenPosition(
+                            screenX,
+                            screenY,
+                        );
+                    break;
+
+                case FireSourcePlacementMode.Persistent:
+                    fireSourcePlacementHandled =
+                        this.placePersistentFireSourceAtScreenPosition(
+                            screenX,
+                            screenY,
+                        );
+                    break;
+
+                case FireSourcePlacementMode.Directional:
+                case FireSourcePlacementMode.Sweeping:
+                case FireSourcePlacementMode.None:
+                    break;
+            }
+
+            if (
+                fireSourcePlacementHandled
+            ) {
+                this.setFireSourcePlacementMode(
+                    FireSourcePlacementMode.None,
+                );
+            }
         }
+
+        /*
+         * FIRE-VFX-1 final cleanup:
+         * right-click remains a generic InputManager context action, but it
+         * no longer ignites gameplay Fire during the isolated VFX test.
+         *
+         * The low-level right-click input support is intentionally retained
+         * for golf cancellation/context interactions and future debug tools.
+         */
 
         this.cameraController
             ?.setEnabled(
@@ -473,15 +783,19 @@ export class Game {
                 deltaTime,
             );
 
-        this.playerController
-            ?.update(
-                deltaTime,
-            );
+        if (
+            !fireSourcePlacementHandled
+        ) {
+            this.playerController
+                ?.update(
+                    deltaTime,
+                );
 
-        this.shotController
-            ?.update(
-                deltaTime,
-            );
+            this.shotController
+                ?.update(
+                    deltaTime,
+                );
+        }
 
         this.world
             ?.update(
@@ -526,6 +840,15 @@ export class Game {
 
         this.world =
             null;
+
+        this.fireSourcePlacementMode =
+            FireSourcePlacementMode.None;
+
+        this.directionalFirePlacementStart =
+            null;
+
+        this.fireSourcePlacementModeListeners
+            .clear();
 
         this.inputManager.destroy(
             this.container,

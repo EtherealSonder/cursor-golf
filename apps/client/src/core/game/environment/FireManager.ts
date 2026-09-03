@@ -16,6 +16,33 @@ import type {
 } from "../config/FireDefinition";
 
 import {
+    DEFAULT_FIRE_FUEL_DEFINITION,
+    validateFireFuelDefinition,
+} from "../config/FireFuelDefinition";
+
+import type {
+    FireFuelDefinition,
+} from "../config/FireFuelDefinition";
+
+import {
+    DEFAULT_FIRE_MOISTURE_DEFINITION,
+    validateFireMoistureDefinition,
+} from "../config/FireMoistureDefinition";
+
+import type {
+    FireMoistureDefinition,
+} from "../config/FireMoistureDefinition";
+
+import {
+    DEFAULT_FIRE_IGNITION_DEFINITION,
+    validateFireIgnitionDefinition,
+} from "../config/FireIgnitionDefinition";
+
+import type {
+    FireIgnitionDefinition,
+} from "../config/FireIgnitionDefinition";
+
+import {
     SurfaceState,
 } from "../surface/SurfaceState";
 
@@ -43,6 +70,15 @@ interface PendingIgnition {
     readonly gridX: number;
     readonly gridY: number;
     readonly generation: number;
+}
+
+export interface FireFieldIgnitionMetrics {
+    readonly trackedHeatCellCount: number;
+    readonly peakHeat: number;
+    readonly fieldIgnitionAttempts: number;
+    readonly fieldIgnitions: number;
+    readonly legacyIgnitions: number;
+    readonly lastHotCandidateCount: number;
 }
 
 const FIRE_NEIGHBOUR_OFFSETS:
@@ -81,6 +117,30 @@ export class FireManager {
     private readonly courseBoundaryDefinition:
         CourseBoundaryDefinition;
 
+    private readonly fuelDefinition:
+        FireFuelDefinition;
+
+    private readonly moistureDefinition:
+        FireMoistureDefinition;
+
+    private readonly ignitionDefinition:
+        FireIgnitionDefinition;
+
+    private fieldIgnitionAccumulator =
+        0;
+
+    private fieldIgnitionAttempts =
+        0;
+
+    private fieldIgnitions =
+        0;
+
+    private legacyIgnitions =
+        0;
+
+    private lastHotCandidateCount =
+        0;
+
     /**
      * null = normal gameplay randomness.
      * number = deterministic validation sequence.
@@ -103,6 +163,18 @@ export class FireManager {
             FireDefinition =
             DEFAULT_FIRE_DEFINITION,
 
+        fuelDefinition:
+            FireFuelDefinition =
+            DEFAULT_FIRE_FUEL_DEFINITION,
+
+        moistureDefinition:
+            FireMoistureDefinition =
+            DEFAULT_FIRE_MOISTURE_DEFINITION,
+
+        ignitionDefinition:
+            FireIgnitionDefinition =
+            DEFAULT_FIRE_IGNITION_DEFINITION,
+
         courseBoundaryDefinition:
             CourseBoundaryDefinition =
             DEFAULT_COURSE_BOUNDARY_DEFINITION,
@@ -111,6 +183,27 @@ export class FireManager {
 
         this.definition =
             definition;
+
+        validateFireFuelDefinition(
+            fuelDefinition,
+        );
+
+        this.fuelDefinition =
+            fuelDefinition;
+
+        validateFireMoistureDefinition(
+            moistureDefinition,
+        );
+
+        this.moistureDefinition =
+            moistureDefinition;
+
+        validateFireIgnitionDefinition(
+            ignitionDefinition,
+        );
+
+        this.ignitionDefinition =
+            ignitionDefinition;
 
         this.validateCourseBoundaryDefinition(
             courseBoundaryDefinition,
@@ -150,8 +243,50 @@ export class FireManager {
                 safeDeltaTime,
             );
 
+            const localFuel =
+                this.environmentField
+                    .getAverageFuelInRadius(
+                        cell.getWorldCenterX(),
+                        cell.getWorldCenterY(),
+                        this.definition
+                            .fieldInfluenceRadius,
+                    );
+
+            cell.setFuelLevel(
+                localFuel,
+            );
+
+            if (
+                localFuel <=
+                this.fuelDefinition
+                    .extinctionFuelThreshold
+            ) {
+                cell.setFuelIntensityMultiplier(0);
+                cell.setIntensity(0);
+
+                expiredCellKeys.add(
+                    this.createCellKey(
+                        cell.getGridX(),
+                        cell.getGridY(),
+                    ),
+                );
+
+                continue;
+            }
+
+            const localMoisture =
+                this.environmentField
+                    .getAverageMoistureInRadius(
+                        cell.getWorldCenterX(),
+                        cell.getWorldCenterY(),
+                        this.definition
+                            .fieldInfluenceRadius,
+                    );
+
             this.updateCellIntensity(
                 cell,
+                localFuel,
+                localMoisture,
             );
 
             this.applyEnvironmentFieldInfluence(
@@ -203,6 +338,24 @@ export class FireManager {
             }
         }
 
+        this.fieldIgnitionAccumulator +=
+            safeDeltaTime;
+
+        if (
+            this.fieldIgnitionAccumulator >=
+            this.ignitionDefinition
+                .ignitionCheckInterval
+        ) {
+            this.fieldIgnitionAccumulator =
+                this.fieldIgnitionAccumulator %
+                this.ignitionDefinition
+                    .ignitionCheckInterval;
+
+            this.collectFieldDrivenIgnitions(
+                pendingIgnitions,
+            );
+        }
+
         if (expiredCellKeys.size > 0) {
             this.removeExpiredCells(
                 expiredCellKeys,
@@ -212,6 +365,15 @@ export class FireManager {
         this.commitPendingIgnitions(
             pendingIgnitions,
         );
+
+        /*
+         * Evaluate ignition against the hottest current-frame state,
+         * then passively cool the field afterward.
+         */
+        this.environmentField
+            .updateHeat(
+                safeDeltaTime,
+            );
     }
 
     public reset(): void {
@@ -219,6 +381,21 @@ export class FireManager {
             0;
 
         this.occupiedCellKeys.clear();
+
+        this.fieldIgnitionAccumulator =
+            0;
+
+        this.fieldIgnitionAttempts =
+            0;
+
+        this.fieldIgnitions =
+            0;
+
+        this.legacyIgnitions =
+            0;
+
+        this.lastHotCandidateCount =
+            0;
     }
 
     public setValidationRandomSeed(
@@ -420,6 +597,32 @@ export class FireManager {
         return this.definition;
     }
 
+    public getFieldIgnitionMetrics():
+        FireFieldIgnitionMetrics {
+        return {
+            trackedHeatCellCount:
+                this.environmentField
+                    .getTrackedHeatIndices()
+                    .length,
+
+            peakHeat:
+                this.environmentField
+                    .getPeakTrackedHeat(),
+
+            fieldIgnitionAttempts:
+                this.fieldIgnitionAttempts,
+
+            fieldIgnitions:
+                this.fieldIgnitions,
+
+            legacyIgnitions:
+                this.legacyIgnitions,
+
+            lastHotCandidateCount:
+                this.lastHotCandidateCount,
+        };
+    }
+
     // ---------------------------------------------------------------------
     // Spread
     // ---------------------------------------------------------------------
@@ -515,6 +718,18 @@ export class FireManager {
                 continue;
             }
 
+            const targetMoisture =
+                this.environmentField
+                    .getMoistureAt(
+                        center.x,
+                        center.y,
+                    );
+
+            const moistureSpreadMultiplier =
+                this.getMoistureSpreadMultiplier(
+                    targetMoisture,
+                );
+
             const spreadProbability =
                 this.getDirectionalSpreadProbability(
                     offset.x,
@@ -523,7 +738,11 @@ export class FireManager {
                     normalizedWindX,
                     normalizedWindY,
                     windBiasStrength,
-                );
+                ) *
+                sourceCell.getIntensity() *
+                moistureSpreadMultiplier *
+                this.ignitionDefinition
+                    .legacySpreadMultiplier;
 
             if (
                 this.random() >
@@ -747,12 +966,317 @@ export class FireManager {
                     return;
                 }
 
-                this.igniteGridCell(
-                    request.gridX,
-                    request.gridY,
-                    request.generation,
-                );
+                if (
+                    this.igniteGridCell(
+                        request.gridX,
+                        request.gridY,
+                        request.generation,
+                    )
+                ) {
+                    if (
+                        request.generation >=
+                        this.definition
+                            .maximumSpreadGeneration
+                    ) {
+                        this.fieldIgnitions +=
+                            1;
+                    } else {
+                        this.legacyIgnitions +=
+                            1;
+                    }
+                }
             },
+        );
+    }
+
+    /**
+     * Converts sparse hot EnvironmentField cells into coarse Fire-cell
+     * ignition requests. Multiple 8 px field cells may map to the same
+     * 48 px Fire cell, so requests are deduplicated by Fire-grid key.
+     */
+    private collectFieldDrivenIgnitions(
+        pendingIgnitions:
+            Map<string, PendingIgnition>,
+    ): void {
+
+        const candidates:
+            Array<{
+                readonly gridX: number;
+                readonly gridY: number;
+                readonly key: string;
+                readonly score: number;
+            }> = [];
+
+        const candidateKeys =
+            new Set<string>();
+
+        const trackedHeatIndices =
+            this.environmentField
+                .getTrackedHeatIndices();
+
+        this.lastHotCandidateCount =
+            0;
+
+        for (
+            const fieldIndex
+            of trackedHeatIndices
+        ) {
+            const heat =
+                this.environmentField
+                    .getHeatByIndex(
+                        fieldIndex,
+                    );
+
+            if (
+                heat <
+                this.ignitionDefinition
+                    .minimumHeatForIgnition
+            ) {
+                continue;
+            }
+
+            const center =
+                this.environmentField
+                    .getWorldCenterByIndex(
+                        fieldIndex,
+                    );
+
+            if (!center) {
+                continue;
+            }
+
+            this.lastHotCandidateCount +=
+                1;
+
+            const gridPosition =
+                this.worldToGrid(
+                    center.x,
+                    center.y,
+                );
+
+            const key =
+                this.createCellKey(
+                    gridPosition.gridX,
+                    gridPosition.gridY,
+                );
+
+            if (
+                this.occupiedCellKeys.has(
+                    key,
+                ) ||
+                pendingIgnitions.has(
+                    key,
+                ) ||
+                candidateKeys.has(
+                    key,
+                )
+            ) {
+                continue;
+            }
+
+            const fireCenter =
+                this.gridToWorldCenter(
+                    gridPosition.gridX,
+                    gridPosition.gridY,
+                );
+
+            if (
+                !this.isWorldPointInsideCourse(
+                    fireCenter.x,
+                    fireCenter.y,
+                )
+            ) {
+                continue;
+            }
+
+            this.fieldIgnitionAttempts +=
+                1;
+
+            const score =
+                this.getFieldIgnitionScore(
+                    center.x,
+                    center.y,
+                    heat,
+                );
+
+            if (
+                score <
+                this.ignitionDefinition
+                    .minimumIgnitionScore
+            ) {
+                continue;
+            }
+
+            if (
+                !this.canIgniteAt(
+                    fireCenter.x,
+                    fireCenter.y,
+                )
+            ) {
+                continue;
+            }
+
+            candidateKeys.add(
+                key,
+            );
+
+            candidates.push({
+                gridX:
+                    gridPosition.gridX,
+
+                gridY:
+                    gridPosition.gridY,
+
+                key,
+
+                score,
+            });
+        }
+
+        /*
+         * Prefer the strongest thermally supported candidates when the
+         * per-check safety limit is reached.
+         */
+        candidates.sort(
+            (
+                left,
+                right,
+            ): number =>
+                right.score -
+                left.score,
+        );
+
+        const ignitionCount =
+            Math.min(
+                candidates.length,
+                this.ignitionDefinition
+                    .maximumFieldIgnitionsPerCheck,
+            );
+
+        for (
+            let index = 0;
+            index < ignitionCount;
+            index += 1
+        ) {
+            const candidate =
+                candidates[
+                index
+                ];
+
+            if (!candidate) {
+                continue;
+            }
+
+            /*
+             * Field-created Fire does not recursively use the old
+             * neighbour-spread path. It propagates onward by depositing
+             * heat, making this a genuine field-driven chain.
+             */
+            pendingIgnitions.set(
+                candidate.key,
+                {
+                    gridX:
+                        candidate.gridX,
+
+                    gridY:
+                        candidate.gridY,
+
+                    generation:
+                        this.definition
+                            .maximumSpreadGeneration,
+                },
+            );
+        }
+    }
+
+    private getFieldIgnitionScore(
+        worldX: number,
+        worldY: number,
+        heat: number,
+    ): number {
+
+        if (
+            !this.canIgniteAt(
+                worldX,
+                worldY,
+            )
+        ) {
+            return 0;
+        }
+
+        const maximumHeat =
+            Math.max(
+                0.0001,
+                this.environmentField
+                    .getDefinition()
+                    .maximumHeat,
+            );
+
+        const normalizedHeat =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    heat /
+                    maximumHeat,
+                ),
+            );
+
+        const heatResponse =
+            Math.pow(
+                normalizedHeat,
+                this.ignitionDefinition
+                    .heatResponseExponent,
+            );
+
+        const fuel =
+            this.environmentField
+                .getFuelAt(
+                    worldX,
+                    worldY,
+                );
+
+        const maximumFuel =
+            Math.max(
+                0.0001,
+                this.environmentField
+                    .getDefinition()
+                    .maximumFuel,
+            );
+
+        const normalizedFuel =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    fuel /
+                    maximumFuel,
+                ),
+            );
+
+        const moisture =
+            this.environmentField
+                .getMoistureAt(
+                    worldX,
+                    worldY,
+                );
+
+        const dryness =
+            this.getDrynessFromMoisture(
+                moisture,
+            );
+
+        const drynessResponse =
+            Math.pow(
+                dryness,
+                this.moistureDefinition
+                    .ignitionDrynessResponseExponent,
+            );
+
+        return (
+            heatResponse *
+            normalizedFuel *
+            drynessResponse
         );
     }
 
@@ -834,23 +1358,151 @@ export class FireManager {
                     worldY,
                 );
 
+        /*
+         * Wet is no longer a binary Fire blocker. Grass remains the
+         * combustible terrain type, while already-Scorched Grass stays
+         * non-ignitable. Normal and Wet Grass are judged continuously by
+         * EnvironmentField fuel + moisture below.
+         */
         if (
             sample.surfaceType !==
             SurfaceType.Grass ||
-            sample.surfaceState !==
-            SurfaceState.Normal
+            sample.surfaceState ===
+            SurfaceState.Scorched
         ) {
             return false;
         }
 
-        return (
+        const fuel =
             this.environmentField
                 .getFuelAt(
                     worldX,
                     worldY,
-                ) >=
-            this.definition
+                );
+
+        if (
+            fuel <
+            this.fuelDefinition
                 .minimumFuelForIgnition
+        ) {
+            return false;
+        }
+
+        const moisture =
+            this.environmentField
+                .getMoistureAt(
+                    worldX,
+                    worldY,
+                );
+
+        const normalizedFuel =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    fuel /
+                    Math.max(
+                        0.0001,
+                        this.environmentField
+                            .getDefinition()
+                            .maximumFuel,
+                    ),
+                ),
+            );
+
+        const dryness =
+            this.getDrynessFromMoisture(
+                moisture,
+            );
+
+        const ignitionDrynessResponse =
+            Math.pow(
+                dryness,
+                this.moistureDefinition
+                    .ignitionDrynessResponseExponent,
+            );
+
+        const ignitionCombustibility =
+            normalizedFuel *
+            ignitionDrynessResponse;
+
+        return (
+            ignitionCombustibility >=
+            this.moistureDefinition
+                .minimumIgnitionCombustibility
+        );
+    }
+
+    private getMoistureSpreadMultiplier(
+        moisture: number,
+    ): number {
+        const dryness =
+            this.getDrynessFromMoisture(
+                moisture,
+            );
+
+        const response =
+            Math.pow(
+                dryness,
+                this.moistureDefinition
+                    .spreadDrynessResponseExponent,
+            );
+
+        return this.lerp(
+            this.moistureDefinition
+                .minimumSpreadMultiplier,
+            1,
+            response,
+        );
+    }
+
+    private getMoistureCombustionMultiplier(
+        moisture: number,
+    ): number {
+        const dryness =
+            this.getDrynessFromMoisture(
+                moisture,
+            );
+
+        const response =
+            Math.pow(
+                dryness,
+                this.moistureDefinition
+                    .combustionDrynessResponseExponent,
+            );
+
+        return this.lerp(
+            this.moistureDefinition
+                .minimumCombustionMultiplier,
+            1,
+            response,
+        );
+    }
+
+    private getDrynessFromMoisture(
+        moisture: number,
+    ): number {
+        const maximumMoisture =
+            Math.max(
+                0.0001,
+                this.environmentField
+                    .getDefinition()
+                    .maximumMoisture,
+            );
+
+        const normalizedMoisture =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    moisture /
+                    maximumMoisture,
+                ),
+            );
+
+        return (
+            1 -
+            normalizedMoisture
         );
     }
 
@@ -1038,6 +1690,8 @@ export class FireManager {
 
     private updateCellIntensity(
         cell: FireCell,
+        localFuel: number,
+        localMoisture: number,
     ): void {
         const lifetimeProgress =
             Math.min(
@@ -1054,39 +1708,87 @@ export class FireManager {
             this.definition
                 .intensityFadeLifetimeFraction;
 
+        let ageIntensity =
+            this.definition.initialIntensity;
+
         if (
-            lifetimeProgress <=
+            lifetimeProgress >
             dyingStart
         ) {
-            cell.setIntensity(
-                this.definition
-                    .initialIntensity,
-            );
+            const dyingProgress =
+                (
+                    lifetimeProgress -
+                    dyingStart
+                ) /
+                Math.max(
+                    0.0001,
+                    1 -
+                    dyingStart,
+                );
 
-            return;
+            ageIntensity =
+                this.definition
+                    .initialIntensity *
+                (
+                    1 -
+                    Math.min(
+                        1,
+                        dyingProgress,
+                    )
+                );
         }
 
-        const dyingProgress =
-            (
-                lifetimeProgress -
-                dyingStart
-            ) /
+        const fuelRange =
             Math.max(
                 0.0001,
-                1 -
-                dyingStart,
+                this.fuelDefinition
+                    .lowFuelThreshold -
+                this.fuelDefinition
+                    .extinctionFuelThreshold,
+            );
+
+        const normalizedFuel =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    (
+                        localFuel -
+                        this.fuelDefinition
+                            .extinctionFuelThreshold
+                    ) /
+                    fuelRange,
+                ),
+            );
+
+        const shapedFuel =
+            Math.pow(
+                normalizedFuel,
+                this.fuelDefinition
+                    .intensityResponseExponent,
+            );
+
+        const fuelIntensityMultiplier =
+            this.lerp(
+                this.fuelDefinition
+                    .minimumSustainedIntensityMultiplier,
+                1,
+                shapedFuel,
+            );
+
+        cell.setFuelIntensityMultiplier(
+            fuelIntensityMultiplier,
+        );
+
+        const moistureCombustionMultiplier =
+            this.getMoistureCombustionMultiplier(
+                localMoisture,
             );
 
         cell.setIntensity(
-            this.definition
-                .initialIntensity *
-            (
-                1 -
-                Math.min(
-                    1,
-                    dyingProgress,
-                )
-            ),
+            ageIntensity *
+            fuelIntensityMultiplier *
+            moistureCombustionMultiplier,
         );
     }
 

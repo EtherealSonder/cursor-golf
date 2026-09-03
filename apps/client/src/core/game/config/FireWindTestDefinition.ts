@@ -86,43 +86,6 @@ const SOUTH_WIND_SOURCE: LocalWindSourceDefinition = {
 };
 
 
-/**
- * Invisible, broad validation fields.
- *
- * These are deliberately much wider than the visible Fan streams and
- * retain full strength across their range. They exist only so every
- * Fire generation in the controlled validation area receives the same
- * directional bias. IDs are prefixed so World and LocalWindVisualizer
- * can exclude them from Fan/particle presentation.
- */
-const EAST_VALIDATION_FIELD: LocalWindSourceDefinition = {
-    id: "fire-validation-field-east",
-    enabled: true,
-    positionX: -180,
-    positionY: 360,
-    directionRadians: 0,
-    range: 1800,
-    startHalfWidth: 900,
-    endHalfWidth: 900,
-    acceleration: TEST_FAN_ACCELERATION,
-    endStrengthMultiplier: 1,
-    edgeFalloffFraction: 0.05,
-};
-
-const SOUTH_VALIDATION_FIELD: LocalWindSourceDefinition = {
-    id: "fire-validation-field-south",
-    enabled: true,
-    positionX: 600,
-    positionY: -180,
-    directionRadians: Math.PI / 2,
-    range: 1300,
-    startHalfWidth: 900,
-    endHalfWidth: 900,
-    acceleration: TEST_FAN_ACCELERATION,
-    endStrengthMultiplier: 1,
-    edgeFalloffFraction: 0.05,
-};
-
 export const DEFAULT_FIRE_WIND_TEST_DEFINITION: FireWindTestDefinition = {
     defaultConfigurationId: "no-wind",
     ignitionRadius: 42,
@@ -147,7 +110,6 @@ export const DEFAULT_FIRE_WIND_TEST_DEFINITION: FireWindTestDefinition = {
             label: "East Wind",
             sources: [
                 EAST_WIND_SOURCE,
-                EAST_VALIDATION_FIELD,
             ],
         },
         {
@@ -155,7 +117,6 @@ export const DEFAULT_FIRE_WIND_TEST_DEFINITION: FireWindTestDefinition = {
             label: "South Wind",
             sources: [
                 SOUTH_WIND_SOURCE,
-                SOUTH_VALIDATION_FIELD,
             ],
         },
         {
@@ -164,8 +125,6 @@ export const DEFAULT_FIRE_WIND_TEST_DEFINITION: FireWindTestDefinition = {
             sources: [
                 EAST_WIND_SOURCE,
                 SOUTH_WIND_SOURCE,
-                EAST_VALIDATION_FIELD,
-                SOUTH_VALIDATION_FIELD,
             ],
         },
     ],

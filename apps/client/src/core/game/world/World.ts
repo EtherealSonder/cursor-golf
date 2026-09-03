@@ -30,6 +30,10 @@ import {
 } from "../config/FireTestDefinition";
 
 import {
+    DEFAULT_FIRE_MOISTURE_TEST_DEFINITION,
+} from "../config/FireMoistureTestDefinition";
+
+import {
     DEFAULT_WIND_VISUAL_DEFINITION,
 } from "../config/WindVisualDefinition";
 
@@ -44,6 +48,14 @@ import {
 import {
     FireDirectionalValidation,
 } from "../debug/FireDirectionalValidation";
+
+import {
+    FireFieldIgnitionValidation,
+} from "../debug/FireFieldIgnitionValidation";
+
+import type {
+    FireFieldIgnitionValidationState,
+} from "../debug/FireFieldIgnitionValidation";
 
 import type {
     FireDirectionalValidationState,
@@ -130,6 +142,34 @@ import {
 import {
     FireVisualizer,
 } from "../environment/FireVisualizer";
+
+import {
+    FireSourceSystem,
+} from "../environment/FireSourceSystem";
+
+import {
+    FireSourceVisualizer,
+} from "../environment/FireSourceVisualizer";
+
+import {
+    FireSourceTestController,
+} from "../debug/FireSourceTestController";
+
+import {
+    FireVfxSystem,
+} from "../fire-vfx/FireVfxSystem";
+
+import {
+    FireSourceType,
+} from "../config/FireSourceDefinition";
+
+import {
+    DEFAULT_FIRE_SOURCE_TEST_DEFINITION,
+} from "../config/FireSourceTestDefinition";
+
+import {
+    DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION,
+} from "../config/DirectionalFireSourceDefinition";
 
 import {
     EnvironmentField,
@@ -242,6 +282,14 @@ export class World {
     private surfaceGraphics:
         Graphics | null = null;
 
+    /**
+     * Development-only visualization of continuous moisture test bands.
+     * EnvironmentField remains authoritative; this Graphics object is
+     * presentation only.
+     */
+    private fireMoistureTestGraphics:
+        Graphics | null = null;
+
     private readonly courseVisualDefinition:
         CourseVisualDefinition;
 
@@ -296,12 +344,33 @@ export class World {
     private readonly fireManager:
         FireManager;
 
+    private readonly fireSourceSystem:
+        FireSourceSystem;
+
+    private readonly fireSourceTestController:
+        FireSourceTestController;
+
+    private fireSourceVisualizer:
+        FireSourceVisualizer | null =
+        null;
+
+    private fireSourceTestSequence =
+        0;
+
     private fireVisualizer:
         FireVisualizer | null =
         null;
 
+    private fireVfxSystem:
+        FireVfxSystem | null =
+        null;
+
     private fireDirectionalValidation:
         FireDirectionalValidation | null =
+        null;
+
+    private fireFieldIgnitionValidation:
+        FireFieldIgnitionValidation | null =
         null;
 
     private readonly windTuningController:
@@ -406,6 +475,16 @@ export class World {
                 this.surfaceSystem,
             );
 
+        this.fireSourceSystem =
+            new FireSourceSystem(
+                this.environmentField,
+            );
+
+        this.fireSourceTestController =
+            new FireSourceTestController(
+                this.fireSourceSystem,
+            );
+
         this.fireManager =
             new FireManager(
                 this.surfaceSystem,
@@ -467,6 +546,14 @@ export class World {
         }
 
         if (
+            DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                .enabled
+        ) {
+            this.applyFireMoistureTestLayout();
+            this.createFireMoistureTestGraphics();
+        }
+
+        if (
             DEFAULT_WIND_VISUAL_DEFINITION
                 .enabled
         ) {
@@ -479,9 +566,15 @@ export class World {
 
         this.createEnvironmentFieldVisualizer();
 
+        this.createFireSourceVisualizer();
+
         this.createFireVisualizer();
 
+        this.createFireVfxSystem();
+
         this.createFireDirectionalValidation();
+
+        this.createFireFieldIgnitionValidation();
 
         this.createCameraActivationDebugGraphics();
 
@@ -749,6 +842,16 @@ export class World {
                 deltaTime,
             );
 
+        this.fireSourceTestController
+            .update(
+                deltaTime,
+            );
+
+        this.fireSourceSystem
+            .update(
+                deltaTime,
+            );
+
         this.fireManager
             .update(
                 deltaTime,
@@ -756,6 +859,11 @@ export class World {
 
         this.fireDirectionalValidation
             ?.update();
+
+        this.fireFieldIgnitionValidation
+            ?.update(
+                deltaTime,
+            );
 
         this.windVisualizer
             ?.update(
@@ -767,10 +875,18 @@ export class World {
                 deltaTime,
             );
 
+        this.fireSourceVisualizer
+            ?.update();
+
         this.environmentFieldVisualizer
             ?.update();
 
         this.fireVisualizer
+            ?.update(
+                deltaTime,
+            );
+
+        this.fireVfxSystem
             ?.update(
                 deltaTime,
             );
@@ -854,6 +970,24 @@ export class World {
         this.fireDirectionalValidation =
             null;
 
+        this.fireFieldIgnitionValidation =
+            null;
+
+        this.fireSourceVisualizer
+            ?.destroy();
+
+        this.fireSourceVisualizer =
+            null;
+
+        this.fireSourceSystem
+            .clearSources();
+
+        this.fireVfxSystem
+            ?.destroy();
+
+        this.fireVfxSystem =
+            null;
+
         this.fireVisualizer
             ?.destroy();
 
@@ -867,6 +1001,9 @@ export class World {
 
         this.fireManager
             .reset();
+
+        this.fireVfxSystem
+            ?.reset();
 
         this.environmentFieldVisualizer
             ?.destroy();
@@ -923,6 +1060,12 @@ export class World {
             ?.destroy();
 
         this.surfaceGraphics =
+            null;
+
+        this.fireMoistureTestGraphics
+            ?.destroy();
+
+        this.fireMoistureTestGraphics =
             null;
 
         this.courseBackground
@@ -998,6 +1141,260 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Fire Source Test Bridge
+    // -------------------------------------------------------
+
+    public placePointFireSourceAtScreenPosition(
+        screenX: number,
+        screenY: number,
+    ): boolean {
+
+        const worldPosition =
+            this.getWorldPositionFromScreen(
+                screenX,
+                screenY,
+            );
+
+        if (!worldPosition) {
+            return false;
+        }
+
+        this.fireSourceTestSequence +=
+            1;
+
+        this.fireSourceSystem.addSource({
+            id:
+                `fire-test-point-${this.fireSourceTestSequence}`,
+            type:
+                FireSourceType.Point,
+            enabled:
+                true,
+            positionX:
+                worldPosition.x,
+            positionY:
+                worldPosition.y,
+            radius:
+                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
+                    .pointRadius,
+            heatAmount:
+                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
+                    .pointHeatAmount,
+        });
+
+        return true;
+    }
+
+    public placePersistentFireSourceAtScreenPosition(
+        screenX: number,
+        screenY: number,
+    ): boolean {
+
+        const worldPosition =
+            this.getWorldPositionFromScreen(
+                screenX,
+                screenY,
+            );
+
+        if (!worldPosition) {
+            return false;
+        }
+
+        this.fireSourceTestSequence +=
+            1;
+
+        this.fireSourceSystem.addSource({
+            id:
+                `fire-test-persistent-${this.fireSourceTestSequence}`,
+            type:
+                FireSourceType.Persistent,
+            enabled:
+                true,
+            positionX:
+                worldPosition.x,
+            positionY:
+                worldPosition.y,
+            radius:
+                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
+                    .persistentRadius,
+            heatPerSecond:
+                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
+                    .persistentHeatPerSecond,
+        });
+
+        return true;
+    }
+
+    public placeDirectionalFireSourceAtScreenPositions(
+        originScreenX: number,
+        originScreenY: number,
+        targetScreenX: number,
+        targetScreenY: number,
+    ): boolean {
+
+        const origin =
+            this.getWorldPositionFromScreen(
+                originScreenX,
+                originScreenY,
+            );
+
+        const target =
+            this.getWorldPositionFromScreen(
+                targetScreenX,
+                targetScreenY,
+            );
+
+        if (!origin || !target) {
+            return false;
+        }
+
+        const deltaX =
+            target.x -
+            origin.x;
+
+        const deltaY =
+            target.y -
+            origin.y;
+
+        const dragLengthSquared =
+            deltaX * deltaX +
+            deltaY * deltaY;
+
+        /*
+         * Reject a near-zero drag because it does not provide a stable
+         * directional intent.
+         */
+        if (dragLengthSquared < 16) {
+            return false;
+        }
+
+        const tuning =
+            DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION;
+
+        this.fireSourceTestSequence +=
+            1;
+
+        this.fireSourceSystem.addSource({
+            id:
+                `fire-test-directional-${this.fireSourceTestSequence}`,
+            type:
+                FireSourceType.Directional,
+            enabled:
+                true,
+            positionX:
+                origin.x,
+            positionY:
+                origin.y,
+            directionRadians:
+                Math.atan2(
+                    deltaY,
+                    deltaX,
+                ),
+            length:
+                tuning.length,
+            halfWidth:
+                tuning.halfWidth,
+            heatPerSecond:
+                tuning.heatPerSecond,
+            endHeatMultiplier:
+                tuning.endHeatMultiplier,
+        });
+
+        return true;
+    }
+
+    public placeSweepingFireSourceAtScreenPositions(
+        originScreenX: number,
+        originScreenY: number,
+        targetScreenX: number,
+        targetScreenY: number,
+    ): boolean {
+        const origin = this.getWorldPositionFromScreen(originScreenX, originScreenY);
+        const target = this.getWorldPositionFromScreen(targetScreenX, targetScreenY);
+        if (!origin || !target) return false;
+        const dx = target.x - origin.x;
+        const dy = target.y - origin.y;
+        if (dx * dx + dy * dy < 16) return false;
+        const tuning = DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION;
+        const initialDirection = Math.atan2(dy, dx);
+        this.fireSourceTestSequence += 1;
+        const sourceId = `fire-test-sweeping-${this.fireSourceTestSequence}`;
+        this.fireSourceSystem.addSource({
+            id: sourceId,
+            type: FireSourceType.Directional,
+            enabled: true,
+            positionX: origin.x,
+            positionY: origin.y,
+            directionRadians: initialDirection,
+            length: tuning.length,
+            halfWidth: tuning.halfWidth,
+            heatPerSecond: tuning.heatPerSecond,
+            endHeatMultiplier: tuning.endHeatMultiplier,
+        });
+        this.fireSourceTestController.registerSweepingSource(sourceId, initialDirection);
+        return true;
+    }
+
+    public clearFireSources():
+        void {
+
+        this.fireSourceTestController.clear();
+        this.fireSourceSystem.clearSources();
+    }
+
+    public getActiveFireSourceCount(): number {
+        return this.fireSourceSystem.getActiveSourceCount();
+    }
+
+    public setFireSourceDebugVisible(visible: boolean): void {
+        this.fireSourceVisualizer?.setDebugVisible(visible);
+    }
+
+    public isFireSourceDebugVisible(): boolean {
+        return this.fireSourceVisualizer?.isDebugVisible() ?? false;
+    }
+
+    public setAllFireSourcesEnabled(
+        enabled: boolean,
+    ): void {
+
+        for (
+            const source
+            of this.fireSourceSystem
+                .getSources()
+        ) {
+            source.setEnabled(
+                enabled,
+            );
+        }
+    }
+
+    private getWorldPositionFromScreen(
+        screenX: number,
+        screenY: number,
+    ): {
+        readonly x: number;
+        readonly y: number;
+    } | null {
+
+        if (
+            !Number.isFinite(screenX) ||
+            !Number.isFinite(screenY)
+        ) {
+            return null;
+        }
+
+        return {
+            x:
+                screenX +
+                this.camera.getPositionX(),
+
+            y:
+                screenY +
+                this.camera.getPositionY(),
+        };
+    }
+
+    // -------------------------------------------------------
     // Fire / Wind Test Harness
     // -------------------------------------------------------
 
@@ -1029,11 +1426,21 @@ export class World {
             return false;
         }
 
+        const worldPosition =
+            this.getWorldPositionFromScreen(
+                screenX,
+                screenY,
+            );
+
+        if (!worldPosition) {
+            return false;
+        }
+
         const worldX =
-            screenX + this.camera.getPositionX();
+            worldPosition.x;
 
         const worldY =
-            screenY + this.camera.getPositionY();
+            worldPosition.y;
 
         const sampledWind =
             this.localWindSystem
@@ -1087,6 +1494,33 @@ export class World {
         return ignited;
     }
 
+    public resetActiveFireOnly(): void {
+
+        this.fireManager.reset();
+
+        this.fireManager
+            .setValidationRandomSeed(
+                null,
+            );
+
+        this.fireDirectionalValidation
+            ?.reset();
+
+        this.fireFieldIgnitionValidation
+            ?.reset();
+
+        /*
+         * EnvironmentField is intentionally NOT reset here.
+         * Fuel depletion, burn and scorch persist so the same
+         * ground can be tested for re-ignition.
+         */
+    }
+
+    public resetFireEnvironment(): void {
+
+        this.resetFireTestState();
+    }
+
     public resetFireTestState(): void {
 
         this.fireManager.reset();
@@ -1099,7 +1533,23 @@ export class World {
         this.fireDirectionalValidation
             ?.reset();
 
+        this.fireFieldIgnitionValidation
+            ?.reset();
+
+        this.fireSourceTestController.clear();
+        this.fireSourceSystem.clearSources();
+
+        this.fireSourceTestSequence =
+            0;
+
         this.environmentField.reset();
+
+        if (
+            DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                .enabled
+        ) {
+            this.applyFireMoistureTestLayout();
+        }
 
         this.surfaceSystem.removeStateRegionsByIdPrefix(
             "fire-scorch-",
@@ -1166,6 +1616,148 @@ export class World {
             .subscribe(
                 listener,
             );
+    }
+
+    // -------------------------------------------------------
+    // Fire Field-Ignition Validation
+    // -------------------------------------------------------
+
+    private createFireFieldIgnitionValidation():
+        void {
+
+        if (
+            this.fireFieldIgnitionValidation
+        ) {
+            throw new Error(
+                "World Fire field ignition validation has already been created.",
+            );
+        }
+
+        this.fireFieldIgnitionValidation =
+            new FireFieldIgnitionValidation(
+                this.fireManager,
+            );
+    }
+
+    public getFireFieldIgnitionValidationState():
+        FireFieldIgnitionValidationState | null {
+
+        return this.fireFieldIgnitionValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Fire Moisture Test Harness
+    // -------------------------------------------------------
+
+    private applyFireMoistureTestLayout():
+        void {
+
+        for (
+            const band
+            of DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                .bands
+        ) {
+            this.environmentField
+                .setMoistureInRectangle(
+                    band.x,
+                    band.y,
+                    band.width,
+                    band.height,
+                    band.moisture,
+                );
+        }
+    }
+
+    private createFireMoistureTestGraphics():
+        void {
+
+        if (
+            this.fireMoistureTestGraphics
+        ) {
+            throw new Error(
+                "World Fire moisture test graphics have already been created.",
+            );
+        }
+
+        if (
+            !DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                .enabled
+        ) {
+            return;
+        }
+
+        this.fireMoistureTestGraphics =
+            new Graphics();
+
+        for (
+            const band
+            of DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                .bands
+        ) {
+            this.fireMoistureTestGraphics
+                .rect(
+                    band.x,
+                    band.y,
+                    band.width,
+                    band.height,
+                )
+                .fill({
+                    color:
+                        band.color,
+                    alpha:
+                        DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                            .overlayAlpha,
+                })
+                .stroke({
+                    width:
+                        2,
+                    color:
+                        DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                            .outlineColor,
+                    alpha:
+                        DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                            .outlineAlpha,
+                });
+        }
+
+        /*
+         * Keep the test overlay directly above terrain and below Fire,
+         * Wind presentation, obstacles, and gameplay entities.
+         */
+        this.worldContainer
+            .addChildAt(
+                this.fireMoistureTestGraphics,
+                Math.min(
+                    2,
+                    this.worldContainer
+                        .children
+                        .length,
+                ),
+            );
+
+        console.log(
+            "Fire moisture test bands active.",
+            DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
+                .bands
+                .map(
+                    (band) => ({
+                        label:
+                            band.label,
+                        moisture:
+                            band.moisture,
+                        x:
+                            band.x,
+                        y:
+                            band.y,
+                        width:
+                            band.width,
+                        height:
+                            band.height,
+                    }),
+                ),
+        );
     }
 
     // -------------------------------------------------------
@@ -1401,6 +1993,12 @@ export class World {
         return this.fireManager;
     }
 
+    public getFireSourceSystem():
+        FireSourceSystem {
+
+        return this.fireSourceSystem;
+    }
+
     public getWindTuningController():
         WindTuningController {
 
@@ -1486,14 +2084,13 @@ export class World {
 
         this.environmentFieldVisualizer =
             new EnvironmentFieldVisualizer(
-                this.app,
                 this.environmentField,
             );
 
         this.worldContainer
             .addChild(
                 this.environmentFieldVisualizer
-                    .getContainer(),
+                    .getGraphics(),
             );
 
         this.environmentFieldVisualizer
@@ -1501,8 +2098,67 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Fire Sources
+    // -------------------------------------------------------
+
+    private createFireSourceVisualizer():
+        void {
+
+        if (
+            this.fireSourceVisualizer
+        ) {
+            throw new Error(
+                "World Fire source visualizer has already been created.",
+            );
+        }
+
+        this.fireSourceVisualizer =
+            new FireSourceVisualizer(
+                this.fireSourceSystem,
+            );
+
+        this.worldContainer
+            .addChild(
+                this.fireSourceVisualizer
+                    .getContainer(),
+            );
+
+        this.fireSourceVisualizer
+            .update();
+    }
+
+    // -------------------------------------------------------
     // Fire
     // -------------------------------------------------------
+
+    private createFireVfxSystem():
+        void {
+
+        if (
+            this.fireVfxSystem
+        ) {
+            throw new Error(
+                "World Fire VFX system has already been created.",
+            );
+        }
+
+        this.fireVfxSystem =
+            new FireVfxSystem();
+
+        /*
+         * FIRE-VFX-1:
+         * the active Fire presentation is an isolated textured-particle
+         * test emitter. It deliberately has no FireManager, FireCell, Wind
+         * or FireSource dependency yet.
+         *
+         * The container remains world-space and presentation-only.
+         */
+        this.worldContainer
+            .addChild(
+                this.fireVfxSystem
+                    .getContainer(),
+            );
+    }
 
     private createFireVisualizer():
         void {

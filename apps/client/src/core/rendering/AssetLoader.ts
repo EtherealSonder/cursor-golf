@@ -7,6 +7,10 @@ import golfClubTexture from "../../assets/sprites/golf/golf_club_temp.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
 
+import fireGlowRoundTexture from "../../assets/textures/fire/masks/fire_glow_round.png";
+import fireGlowSoftTexture from "../../assets/textures/fire/masks/fire_glow_soft.png";
+import fireGradientSoftTexture from "../../assets/textures/fire/masks/fire_gradient_soft.png";
+
 export class AssetLoader {
 
     private static initialized =
@@ -43,6 +47,26 @@ export class AssetLoader {
         await this.loadTexture(
             "sandTerrain",
             sandTexture,
+        );
+
+        // ---------------------------------------------------
+        // FIRE-VFX-1
+        // Transparent particle masks
+        // ---------------------------------------------------
+
+        await this.loadTexture(
+            "fireGlowRound",
+            fireGlowRoundTexture,
+        );
+
+        await this.loadTexture(
+            "fireGlowSoft",
+            fireGlowSoftTexture,
+        );
+
+        await this.loadTexture(
+            "fireGradientSoft",
+            fireGradientSoftTexture,
         );
 
         this.initialized =

@@ -99,9 +99,10 @@ function HomePage() {
                 FireWindTestConfigurationId,
         ): void => {
 
-            gameRef.current?.applyFireWindTestConfiguration(
-                configurationId,
-            );
+            gameRef.current
+                ?.applyFireWindTestConfiguration(
+                    configurationId,
+                );
         };
 
     // -------------------------------------------------------
@@ -218,29 +219,57 @@ function HomePage() {
                                 Fire / Wind Test
                             </div>
 
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("no-wind")}>
+                            <button
+                                type="button"
+                                className="hud-action-button"
+                                onClick={
+                                    () =>
+                                        handleFireWindConfiguration(
+                                            "no-wind",
+                                        )
+                                }
+                            >
                                 No Wind
                             </button>
 
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("east-wind")}>
+                            <button
+                                type="button"
+                                className="hud-action-button"
+                                onClick={
+                                    () =>
+                                        handleFireWindConfiguration(
+                                            "east-wind",
+                                        )
+                                }
+                            >
                                 East Wind →
                             </button>
 
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("south-wind")}>
+                            <button
+                                type="button"
+                                className="hud-action-button"
+                                onClick={
+                                    () =>
+                                        handleFireWindConfiguration(
+                                            "south-wind",
+                                        )
+                                }
+                            >
                                 South Wind ↓
                             </button>
 
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("mixed-wind")}>
+                            <button
+                                type="button"
+                                className="hud-action-button"
+                                onClick={
+                                    () =>
+                                        handleFireWindConfiguration(
+                                            "mixed-wind",
+                                        )
+                                }
+                            >
                                 Mixed Wind ↘
                             </button>
-
-                            <span className="hud-test-hint">
-                                Right-click course to ignite
-                            </span>
 
                         </div>
 

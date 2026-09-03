@@ -81,6 +81,16 @@ export class EnvironmentField {
     private readonly burnIndexTracked:
         Uint8Array;
 
+    /**
+     * Sparse thermal activity set. Heat is much higher resolution
+     * than Fire cells, so only cells with meaningful heat are updated.
+     */
+    private readonly trackedHeatIndices:
+        number[] = [];
+
+    private readonly heatIndexTracked:
+        Uint8Array;
+
     private burnRevision =
         0;
 
@@ -172,6 +182,11 @@ export class EnvironmentField {
                 this.cellCount,
             );
 
+        this.heatIndexTracked =
+            new Uint8Array(
+                this.cellCount,
+            );
+
         this.renderCache =
             new EnvironmentFieldRenderCache(
                 this.cellCount,
@@ -207,7 +222,14 @@ export class EnvironmentField {
             0,
         );
 
+        this.heatIndexTracked.fill(
+            0,
+        );
+
         this.trackedBurnIndices.length =
+            0;
+
+        this.trackedHeatIndices.length =
             0;
 
         this.renderCache
@@ -267,6 +289,25 @@ export class EnvironmentField {
                         amount *
                         distanceFactor,
                     );
+
+                if (
+                    this.heat[index] >=
+                    this.definition
+                        .minimumTrackedHeat &&
+                    this.heatIndexTracked[
+                    index
+                    ] ===
+                    0
+                ) {
+                    this.heatIndexTracked[
+                        index
+                    ] =
+                        1;
+
+                    this.trackedHeatIndices.push(
+                        index,
+                    );
+                }
             },
         );
     }
@@ -440,6 +481,89 @@ export class EnvironmentField {
         );
     }
 
+    /**
+     * Applies passive cooling only to thermally active field cells.
+     *
+     * This intentionally does not scan the complete EnvironmentField.
+     * Water will later be able to add stronger local cooling without
+     * changing this sparse thermal lifecycle.
+     */
+    public updateHeat(
+        deltaTime: number,
+    ): void {
+        if (
+            !Number.isFinite(deltaTime) ||
+            deltaTime <= 0 ||
+            this.trackedHeatIndices.length === 0
+        ) {
+            return;
+        }
+
+        const decay =
+            this.definition
+                .heatDecayPerSecond *
+            deltaTime;
+
+        for (
+            let trackedIndex =
+                this.trackedHeatIndices.length -
+                1;
+
+            trackedIndex >= 0;
+
+            trackedIndex -= 1
+        ) {
+            const fieldIndex =
+                this.trackedHeatIndices[
+                trackedIndex
+                ];
+
+            if (
+                fieldIndex ===
+                undefined
+            ) {
+                continue;
+            }
+
+            const nextHeat =
+                Math.max(
+                    0,
+                    this.heat[
+                    fieldIndex
+                    ] -
+                    decay,
+                );
+
+            if (
+                nextHeat <
+                this.definition
+                    .minimumTrackedHeat
+            ) {
+                this.heat[
+                    fieldIndex
+                ] =
+                    0;
+
+                this.heatIndexTracked[
+                    fieldIndex
+                ] =
+                    0;
+
+                this.trackedHeatIndices.splice(
+                    trackedIndex,
+                    1,
+                );
+
+                continue;
+            }
+
+            this.heat[
+                fieldIndex
+            ] =
+                nextHeat;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Queries
     // ---------------------------------------------------------------------
@@ -506,6 +630,69 @@ export class EnvironmentField {
         };
     }
 
+    public getHeatAt(
+        worldX: number,
+        worldY: number,
+    ): number {
+        const cell =
+            this.getCellAtWorld(
+                worldX,
+                worldY,
+            );
+
+        return cell
+            ? cell.heat
+            : 0;
+    }
+
+    public getHeatByIndex(
+        index: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >=
+            this.cellCount
+        ) {
+            return 0;
+        }
+
+        this.ensureInitialized(
+            index,
+        );
+
+        return this.heat[
+            index
+        ];
+    }
+
+    public getTrackedHeatIndices():
+        readonly number[] {
+        return this.trackedHeatIndices;
+    }
+
+    public getPeakTrackedHeat():
+        number {
+        let peakHeat =
+            0;
+
+        for (
+            const index
+            of this.trackedHeatIndices
+        ) {
+            peakHeat =
+                Math.max(
+                    peakHeat,
+                    this.heat[
+                    index
+                    ] ??
+                    0,
+                );
+        }
+
+        return peakHeat;
+    }
+
     public getFuelAt(
         worldX: number,
         worldY: number,
@@ -519,6 +706,220 @@ export class EnvironmentField {
         return cell
             ? cell.fuel
             : 0;
+    }
+
+    public getAverageFuelInRadius(
+        worldX: number,
+        worldY: number,
+        radius: number,
+    ): number {
+        if (
+            !Number.isFinite(worldX) ||
+            !Number.isFinite(worldY) ||
+            !Number.isFinite(radius) ||
+            radius <= 0
+        ) {
+            return 0;
+        }
+
+        let weightedFuel = 0;
+        let totalWeight = 0;
+
+        this.forEachCellInRadius(
+            worldX,
+            worldY,
+            radius,
+            (
+                index: number,
+                _gridX: number,
+                _gridY: number,
+                distanceFactor: number,
+            ): void => {
+                this.ensureInitialized(index);
+
+                weightedFuel +=
+                    this.fuel[index] *
+                    distanceFactor;
+
+                totalWeight +=
+                    distanceFactor;
+            },
+        );
+
+        return totalWeight > 0
+            ? weightedFuel / totalWeight
+            : this.getFuelAt(worldX, worldY);
+    }
+
+    public getMoistureAt(
+        worldX: number,
+        worldY: number,
+    ): number {
+        const cell =
+            this.getCellAtWorld(
+                worldX,
+                worldY,
+            );
+
+        return cell
+            ? cell.moisture
+            : 0;
+    }
+
+    public getAverageMoistureInRadius(
+        worldX: number,
+        worldY: number,
+        radius: number,
+    ): number {
+        if (
+            !Number.isFinite(worldX) ||
+            !Number.isFinite(worldY) ||
+            !Number.isFinite(radius) ||
+            radius <= 0
+        ) {
+            return 0;
+        }
+
+        let weightedMoisture = 0;
+        let totalWeight = 0;
+
+        this.forEachCellInRadius(
+            worldX,
+            worldY,
+            radius,
+            (
+                index: number,
+                _gridX: number,
+                _gridY: number,
+                distanceFactor: number,
+            ): void => {
+                this.ensureInitialized(index);
+
+                weightedMoisture +=
+                    this.moisture[index] *
+                    distanceFactor;
+
+                totalWeight +=
+                    distanceFactor;
+            },
+        );
+
+        return totalWeight > 0
+            ? weightedMoisture / totalWeight
+            : this.getMoistureAt(
+                worldX,
+                worldY,
+            );
+    }
+
+    /**
+     * Development/future-Water write path for continuous moisture.
+     *
+     * Only Grass cells are modified here. SurfaceSystem remains the
+     * authority for terrain identity while EnvironmentField owns the
+     * continuous moisture quantity.
+     */
+    public setMoistureInRectangle(
+        worldX: number,
+        worldY: number,
+        width: number,
+        height: number,
+        moisture: number,
+    ): void {
+        if (
+            !Number.isFinite(worldX) ||
+            !Number.isFinite(worldY) ||
+            !Number.isFinite(width) ||
+            !Number.isFinite(height) ||
+            !Number.isFinite(moisture) ||
+            width <= 0 ||
+            height <= 0
+        ) {
+            return;
+        }
+
+        const minimumGrid =
+            this.worldToGridClamped(
+                worldX,
+                worldY,
+            );
+
+        const maximumGrid =
+            this.worldToGridClamped(
+                worldX + width,
+                worldY + height,
+            );
+
+        const clampedMoisture =
+            Math.min(
+                this.definition.maximumMoisture,
+                Math.max(
+                    0,
+                    moisture,
+                ),
+            );
+
+        for (
+            let gridY =
+                minimumGrid.gridY;
+
+            gridY <=
+            maximumGrid.gridY;
+
+            gridY += 1
+        ) {
+            for (
+                let gridX =
+                    minimumGrid.gridX;
+
+                gridX <=
+                maximumGrid.gridX;
+
+                gridX += 1
+            ) {
+                const center =
+                    this.gridToWorldCenter(
+                        gridX,
+                        gridY,
+                    );
+
+                if (
+                    center.x < worldX ||
+                    center.x >= worldX + width ||
+                    center.y < worldY ||
+                    center.y >= worldY + height
+                ) {
+                    continue;
+                }
+
+                const surface =
+                    this.surfaceSystem
+                        .getSurfaceAt(
+                            center.x,
+                            center.y,
+                        );
+
+                if (
+                    surface.surfaceType !==
+                    SurfaceType.Grass
+                ) {
+                    continue;
+                }
+
+                const index =
+                    this.gridToIndex(
+                        gridX,
+                        gridY,
+                    );
+
+                this.ensureInitialized(
+                    index,
+                );
+
+                this.moisture[index] =
+                    clampedMoisture;
+            }
+        }
     }
 
     public getBurnAmountByIndex(

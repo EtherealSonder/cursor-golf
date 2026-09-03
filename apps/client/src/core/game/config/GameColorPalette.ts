@@ -6,6 +6,10 @@
  * - flat saturated colors
  * - minimal shading
  * - coordinated small palette
+ *
+ * Fire presentation follows the same pop-art/storybook language.
+ * VFX code must consume these semantic colors rather than introducing
+ * independent Fire color constants.
  */
 export const GAME_COLOR_PALETTE = {
     terrain: {
@@ -25,9 +29,21 @@ export const GAME_COLOR_PALETTE = {
     },
 
     fire: {
+        /*
+         * Original semantic names are retained for compatibility.
+         */
         main: 0xf47b45,
         hot: 0xffd84a,
         accent: 0xe94f55,
+
+        /*
+         * Presentation aliases make the intended Fire hierarchy explicit:
+         * core = hottest yellow
+         * body = dominant orange
+         * accent = red edge/trailing accent
+         */
+        core: 0xffd84a,
+        body: 0xf47b45,
     },
 
     environment: {

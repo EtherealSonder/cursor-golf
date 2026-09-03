@@ -43,6 +43,13 @@ export class FireVisualizer {
     private destroyed =
         false;
 
+    /**
+     * Legacy FireCell footprint rendering is now debug-only.
+     * Normal ground Fire presentation is owned by FireVfxSystem.
+     */
+    private debugVisible =
+        false;
+
     constructor(
         private readonly fireManager:
             FireManager,
@@ -70,6 +77,24 @@ export class FireVisualizer {
             );
     }
 
+    public setDebugVisible(
+        visible: boolean,
+    ): void {
+
+        this.debugVisible =
+            visible;
+
+        if (!visible) {
+            this.graphics.clear();
+        }
+    }
+
+    public isDebugVisible():
+        boolean {
+
+        return this.debugVisible;
+    }
+
     public update(
         deltaTime: number,
     ): void {
@@ -93,6 +118,12 @@ export class FireVisualizer {
                 0,
                 deltaTime,
             );
+
+        if (!this.debugVisible) {
+            this.graphics.clear();
+
+            return;
+        }
 
         this.redraw();
     }
@@ -147,6 +178,11 @@ export class FireVisualizer {
     private drawCell(
         cell: FireCell,
     ): void {
+        /*
+         * FireCell intensity is the effective combustion intensity.
+         * FireManager now folds local fuel availability into it, so
+         * depleted Fire automatically shrinks/fades here.
+         */
         const intensity =
             Math.min(
                 1,

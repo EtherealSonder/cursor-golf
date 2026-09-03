@@ -445,21 +445,22 @@ export class LocalWindVisualizer {
             directionX;
 
         /*
-         * The stream begins at only 28% of the simulation half-width
-         * and gradually opens toward the configured field width.
-         * This makes particles visibly emerge from the Fan opening.
+         * The visible stream remains slightly narrower than the
+         * simulation field for readability, but now occupies most of
+         * the authored physical width so players can better judge when
+         * the Ball is inside or outside the airflow.
          */
         const visualHalfWidth =
             this.lerp(
                 Math.max(
                     8,
                     source.startHalfWidth *
-                    0.22,
+                    0.60,
                 ),
                 Math.max(
                     12,
                     source.endHalfWidth *
-                    0.48,
+                    0.80,
                 ),
                 progress,
             );
