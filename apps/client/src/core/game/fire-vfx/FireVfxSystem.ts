@@ -1,4 +1,4 @@
-import {
+﻿import {
     Container,
     Texture,
 } from "pixi.js";
@@ -6,6 +6,18 @@ import {
 import {
     DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
 } from "../config/FireParticleVfxDefinition";
+
+import type {
+    FireParticleMaterialLayer,
+} from "../config/FireParticleVfxDefinition";
+
+import type {
+    FireManager,
+} from "../environment/FireManager";
+
+import type {
+    EnvironmentField,
+} from "../environment/EnvironmentField";
 
 import {
     FireVfxPool,
@@ -27,6 +39,14 @@ import {
     FireTestEmitter,
 } from "./FireTestEmitter";
 
+import {
+    GroundFireEmitter,
+} from "./GroundFireEmitter";
+
+import {
+    ScorchRenderer,
+} from "./ScorchRenderer";
+
 export type FireVfxTextureVariant =
     | "body"
     | "core"
@@ -34,21 +54,26 @@ export type FireVfxTextureVariant =
     | "ember";
 
 /**
- * FIRE-VFX-1 presentation-only Fire coordinator.
+ * FIRE-VFX-3A presentation-only Fire coordinator.
  *
- * Current scope:
- * - textured pooled Pixi Sprites
- * - fixed isolated development emitter
- * - no FireManager dependency
- * - no FireCell rendering
- * - no Wind
- * - no FireSource jet rendering
- * - no shader
+ * Normal runtime path:
  *
- * The old GroundFireBaseRenderer is intentionally retired from the active
- * runtime path.
+ * FireManager
+ *     ↓
+ * GroundFireEmitter
+ *     ↓
+ * FireVfxPool
+ *     ↓
+ * FireVfxParticle Sprite
+ *
+ * FireCells remain invisible simulation records. They are never represented
+ * by one circle, one stamp or one persistent visible cell object.
+ *
+ * FireTestEmitter is deliberately retained as an isolated VFX diagnostic,
+ * but is not updated during normal FIRE-VFX-3A runtime.
  */
 export class FireVfxSystem {
+
     private readonly container =
         new Container();
 
@@ -61,13 +86,26 @@ export class FireVfxSystem {
     private readonly testEmitter:
         FireTestEmitter;
 
-    public constructor() {
+    private readonly groundFireEmitter:
+        GroundFireEmitter;
+
+    private readonly scorchRenderer:
+        ScorchRenderer;
+
+    public constructor(
+        fireManager:
+            FireManager,
+
+        environmentField:
+            EnvironmentField,
+    ) {
+
         this.textures =
             FireVfxTextureFactory.create();
 
         this.pool =
             new FireVfxPool(
-                this.textures.body,
+                this.textures.main.body,
                 {
                     initialCapacity:
                         DEFAULT_FIRE_PARTICLE_VFX_DEFINITION
@@ -81,20 +119,58 @@ export class FireVfxSystem {
                 },
             );
 
+        /*
+         * Retained only as an isolated diagnostic tool.
+         *
+         * FIRE-VFX-3A does not call testEmitter.update(), so the old fixed
+         * world-position test flame no longer appears during normal play.
+         */
         this.testEmitter =
             new FireTestEmitter(
                 DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
                 (
                     variant,
+                    materialLayer,
                     activation,
                 ): boolean => {
 
                     return this.emitParticle(
                         variant,
+                        materialLayer,
                         activation,
                     );
                 },
             );
+
+        this.scorchRenderer =
+            new ScorchRenderer(
+                environmentField,
+            );
+
+        this.groundFireEmitter =
+            new GroundFireEmitter(
+                fireManager,
+                (
+                    variant,
+                    materialLayer,
+                    activation,
+                ): boolean => {
+
+                    return this.emitParticle(
+                        variant,
+                        materialLayer,
+                        activation,
+                    );
+                },
+            );
+
+        /*
+         * Scorch sits below active flame particles.
+         */
+        this.container.addChild(
+            this.scorchRenderer
+                .getContainer(),
+        );
 
         this.container.addChild(
             this.pool.getContainer(),
@@ -110,6 +186,10 @@ export class FireVfxSystem {
     public emitParticle(
         variant:
             FireVfxTextureVariant,
+
+        materialLayer:
+            FireParticleMaterialLayer,
+
         activation:
             FireVfxParticleActivation,
     ): boolean {
@@ -118,28 +198,43 @@ export class FireVfxSystem {
             this.pool.acquire(
                 this.getTexture(
                     variant,
+                    materialLayer,
                 ),
+
                 activation,
             ) !== null
         );
     }
 
     public update(
-        deltaTime: number,
+        deltaTime:
+            number,
     ): void {
 
         if (
             !Number.isFinite(
                 deltaTime,
             ) ||
-            deltaTime <= 0
+            deltaTime <=
+            0
         ) {
             return;
         }
 
-        this.testEmitter.update(
-            deltaTime,
-        );
+        /*
+         * FIRE-VFX-3A normal runtime path.
+         *
+         * The isolated FireTestEmitter is intentionally not updated.
+         */
+        this.scorchRenderer
+            .update(
+                deltaTime,
+            );
+
+        this.groundFireEmitter
+            .update(
+                deltaTime,
+            );
 
         this.pool.update(
             deltaTime,
@@ -150,6 +245,12 @@ export class FireVfxSystem {
         void {
 
         this.testEmitter.reset();
+
+        this.groundFireEmitter
+            .reset();
+
+        this.scorchRenderer
+            .reset();
 
         this.pool.reset();
     }
@@ -173,6 +274,12 @@ export class FireVfxSystem {
 
         this.testEmitter.destroy();
 
+        this.groundFireEmitter
+            .destroy();
+
+        this.scorchRenderer
+            .destroy();
+
         this.pool.destroy();
 
         FireVfxTextureFactory.destroy(
@@ -188,21 +295,120 @@ export class FireVfxSystem {
     private getTexture(
         variant:
             FireVfxTextureVariant,
+
+        materialLayer:
+            FireParticleMaterialLayer,
     ): Texture {
 
-        switch (variant) {
+        if (
+            variant ===
+            "ember"
+        ) {
+            return this.textures
+                .ember;
+        }
+
+        if (
+            materialLayer ===
+            "detail"
+        ) {
+            return this.getRandomDetailTexture(
+                variant,
+            );
+        }
+
+        return this.getMainTexture(
+            variant,
+        );
+    }
+
+    private getMainTexture(
+        variant:
+            FireVfxTextureVariant,
+    ): Texture {
+
+        switch (
+        variant
+        ) {
             case "core":
-                return this.textures.core;
+                return this.textures
+                    .main
+                    .hot;
 
             case "accent":
-                return this.textures.accent;
-
-            case "ember":
-                return this.textures.ember;
+                return this.textures
+                    .main
+                    .cool;
 
             case "body":
             default:
-                return this.textures.body;
+                return this.textures
+                    .main
+                    .body;
         }
+    }
+
+    private getRandomDetailTexture(
+        variant:
+            FireVfxTextureVariant,
+    ): Texture {
+
+        switch (
+        variant
+        ) {
+            case "core":
+                return this.pickRandomTexture(
+                    this.textures
+                        .detail
+                        .hot,
+                );
+
+            case "accent":
+                return this.pickRandomTexture(
+                    this.textures
+                        .detail
+                        .cool,
+                );
+
+            case "body":
+            default:
+                return this.pickRandomTexture(
+                    this.textures
+                        .detail
+                        .body,
+                );
+        }
+    }
+
+    private pickRandomTexture(
+        textures:
+            readonly Texture[],
+    ): Texture {
+
+        if (
+            textures.length ===
+            0
+        ) {
+            return this.textures
+                .main
+                .body;
+        }
+
+        if (
+            textures.length ===
+            1
+        ) {
+            return textures[0];
+        }
+
+        const index =
+            Math.floor(
+                Math.random() *
+                textures.length,
+            );
+
+        return textures[
+            index
+        ];
     }
 }

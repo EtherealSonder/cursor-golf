@@ -176,10 +176,6 @@ import {
 } from "../environment/EnvironmentField";
 
 import {
-    EnvironmentFieldVisualizer,
-} from "../environment/EnvironmentFieldVisualizer";
-
-import {
     WindManager,
 } from "../environment/WindManager";
 
@@ -336,10 +332,6 @@ export class World {
 
     private readonly environmentField:
         EnvironmentField;
-
-    private environmentFieldVisualizer:
-        EnvironmentFieldVisualizer | null =
-        null;
 
     private readonly fireManager:
         FireManager;
@@ -564,7 +556,6 @@ export class World {
 
         this.createFanEntities();
 
-        this.createEnvironmentFieldVisualizer();
 
         this.createFireSourceVisualizer();
 
@@ -878,9 +869,6 @@ export class World {
         this.fireSourceVisualizer
             ?.update();
 
-        this.environmentFieldVisualizer
-            ?.update();
-
         this.fireVisualizer
             ?.update(
                 deltaTime,
@@ -1004,12 +992,6 @@ export class World {
 
         this.fireVfxSystem
             ?.reset();
-
-        this.environmentFieldVisualizer
-            ?.destroy();
-
-        this.environmentFieldVisualizer =
-            null;
 
         this.environmentField
             .reset();
@@ -1498,6 +1480,9 @@ export class World {
 
         this.fireManager.reset();
 
+        this.fireVfxSystem
+            ?.reset();
+
         this.fireManager
             .setValidationRandomSeed(
                 null,
@@ -1524,6 +1509,9 @@ export class World {
     public resetFireTestState(): void {
 
         this.fireManager.reset();
+
+        this.fireVfxSystem
+            ?.reset();
 
         this.fireManager
             .setValidationRandomSeed(
@@ -1554,8 +1542,6 @@ export class World {
         this.surfaceSystem.removeStateRegionsByIdPrefix(
             "fire-scorch-",
         );
-
-        this.environmentFieldVisualizer?.update();
     }
 
     private createFireDirectionalValidation():
@@ -2068,36 +2054,6 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Environment Field Visualization
-    // -------------------------------------------------------
-
-    private createEnvironmentFieldVisualizer():
-        void {
-
-        if (
-            this.environmentFieldVisualizer
-        ) {
-            throw new Error(
-                "World environment field visualizer has already been created.",
-            );
-        }
-
-        this.environmentFieldVisualizer =
-            new EnvironmentFieldVisualizer(
-                this.environmentField,
-            );
-
-        this.worldContainer
-            .addChild(
-                this.environmentFieldVisualizer
-                    .getGraphics(),
-            );
-
-        this.environmentFieldVisualizer
-            .update();
-    }
-
-    // -------------------------------------------------------
     // Fire Sources
     // -------------------------------------------------------
 
@@ -2143,15 +2099,17 @@ export class World {
         }
 
         this.fireVfxSystem =
-            new FireVfxSystem();
+            new FireVfxSystem(
+                this.fireManager,
+                this.environmentField,
+            );
 
         /*
-         * FIRE-VFX-1:
-         * the active Fire presentation is an isolated textured-particle
-         * test emitter. It deliberately has no FireManager, FireCell, Wind
-         * or FireSource dependency yet.
+         * Phase 4B-6E-R1/R2 installs only the cheap connected burning base.
+         * Experimental metaball/noise/cluster renderers and ember emitters
+         * are intentionally inactive while we establish the FPS baseline.
          *
-         * The container remains world-space and presentation-only.
+         * The container is world-space and presentation-only.
          */
         this.worldContainer
             .addChild(

@@ -1,8 +1,28 @@
+﻿import {
+    DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
+} from "../config/FireParticleVfxDefinition";
+
 import type {
     FireParticleMaterialLayer,
     FireParticleThermalRoleDefinition,
     FireParticleVfxDefinition,
 } from "../config/FireParticleVfxDefinition";
+
+import {
+    DEFAULT_GROUND_FIRE_VFX_DEFINITION,
+} from "../config/GroundFireVfxDefinition";
+
+import type {
+    GroundFireVfxDefinition,
+} from "../config/GroundFireVfxDefinition";
+
+import type {
+    FireManager,
+} from "../environment/FireManager";
+
+import type {
+    FireCell,
+} from "../environment/FireCell";
 
 import type {
     FireVfxParticleActivation,
@@ -12,7 +32,7 @@ import type {
     FireVfxTextureVariant,
 } from "./FireVfxSystem";
 
-export type FireTestEmitterSpawnCallback =
+export type GroundFireEmitterSpawnCallback =
     (
         variant:
             FireVfxTextureVariant,
@@ -25,30 +45,39 @@ export type FireTestEmitterSpawnCallback =
     ) => boolean;
 
 /**
- * FIRE-VFX-2B isolated Fire test emitter.
+ * FIRE-VFX-3A presentation bridge between FireManager and FireVfxPool.
  *
- * The emitter still owns only presentation spawn timing and particle
- * activation parameters.
+ * Authoritative relationship:
  *
- * It has no FireManager, FireCell, Wind, surface, heat or gameplay
- * responsibility.
+ * FireManager
+ *     ↓ read only
+ * GroundFireEmitter
+ *     ↓ presentation spawn request
+ * FireVfxSystem / FireVfxPool
  *
- * Hybrid material rule:
+ * A FireCell is never drawn directly.
+ * Each cell behaves only as an invisible probabilistic emitter region.
  *
- * most spawns -> original FIRE-VFX-1 soft material
- * minority     -> FIRE-VFX-2B irregular detail material
+ * FIRE-VFX-3A intentionally uses only cell intensity for emission strength.
+ * Age/fuel visual-energy curves and persistent per-cell emission carry are
+ * deferred to FIRE-VFX-3B / 3C.
  */
-export class FireTestEmitter {
-
-    private spawnAccumulator =
-        0;
+export class GroundFireEmitter {
 
     public constructor(
-        private readonly definition:
-            FireParticleVfxDefinition,
+        private readonly fireManager:
+            FireManager,
 
         private readonly spawnParticle:
-            FireTestEmitterSpawnCallback,
+            GroundFireEmitterSpawnCallback,
+
+        private readonly definition:
+            GroundFireVfxDefinition =
+            DEFAULT_GROUND_FIRE_VFX_DEFINITION,
+
+        private readonly particleDefinition:
+            FireParticleVfxDefinition =
+            DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
     ) {
     }
 
@@ -59,6 +88,7 @@ export class FireTestEmitter {
 
         if (
             !this.definition.enabled ||
+            !this.particleDefinition.enabled ||
             !Number.isFinite(
                 deltaTime,
             ) ||
@@ -68,45 +98,59 @@ export class FireTestEmitter {
             return;
         }
 
-        const particlesPerSecond =
-            Math.max(
-                0,
-                this.definition
-                    .testEmitter
-                    .particlesPerSecond,
-            );
+        const cells =
+            this.fireManager
+                .getActiveCells();
 
         if (
-            particlesPerSecond <=
+            cells.length ===
             0
         ) {
             return;
         }
 
-        this.spawnAccumulator +=
-            deltaTime *
-            particlesPerSecond;
+        const cellSize =
+            Math.max(
+                1,
+                this.fireManager
+                    .getDefinition()
+                    .cellSize,
+            );
 
-        /*
-         * Consume the fractional emission budget without allocating arrays
-         * or per-frame temporary emitter state.
-         */
-        while (
-            this.spawnAccumulator >=
+        for (
+            let index =
+                0;
+
+            index <
+            cells.length;
+
+            index +=
             1
         ) {
-            this.spawnAccumulator -=
-                1;
+            const cell =
+                cells[index];
 
-            this.spawnOne();
+            if (!cell) {
+                continue;
+            }
+
+            this.emitFromCell(
+                cell,
+                cellSize,
+                deltaTime,
+            );
         }
     }
 
     public reset():
         void {
 
-        this.spawnAccumulator =
-            0;
+        /*
+         * FIRE-VFX-3A is deliberately stateless.
+         *
+         * FIRE-VFX-3C will introduce persistent per-cell emission carry and
+         * this method will then clear those emitter states.
+         */
     }
 
     public destroy():
@@ -115,8 +159,109 @@ export class FireTestEmitter {
         this.reset();
     }
 
-    private spawnOne():
-        void {
+    private emitFromCell(
+        cell:
+            FireCell,
+
+        cellSize:
+            number,
+
+        deltaTime:
+            number,
+    ): void {
+
+        const intensity =
+            this.clamp01(
+                cell.getIntensity(),
+            );
+
+        if (
+            intensity <
+            this.definition
+                .minimumIntensity
+        ) {
+            return;
+        }
+
+        const particlesPerSecond =
+            Math.max(
+                0,
+                this.definition
+                    .particlesPerSecondPerCell,
+            ) *
+            intensity;
+
+        if (
+            particlesPerSecond <=
+            0
+        ) {
+            return;
+        }
+
+        /*
+         * FIRE-VFX-3A intentionally avoids persistent per-cell bookkeeping.
+         *
+         * Integer expected spawns are emitted directly. The fractional
+         * remainder is treated as a probability, giving the correct average
+         * emission rate without exposing the simulation grid visually.
+         *
+         * Persistent fractional carry is the explicit FIRE-VFX-3C step.
+         */
+        const expectedSpawns =
+            particlesPerSecond *
+            deltaTime;
+
+        let spawnCount =
+            Math.floor(
+                expectedSpawns,
+            );
+
+        const fractionalSpawn =
+            expectedSpawns -
+            spawnCount;
+
+        if (
+            Math.random() <
+            fractionalSpawn
+        ) {
+            spawnCount +=
+                1;
+        }
+
+        spawnCount =
+            Math.min(
+                spawnCount,
+                Math.max(
+                    1,
+                    this.definition
+                        .maximumSpawnsPerCellPerFrame,
+                ),
+            );
+
+        for (
+            let spawnIndex =
+                0;
+
+            spawnIndex <
+            spawnCount;
+
+            spawnIndex +=
+            1
+        ) {
+            this.spawnOne(
+                cell,
+                cellSize,
+            );
+        }
+    }
+
+    private spawnOne(
+        cell:
+            FireCell,
+
+        cellSize:
+            number,
+    ): void {
 
         const thermalRole =
             this.selectThermalRole();
@@ -126,12 +271,17 @@ export class FireTestEmitter {
 
         const activation =
             this.createActivation(
+                cell,
+                cellSize,
                 thermalRole,
             );
 
         this.spawnParticle(
-            thermalRole.textureVariant,
+            thermalRole
+                .textureVariant,
+
             materialLayer,
+
             activation,
         );
     }
@@ -141,7 +291,7 @@ export class FireTestEmitter {
 
         const detailChance =
             this.clamp01(
-                this.definition
+                this.particleDefinition
                     .material
                     .detailParticleChance,
             );
@@ -158,17 +308,17 @@ export class FireTestEmitter {
         FireParticleThermalRoleDefinition {
 
         const hot =
-            this.definition
+            this.particleDefinition
                 .thermalRoles
                 .hot;
 
         const body =
-            this.definition
+            this.particleDefinition
                 .thermalRoles
                 .body;
 
         const cool =
-            this.definition
+            this.particleDefinition
                 .thermalRoles
                 .cool;
 
@@ -225,17 +375,49 @@ export class FireTestEmitter {
     }
 
     private createActivation(
+        cell:
+            FireCell,
+
+        cellSize:
+            number,
+
         role:
             FireParticleThermalRoleDefinition,
     ): FireVfxParticleActivation {
 
-        const emitter =
-            this.definition
-                .testEmitter;
-
         const particle =
-            this.definition
+            this.particleDefinition
                 .particle;
+
+        const halfCell =
+            cellSize *
+            0.5;
+
+        const spawnRadiusX =
+            halfCell *
+            Math.max(
+                0,
+                this.definition
+                    .spawnHalfWidthMultiplier,
+            ) +
+            Math.max(
+                0,
+                this.definition
+                    .spawnOverscanX,
+            );
+
+        const spawnRadiusY =
+            halfCell *
+            Math.max(
+                0,
+                this.definition
+                    .spawnHalfHeightMultiplier,
+            ) +
+            Math.max(
+                0,
+                this.definition
+                    .spawnOverscanY,
+            );
 
         const angle =
             Math.random() *
@@ -243,8 +425,11 @@ export class FireTestEmitter {
             2;
 
         /*
-         * sqrt(random) gives a uniform distribution over the ellipse area
-         * rather than concentrating particles in the center.
+         * sqrt(random) distributes samples uniformly over the ellipse area.
+         *
+         * Because neighbouring cells use overlapping emitter regions, the
+         * resulting Fire should read as one particle field rather than as
+         * a sequence of 48 px cell-centre stamps.
          */
         const radius =
             Math.sqrt(
@@ -255,14 +440,14 @@ export class FireTestEmitter {
             Math.cos(
                 angle,
             ) *
-            emitter.spawnRadiusX *
+            spawnRadiusX *
             radius;
 
         const spawnOffsetY =
             Math.sin(
                 angle,
             ) *
-            emitter.spawnRadiusY *
+            spawnRadiusY *
             radius;
 
         const speedMultiplier =
@@ -291,11 +476,11 @@ export class FireTestEmitter {
 
         return {
             x:
-                emitter.positionX +
+                cell.getWorldCenterX() +
                 spawnOffsetX,
 
             y:
-                emitter.positionY +
+                cell.getWorldCenterY() +
                 spawnOffsetY,
 
             velocityX:

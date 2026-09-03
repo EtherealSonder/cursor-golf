@@ -761,13 +761,33 @@ export class Game {
         }
 
         /*
-         * FIRE-VFX-1 final cleanup:
-         * right-click remains a generic InputManager context action, but it
-         * no longer ignites gameplay Fire during the isolated VFX test.
+         * FIRE-VFX-3A temporary validation bridge:
          *
-         * The low-level right-click input support is intentionally retained
-         * for golf cancellation/context interactions and future debug tools.
+         * Right-click on the course creates an authoritative FireManager
+         * ignition area at the pointer's world position. GroundFireEmitter
+         * then reads those real FireCells and produces presentation particles.
+         *
+         * This is development/test input only. Fire VFX never creates or
+         * modifies combustion state directly.
          */
+        if (
+            !fireSourcePlacementHandled &&
+            this.inputManager
+                .wasContextActionPressed() &&
+            this.inputManager
+                .isPointerInsideTarget() &&
+            !(this.shotController
+                ?.isPreparingShot() ?? false)
+        ) {
+            this.world
+                ?.igniteTestFireAtScreenPosition(
+                    this.inputManager
+                        .getMouseX(),
+
+                    this.inputManager
+                        .getMouseY(),
+                );
+        }
 
         this.cameraController
             ?.setEnabled(

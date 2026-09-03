@@ -11,6 +11,10 @@ import fireGlowRoundTexture from "../../assets/textures/fire/masks/fire_glow_rou
 import fireGlowSoftTexture from "../../assets/textures/fire/masks/fire_glow_soft.png";
 import fireGradientSoftTexture from "../../assets/textures/fire/masks/fire_gradient_soft.png";
 
+import fireNoiseCloudTexture from "../../assets/textures/fire/noise/fire_noise_cloud.png";
+import fireNoisePerlinTexture from "../../assets/textures/fire/noise/fire_noise_perlin.png";
+import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG";
+
 export class AssetLoader {
 
     private static initialized =
@@ -67,6 +71,33 @@ export class AssetLoader {
         await this.loadTexture(
             "fireGradientSoft",
             fireGradientSoftTexture,
+        );
+
+        // ---------------------------------------------------
+        // FIRE-VFX-2A
+        // Source noise textures
+        // ---------------------------------------------------
+
+        /*
+         * These textures are loaded as grayscale data sources only.
+         *
+         * FIRE-VFX-2B will use them during one-time particle-variant
+         * generation. They are not rendered directly as Fire particles in
+         * FIRE-VFX-2A, so this phase should produce no visual change.
+         */
+        await this.loadTexture(
+            "fireNoiseCloud",
+            fireNoiseCloudTexture,
+        );
+
+        await this.loadTexture(
+            "fireNoisePerlin",
+            fireNoisePerlinTexture,
+        );
+
+        await this.loadTexture(
+            "fireNoiseFine",
+            fireNoiseFineTexture,
         );
 
         this.initialized =

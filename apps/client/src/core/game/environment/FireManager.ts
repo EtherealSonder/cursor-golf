@@ -1593,49 +1593,18 @@ export class FireManager {
     private scorchCellSurface(
         cell: FireCell,
     ): void {
-        const halfCell =
-            this.definition.cellSize /
-            2;
-
-        const regionId =
-            `fire-scorch-${cell.getGridX()}:${cell.getGridY()}`;
-
-        const applied =
-            this.surfaceSystem
-                .addStateRegion({
-                    id:
-                        regionId,
-
-                    surfaceType:
-                        SurfaceType.Grass,
-
-                    state:
-                        SurfaceState.Scorched,
-
-                    x:
-                        cell.getWorldCenterX() -
-                        halfCell,
-
-                    y:
-                        cell.getWorldCenterY() -
-                        halfCell,
-
-                    width:
-                        this.definition.cellSize,
-
-                    height:
-                        this.definition.cellSize,
-
-                    durationSeconds:
-                        null,
-
-                    reversionState:
-                        null,
-                });
-
-        if (applied) {
-            cell.markSurfaceScorched();
-        }
+        /*
+         * FIRE-VFX-3A.5:
+         *
+         * Do not create a visible 48 x 48 SurfaceSystem rectangle here.
+         * EnvironmentField.burn already carries the higher-resolution,
+         * persistent damage footprint, and ScorchRenderer is responsible
+         * for presenting that field as one continuous organic burn mass.
+         *
+         * FireCell still records that it crossed the scorch lifecycle stage
+         * so this event is processed only once.
+         */
+        cell.markSurfaceScorched();
     }
 
     // ---------------------------------------------------------------------

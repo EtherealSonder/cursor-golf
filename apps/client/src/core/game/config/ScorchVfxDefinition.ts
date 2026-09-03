@@ -1,83 +1,143 @@
+/**
+ * Presentation-only tuning for persistent scorched terrain.
+ *
+ * EnvironmentField burn remains authoritative. The renderer converts that
+ * scalar burn field into connected regional contours so individual field
+ * cells are never rendered as circles or squares.
+ */
 export interface ScorchVfxDefinition {
-    readonly freshCharColor: number;
-    readonly recentCharColor: number;
-    readonly oldCharColor: number;
+    readonly enabled: boolean;
 
-    readonly freshCharAlpha: number;
-    readonly recentCharAlpha: number;
-    readonly oldCharAlpha: number;
+    /**
+     * How often the scorch presentation may rebuild while burn is changing.
+     */
+    readonly refreshIntervalSeconds: number;
 
-    readonly freshBurnThreshold: number;
-    readonly recentBurnThreshold: number;
+    /**
+     * Normalized burn thresholds used to build nested connected regions.
+     */
+    readonly outerBurnThreshold: number;
+    readonly burnedRegionThreshold: number;
+    readonly heavyCharThreshold: number;
 
-    readonly minimumRadiusMultiplier: number;
-    readonly maximumRadiusMultiplier: number;
+    /**
+     * Number of inexpensive scalar-field smoothing passes before contouring.
+     * This removes cell-sized holes and softens the simulation lattice.
+     */
+    readonly smoothingPasses: number;
 
-    readonly positionJitterMultiplier: number;
+    /**
+     * Strength of neighbour influence during each smoothing pass.
+     */
+    readonly smoothingStrength: number;
 
-    readonly lowBurnSkipChance: number;
-    readonly highBurnSkipChance: number;
+    /**
+     * Small expansion bias applied before contour extraction. This helps
+     * neighbouring burned samples close into one terrain mass.
+     */
+    readonly closingBias: number;
 
-    readonly secondaryPatchChance: number;
-    readonly secondaryPatchRadiusMultiplier: number;
-    readonly secondaryPatchAlphaMultiplier: number;
+    /**
+     * Number of subdivisions added to each contour segment before boundary
+     * deformation. Higher values provide a less polygonal silhouette.
+     */
+    readonly contourSubdivisions: number;
+
+    /**
+     * Deterministic displacement applied only to contour points.
+     * Values are expressed in world pixels.
+     */
+    readonly outerEdgeDeformationPixels: number;
+    readonly burnedEdgeDeformationPixels: number;
+    readonly heavyEdgeDeformationPixels: number;
+
+    /**
+     * Spatial frequency of the deterministic edge noise.
+     */
+    readonly edgeNoiseFrequency: number;
+
+    /**
+     * Additional low-frequency wave deformation so the boundary does not
+     * simply look like random high-frequency fuzz.
+     */
+    readonly edgeWaveAmplitudePixels: number;
+    readonly edgeWaveFrequency: number;
+
+    /**
+     * Connected scorch-layer colors.
+     */
+    readonly outerColor: number;
+    readonly burnedColor: number;
+    readonly heavyColor: number;
+
+    readonly outerAlpha: number;
+    readonly burnedAlpha: number;
+    readonly heavyAlpha: number;
 }
 
-/**
- * Stronger scorch presentation, deliberately between the old heavy V1
- * footprint and the overly weak/fragmented cluster-pass footprint.
- *
- * EnvironmentField burn remains authoritative. These values only control
- * how that persistent damage is shown.
- */
 export const DEFAULT_SCORCH_VFX_DEFINITION:
     ScorchVfxDefinition = {
 
-    freshCharColor:
-        0x3f3029,
+    enabled:
+        true,
 
-    recentCharColor:
-        0x5d4033,
-
-    oldCharColor:
-        0x795746,
-
-    freshCharAlpha:
-        0.76,
-
-    recentCharAlpha:
-        0.66,
-
-    oldCharAlpha:
-        0.48,
-
-    freshBurnThreshold:
-        0.72,
-
-    recentBurnThreshold:
-        0.36,
-
-    minimumRadiusMultiplier:
-        0.62,
-
-    maximumRadiusMultiplier:
-        1.02,
-
-    positionJitterMultiplier:
-        0.42,
-
-    lowBurnSkipChance:
+    refreshIntervalSeconds:
         0.24,
 
-    highBurnSkipChance:
-        0.04,
+    outerBurnThreshold:
+        0.055,
 
-    secondaryPatchChance:
-        0.34,
+    burnedRegionThreshold:
+        0.20,
 
-    secondaryPatchRadiusMultiplier:
-        0.48,
+    heavyCharThreshold:
+        0.62,
 
-    secondaryPatchAlphaMultiplier:
-        0.58,
+    smoothingPasses:
+        1,
+
+    smoothingStrength:
+        0.72,
+
+    closingBias:
+        0.065,
+
+    contourSubdivisions:
+        2,
+
+    outerEdgeDeformationPixels:
+        5.5,
+
+    burnedEdgeDeformationPixels:
+        4.0,
+
+    heavyEdgeDeformationPixels:
+        2.4,
+
+    edgeNoiseFrequency:
+        0.035,
+
+    edgeWaveAmplitudePixels:
+        3.2,
+
+    edgeWaveFrequency:
+        0.018,
+
+    outerColor:
+        0x76513f,
+
+    burnedColor:
+        0x4b3026,
+
+    heavyColor:
+        0x281b17,
+
+    outerAlpha:
+        0.22,
+
+    burnedAlpha:
+        0.50,
+
+    heavyAlpha:
+        0.38,
 };

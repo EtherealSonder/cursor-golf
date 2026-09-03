@@ -22,97 +22,52 @@ export interface FireDefinition {
     readonly fuelConsumptionPerSecond: number;
     readonly minimumFuelForIgnition: number;
 
-    /**
-     * Directional spread tuning.
-     *
-     * Fire still spreads through coarse neighbour cells in this
-     * intermediate stage, but each candidate now receives a
-     * probability weight based on local airflow.
-     */
     readonly baseSpreadProbability: number;
-
-    /**
-     * Local airflow below this acceleration does not influence
-     * spread direction.
-     */
     readonly minimumWindAccelerationForBias: number;
-
-    /**
-     * Local airflow at or above this acceleration receives the
-     * full directional-bias strength.
-     */
     readonly windAccelerationForMaximumBias: number;
-
-    /**
-     * Maximum multiplier for candidates aligned downwind.
-     */
     readonly maximumDownwindSpreadMultiplier: number;
-
-    /**
-     * Minimum multiplier for candidates directly upwind.
-     */
     readonly maximumUpwindSpreadMultiplier: number;
-
-    /**
-     * Multiplier applied to crosswind spread when local airflow
-     * is strong.
-     */
     readonly crosswindSpreadMultiplier: number;
-
-    /**
-     * Diagonal candidates cover more distance than cardinal
-     * candidates, so they receive a small probability reduction.
-     */
     readonly diagonalSpreadMultiplier: number;
 }
 
 export const DEFAULT_FIRE_DEFINITION: FireDefinition = {
     cellSize: 48,
 
-    firstSpreadAge: 0.60,
-
-    spreadInterval: 0.70,
+    /*
+     * More frequent, smaller propagation steps make Fire feel continuous
+     * instead of "spread, pause, spread". Probability is reduced below so
+     * the faster cadence does not explode the footprint.
+     */
+    firstSpreadAge: 0.38,
+    spreadInterval: 0.42,
 
     maximumSpreadGeneration: 3,
 
     scorchAge: 2.60,
-
     lifetime: 3.50,
-
     maximumActiveCellCount: 128,
-
     initialIntensity: 1,
-
     intensityFadeLifetimeFraction: 0.22,
 
     fieldInfluenceRadius: 34,
-
     heatDepositPerSecond: 0.52,
-
     burnDepositPerSecond: 0.34,
-
     fuelConsumptionPerSecond: 0.22,
-
     minimumFuelForIgnition: 0.08,
 
     /*
-     * Eight-neighbour spread would grow too aggressively if every
-     * candidate ignited deterministically. A probability model also
-     * gives Fire a less grid-like, more organic footprint.
+     * Lower per-attempt probability compensates for the shorter spread
+     * interval while still producing more frequent visible propagation.
      */
-    baseSpreadProbability: 0.48,
+    baseSpreadProbability: 0.34,
 
-    /*
-     * The current local Fans are roughly 1050-1150 px/s² near their
-     * strongest region, so they can reach full directional influence.
-     */
     minimumWindAccelerationForBias: 120,
     windAccelerationForMaximumBias: 1000,
 
-    maximumDownwindSpreadMultiplier: 2.08,
-    maximumUpwindSpreadMultiplier: 0.01,
-    crosswindSpreadMultiplier: 0.18,
-
+    maximumDownwindSpreadMultiplier: 2.05,
+    maximumUpwindSpreadMultiplier: 0.06,
+    crosswindSpreadMultiplier: 0.38,
     diagonalSpreadMultiplier: 0.72,
 };
 
@@ -133,32 +88,22 @@ export function validateFireDefinition(
         ];
 
     for (const [name, value] of positiveValues) {
-        if (
-            !Number.isFinite(value) ||
-            value <=
-            0
-        ) {
+        if (!Number.isFinite(value) || value <= 0) {
             throw new Error(
                 `Fire ${name} must be a finite number greater than zero.`,
             );
         }
     }
 
-    if (
-        definition.scorchAge >=
-        definition.lifetime
-    ) {
+    if (definition.scorchAge >= definition.lifetime) {
         throw new Error(
             "Fire scorchAge must be less than lifetime.",
         );
     }
 
     if (
-        !Number.isInteger(
-            definition.maximumSpreadGeneration,
-        ) ||
-        definition.maximumSpreadGeneration <
-        0
+        !Number.isInteger(definition.maximumSpreadGeneration) ||
+        definition.maximumSpreadGeneration < 0
     ) {
         throw new Error(
             "Fire maximumSpreadGeneration must be a non-negative integer.",
@@ -166,11 +111,8 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isInteger(
-            definition.maximumActiveCellCount,
-        ) ||
-        definition.maximumActiveCellCount <=
-        0
+        !Number.isInteger(definition.maximumActiveCellCount) ||
+        definition.maximumActiveCellCount <= 0
     ) {
         throw new Error(
             "Fire maximumActiveCellCount must be a positive integer.",
@@ -178,13 +120,9 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isFinite(
-            definition.initialIntensity,
-        ) ||
-        definition.initialIntensity <
-        0 ||
-        definition.initialIntensity >
-        1
+        !Number.isFinite(definition.initialIntensity) ||
+        definition.initialIntensity < 0 ||
+        definition.initialIntensity > 1
     ) {
         throw new Error(
             "Fire initialIntensity must remain between zero and one.",
@@ -192,13 +130,9 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isFinite(
-            definition.intensityFadeLifetimeFraction,
-        ) ||
-        definition.intensityFadeLifetimeFraction <=
-        0 ||
-        definition.intensityFadeLifetimeFraction >
-        1
+        !Number.isFinite(definition.intensityFadeLifetimeFraction) ||
+        definition.intensityFadeLifetimeFraction <= 0 ||
+        definition.intensityFadeLifetimeFraction > 1
     ) {
         throw new Error(
             "Fire intensityFadeLifetimeFraction must be greater than zero and at most one.",
@@ -206,54 +140,25 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isFinite(
-            definition.minimumFuelForIgnition,
-        ) ||
-        definition.minimumFuelForIgnition <
-        0 ||
-        definition.minimumFuelForIgnition >
-        1
+        !Number.isFinite(definition.minimumFuelForIgnition) ||
+        definition.minimumFuelForIgnition < 0 ||
+        definition.minimumFuelForIgnition > 1
     ) {
         throw new Error(
             "Fire minimumFuelForIgnition must remain between zero and one.",
         );
     }
+
     const probabilityValues:
         Array<readonly [string, number]> = [
-            [
-                "baseSpreadProbability",
-                definition.baseSpreadProbability,
-            ],
-            [
-                "maximumUpwindSpreadMultiplier",
-                definition.maximumUpwindSpreadMultiplier,
-            ],
-            [
-                "crosswindSpreadMultiplier",
-                definition.crosswindSpreadMultiplier,
-            ],
-            [
-                "diagonalSpreadMultiplier",
-                definition.diagonalSpreadMultiplier,
-            ],
+            ["baseSpreadProbability", definition.baseSpreadProbability],
+            ["maximumUpwindSpreadMultiplier", definition.maximumUpwindSpreadMultiplier],
+            ["crosswindSpreadMultiplier", definition.crosswindSpreadMultiplier],
+            ["diagonalSpreadMultiplier", definition.diagonalSpreadMultiplier],
         ];
 
-    for (
-        const [
-            name,
-            value,
-        ]
-        of probabilityValues
-    ) {
-        if (
-            !Number.isFinite(
-                value,
-            ) ||
-            value <
-            0 ||
-            value >
-            1
-        ) {
+    for (const [name, value] of probabilityValues) {
+        if (!Number.isFinite(value) || value < 0 || value > 1) {
             throw new Error(
                 `Fire ${name} must remain between zero and one.`,
             );
@@ -261,11 +166,8 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isFinite(
-            definition.maximumDownwindSpreadMultiplier,
-        ) ||
-        definition.maximumDownwindSpreadMultiplier <
-        1
+        !Number.isFinite(definition.maximumDownwindSpreadMultiplier) ||
+        definition.maximumDownwindSpreadMultiplier < 1
     ) {
         throw new Error(
             "Fire maximumDownwindSpreadMultiplier must be finite and at least one.",
@@ -273,11 +175,8 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isFinite(
-            definition.minimumWindAccelerationForBias,
-        ) ||
-        definition.minimumWindAccelerationForBias <
-        0
+        !Number.isFinite(definition.minimumWindAccelerationForBias) ||
+        definition.minimumWindAccelerationForBias < 0
     ) {
         throw new Error(
             "Fire minimumWindAccelerationForBias must be finite and non-negative.",
@@ -285,9 +184,7 @@ export function validateFireDefinition(
     }
 
     if (
-        !Number.isFinite(
-            definition.windAccelerationForMaximumBias,
-        ) ||
+        !Number.isFinite(definition.windAccelerationForMaximumBias) ||
         definition.windAccelerationForMaximumBias <=
         definition.minimumWindAccelerationForBias
     ) {
@@ -295,5 +192,4 @@ export function validateFireDefinition(
             "Fire windAccelerationForMaximumBias must be finite and greater than minimumWindAccelerationForBias.",
         );
     }
-
 }
