@@ -74,6 +74,26 @@ export interface JetFireVfxDefinition {
     readonly maximumLocalWindAcceleration: number;
 
     /**
+     * FIRE-VFX-5B age-dependent Wind response.
+     *
+     * Near the nozzle, powered Jet momentum dominates. As the particle ages,
+     * the visible flame becomes increasingly susceptible to crosswind.
+     *
+     * startMultiplier:
+     * Wind influence at particle birth.
+     *
+     * fullInfluenceFraction:
+     * normalized lifetime fraction at which Wind reaches full influence.
+     *
+     * responseExponent:
+     * shapes the ramp. Values > 1 keep the near-nozzle section straighter
+     * for longer before allowing stronger downstream bending.
+     */
+    readonly windInfluenceStartMultiplier: number;
+    readonly windInfluenceFullFraction: number;
+    readonly windInfluenceResponseExponent: number;
+
+    /**
      * Restricts per-frame catch-up after a slow frame.
      */
     readonly maximumSpawnsPerSourcePerFrame: number;
@@ -154,6 +174,21 @@ export const DEFAULT_JET_FIRE_VFX_DEFINITION:
 
     maximumLocalWindAcceleration:
         150,
+
+    /*
+     * FIRE-VFX-5B:
+     *
+     * The first section of the stream stays mostly nozzle-driven.
+     * Crosswind becomes progressively more visible downstream.
+     */
+    windInfluenceStartMultiplier:
+        0.12,
+
+    windInfluenceFullFraction:
+        0.72,
+
+    windInfluenceResponseExponent:
+        1.65,
 
     maximumSpawnsPerSourcePerFrame:
         6,

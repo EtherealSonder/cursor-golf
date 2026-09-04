@@ -21,6 +21,18 @@ export interface FireVfxParticleActivation {
     readonly windAccelerationY?: number;
 
     /**
+     * Optional FIRE-VFX-5B age-dependent Wind influence.
+     *
+     * Omitted = full Wind influence for the entire particle lifetime.
+     *
+     * Jet particles use this so the near-nozzle stream stays relatively
+     * straight while older/downstream flame bends progressively more.
+     */
+    readonly windInfluenceStartMultiplier?: number;
+    readonly windInfluenceFullFraction?: number;
+    readonly windInfluenceResponseExponent?: number;
+
+    /**
      * FIRE-VFX-4B orientation response.
      *
      * Textures are authored vertically, so velocity-following rotation uses
@@ -134,6 +146,15 @@ export class FireVfxParticle {
 
     private windAccelerationY =
         0;
+
+    private windInfluenceStartMultiplier =
+        1;
+
+    private windInfluenceFullFraction =
+        0;
+
+    private windInfluenceResponseExponent =
+        1;
 
     private orientToVelocity =
         false;
@@ -270,6 +291,34 @@ export class FireVfxParticle {
             )
                 ? activation.windAccelerationY ?? 0
                 : 0;
+
+        this.windInfluenceStartMultiplier =
+            this.clamp01(
+                Number.isFinite(
+                    activation.windInfluenceStartMultiplier,
+                )
+                    ? activation.windInfluenceStartMultiplier ?? 1
+                    : 1,
+            );
+
+        this.windInfluenceFullFraction =
+            this.clamp01(
+                Number.isFinite(
+                    activation.windInfluenceFullFraction,
+                )
+                    ? activation.windInfluenceFullFraction ?? 0
+                    : 0,
+            );
+
+        this.windInfluenceResponseExponent =
+            Math.max(
+                0.01,
+                Number.isFinite(
+                    activation.windInfluenceResponseExponent,
+                )
+                    ? activation.windInfluenceResponseExponent ?? 1
+                    : 1,
+            );
 
         this.orientToVelocity =
             activation.orientToVelocity ??
@@ -430,26 +479,42 @@ export class FireVfxParticle {
         }
 
         // ---------------------------------------------------
-        // FIRE-VFX-4 Wind acceleration
+        // FIRE-VFX-4 / FIRE-VFX-5B Wind acceleration
         // ---------------------------------------------------
 
         /*
-         * Local Wind is sampled once at spawn by GroundFireEmitter.
+         * Local Wind is sampled once at spawn by the emitter.
          *
-         * Integrating that acceleration over the particle lifetime creates
-         * a natural curved bend:
+         * Ground Fire omits the FIRE-VFX-5B age-response values, so its
+         * Wind influence remains 1.0 for the entire lifetime.
          *
-         * velocity += windAcceleration * dt
-         * position += velocity * dt
+         * Jet Fire supplies an age-dependent response:
          *
-         * No Fire spread or authoritative Wind state is modified here.
+         * near nozzle  -> low Wind influence
+         * downstream   -> progressively stronger Wind influence
+         *
+         * This preserves powered Jet momentum near the source while letting
+         * crosswind bend and break up the visible plume farther away.
          */
+        const normalizedAgeForWind =
+            this.clamp01(
+                this.age /
+                this.lifetime,
+            );
+
+        const windInfluence =
+            this.getWindInfluence(
+                normalizedAgeForWind,
+            );
+
         this.velocityX +=
             this.windAccelerationX *
+            windInfluence *
             deltaTime;
 
         this.velocityY +=
             this.windAccelerationY *
+            windInfluence *
             deltaTime;
 
         // ---------------------------------------------------
@@ -630,6 +695,15 @@ export class FireVfxParticle {
         this.windAccelerationY =
             0;
 
+        this.windInfluenceStartMultiplier =
+            1;
+
+        this.windInfluenceFullFraction =
+            0;
+
+        this.windInfluenceResponseExponent =
+            1;
+
         this.orientToVelocity =
             false;
 
@@ -647,6 +721,45 @@ export class FireVfxParticle {
             texture:
                 false,
         });
+    }
+
+    // -------------------------------------------------------
+    // FIRE-VFX-5B Age-dependent Wind response
+    // -------------------------------------------------------
+
+    private getWindInfluence(
+        normalizedAge:
+            number,
+    ): number {
+
+        /*
+         * fullInfluenceFraction <= 0 is the default shared-particle behavior:
+         * apply full Wind immediately. This keeps Ground Fire unchanged.
+         */
+        if (
+            this.windInfluenceFullFraction <=
+            0
+        ) {
+            return 1;
+        }
+
+        const progress =
+            this.clamp01(
+                normalizedAge /
+                this.windInfluenceFullFraction,
+            );
+
+        const shapedProgress =
+            Math.pow(
+                progress,
+                this.windInfluenceResponseExponent,
+            );
+
+        return this.lerp(
+            this.windInfluenceStartMultiplier,
+            1,
+            shapedProgress,
+        );
     }
 
     // -------------------------------------------------------

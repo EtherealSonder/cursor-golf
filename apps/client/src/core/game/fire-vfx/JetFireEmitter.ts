@@ -436,6 +436,18 @@ export class JetFireEmitter {
             windAccelerationY:
                 windAcceleration.y,
 
+            windInfluenceStartMultiplier:
+                this.definition
+                    .windInfluenceStartMultiplier,
+
+            windInfluenceFullFraction:
+                this.definition
+                    .windInfluenceFullFraction,
+
+            windInfluenceResponseExponent:
+                this.definition
+                    .windInfluenceResponseExponent,
+
             orientToVelocity:
                 true,
 

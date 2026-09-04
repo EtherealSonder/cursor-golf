@@ -33,19 +33,25 @@ interface ScorchLayer {
 }
 
 /**
- * Presentation-only scorch renderer.
+ * FIRE-VFX-8B presentation-only scorch renderer.
  *
- * The authoritative EnvironmentField remains grid based, but this renderer
- * never draws those cells directly. Instead it:
+ * EnvironmentField burn remains authoritative.
  *
- * 1. samples the complete scalar burn field
- * 2. closes/smooths small cell-sized gaps
- * 3. extracts connected boundaries with Marching Squares
- * 4. subdivides and deforms only those outer boundaries
- * 5. fills each resulting region as a continuous terrain mass
+ * The renderer keeps a separate visual burn field that approaches the
+ * authoritative burn values smoothly. Marching Squares is still responsible
+ * for converting that scalar field into connected scorch masses.
  *
- * This removes the circle, footprint, net and visible-cell problems from
- * earlier scorch attempts.
+ * Important stability rules:
+ *
+ * - Finished visual burn values do not continue changing.
+ * - Only dirty/actively growing burn indices are interpolated every frame.
+ * - Contours are rebuilt at a bounded presentation cadence, not every frame.
+ * - Edge deformation is deterministic from world position only.
+ * - Contour ordering is never used as a deformation seed.
+ *
+ * This preserves the connected Marching-Squares scorch shape while avoiding
+ * the previous behaviour where unrelated new Fire could make historical
+ * scorch boundaries visibly crawl or reshape.
  */
 export class ScorchRenderer {
 
@@ -82,20 +88,37 @@ export class ScorchRenderer {
     private readonly minimumWorldY:
         number;
 
-    private readonly burnValues:
+    /**
+     * Visual burn values consumed by Marching Squares.
+     *
+     * These values approach EnvironmentField burn rather than snapping to it.
+     */
+    private readonly visualBurnValues:
+        Float32Array;
+
+    /**
+     * Temporary field used by the existing closing/smoothing pass.
+     */
+    private readonly contourBurnValues:
         Float32Array;
 
     private readonly scratchValues:
         Float32Array;
 
+    /**
+     * Only indices whose visual burn is still approaching authoritative burn.
+     */
+    private readonly activeGrowthIndices:
+        number[] = [];
+
+    private readonly activeGrowthFlags:
+        Uint8Array;
+
     private refreshAccumulator =
         0;
 
-    private lastBurnRevision =
-        -1;
-
-    private lastVisualSignature =
-        -1;
+    private contourRebuildPending =
+        false;
 
     private destroyed =
         false;
@@ -129,16 +152,28 @@ export class ScorchRenderer {
             environmentField
                 .getMinimumWorldY();
 
-        this.burnValues =
+        const cellCount =
+            this.columns *
+            this.rows;
+
+        this.visualBurnValues =
             new Float32Array(
-                this.columns *
-                this.rows,
+                cellCount,
+            );
+
+        this.contourBurnValues =
+            new Float32Array(
+                cellCount,
             );
 
         this.scratchValues =
             new Float32Array(
-                this.columns *
-                this.rows,
+                cellCount,
+            );
+
+        this.activeGrowthFlags =
+            new Uint8Array(
+                cellCount,
             );
 
         this.canvas =
@@ -146,11 +181,6 @@ export class ScorchRenderer {
                 "canvas",
             );
 
-        /*
-         * Draw directly in world-pixel scale. This avoids a second visible
-         * raster lattice and keeps contour deformation expressed naturally
-         * in world pixels.
-         */
         this.canvas.width =
             Math.max(
                 1,
@@ -212,6 +242,13 @@ export class ScorchRenderer {
         this.container.addChild(
             this.sprite,
         );
+
+        /*
+         * If the renderer is created after burn already exists, initialize
+         * from the authoritative field rather than waiting for a new dirty
+         * event.
+         */
+        this.synchronizeImmediatelyFromEnvironment();
     }
 
     public getContainer():
@@ -236,19 +273,22 @@ export class ScorchRenderer {
             return;
         }
 
-        this.refreshAccumulator +=
-            deltaTime;
+        this.collectDirtyBurnIndices();
 
-        const burnRevision =
-            this.environmentField
-                .getBurnRevision();
+        this.updateVisualBurnGrowth(
+            deltaTime,
+        );
 
         if (
-            burnRevision ===
-            this.lastBurnRevision
+            !this.contourRebuildPending
         ) {
+            this.refreshAccumulator = 0;
+
             return;
         }
+
+        this.refreshAccumulator +=
+            deltaTime;
 
         if (
             this.refreshAccumulator <
@@ -260,32 +300,21 @@ export class ScorchRenderer {
 
         this.refreshAccumulator = 0;
 
-        /*
-         * BurnRevision may advance every simulation frame. Rebuilding the
-         * complete contour for every tiny scalar change caused the recurring
-         * frame-time spikes seen during active spread. The signature below
-         * changes only when the tracked burn distribution crosses coarse
-         * presentation buckets.
-         */
-        const visualSignature =
-            this.calculateVisualSignature();
-
-        this.lastBurnRevision =
-            burnRevision;
-
-        if (
-            visualSignature ===
-            this.lastVisualSignature
-        ) {
-            return;
-        }
-
-        this.lastVisualSignature =
-            visualSignature;
-
         this.rebuild();
+
+        this.contourRebuildPending =
+            false;
     }
 
+    /**
+     * Resynchronizes presentation from authoritative burn.
+     *
+     * This deliberately does not assume that reset() means "remove scorch".
+     * If active Fire is cleared while EnvironmentField burn remains, the
+     * historical scorch is rebuilt from that authoritative burn. If the full
+     * environment was reset first, the authoritative burn is zero and scorch
+     * is cleared naturally.
+     */
     public reset():
         void {
 
@@ -295,11 +324,18 @@ export class ScorchRenderer {
 
         this.refreshAccumulator = 0;
 
-        this.lastBurnRevision = -1;
+        this.activeGrowthIndices.length =
+            0;
 
-        this.lastVisualSignature = -1;
+        this.activeGrowthFlags.fill(
+            0,
+        );
 
-        this.burnValues.fill(
+        this.visualBurnValues.fill(
+            0,
+        );
+
+        this.contourBurnValues.fill(
             0,
         );
 
@@ -307,14 +343,7 @@ export class ScorchRenderer {
             0,
         );
 
-        this.context.clearRect(
-            0,
-            0,
-            this.canvas.width,
-            this.canvas.height,
-        );
-
-        this.updateTextureSource();
+        this.synchronizeImmediatelyFromEnvironment();
     }
 
     public destroy():
@@ -325,6 +354,13 @@ export class ScorchRenderer {
         }
 
         this.destroyed = true;
+
+        this.activeGrowthIndices.length =
+            0;
+
+        this.activeGrowthFlags.fill(
+            0,
+        );
 
         this.sprite
             .removeFromParent();
@@ -344,12 +380,213 @@ export class ScorchRenderer {
         });
     }
 
-    private calculateVisualSignature():
-        number {
+    private collectDirtyBurnIndices():
+        void {
 
-        const tracked =
+        const dirtyIndices =
             this.environmentField
-                .getTrackedBurnIndices();
+                .consumeDirtyBurnIndices();
+
+        for (
+            const index
+            of dirtyIndices
+        ) {
+            if (
+                index < 0 ||
+                index >=
+                this.visualBurnValues.length
+            ) {
+                continue;
+            }
+
+            const targetBurn =
+                this.getNormalizedAuthoritativeBurn(
+                    index,
+                );
+
+            const currentBurn =
+                this.visualBurnValues[
+                index
+                ] ?? 0;
+
+            if (
+                targetBurn <=
+                currentBurn +
+                this.definition
+                    .visualBurnCompletionEpsilon
+            ) {
+                /*
+                 * Burn is monotonic in the current Fire simulation. Ignore
+                 * insignificant repeated dirty notifications once visual burn
+                 * has already caught up.
+                 */
+                continue;
+            }
+
+            this.activateGrowthIndex(
+                index,
+            );
+        }
+    }
+
+    private activateGrowthIndex(
+        index:
+            number,
+    ): void {
+
+        if (
+            this.activeGrowthFlags[
+            index
+            ] !== 0
+        ) {
+            return;
+        }
+
+        this.activeGrowthFlags[
+            index
+        ] = 1;
+
+        this.activeGrowthIndices.push(
+            index,
+        );
+    }
+
+    private updateVisualBurnGrowth(
+        deltaTime:
+            number,
+    ): void {
+
+        if (
+            this.activeGrowthIndices
+                .length === 0
+        ) {
+            return;
+        }
+
+        const response =
+            Math.max(
+                0.01,
+                this.definition
+                    .visualBurnGrowthResponse,
+            );
+
+        /*
+         * Delta-time-independent exponential response.
+         *
+         * A higher response makes scorch catch the simulation more quickly,
+         * while still avoiding abrupt scalar-field jumps.
+         */
+        const interpolationAmount =
+            1 -
+            Math.exp(
+                -response *
+                deltaTime,
+            );
+
+        const epsilon =
+            Math.max(
+                0.000001,
+                this.definition
+                    .visualBurnCompletionEpsilon,
+            );
+
+        let writeIndex =
+            0;
+
+        for (
+            let readIndex = 0;
+            readIndex <
+            this.activeGrowthIndices
+                .length;
+            readIndex += 1
+        ) {
+            const index =
+                this.activeGrowthIndices[
+                readIndex
+                ];
+
+            if (
+                index === undefined
+            ) {
+                continue;
+            }
+
+            const targetBurn =
+                this.getNormalizedAuthoritativeBurn(
+                    index,
+                );
+
+            const currentBurn =
+                this.visualBurnValues[
+                index
+                ] ?? 0;
+
+            if (
+                targetBurn <=
+                currentBurn +
+                epsilon
+            ) {
+                this.visualBurnValues[
+                    index
+                ] =
+                    Math.max(
+                        currentBurn,
+                        targetBurn,
+                    );
+
+                this.activeGrowthFlags[
+                    index
+                ] = 0;
+
+                continue;
+            }
+
+            const nextBurn =
+                this.lerp(
+                    currentBurn,
+                    targetBurn,
+                    interpolationAmount,
+                );
+
+            if (
+                targetBurn -
+                nextBurn <=
+                epsilon
+            ) {
+                this.visualBurnValues[
+                    index
+                ] =
+                    targetBurn;
+
+                this.activeGrowthFlags[
+                    index
+                ] = 0;
+            } else {
+                this.visualBurnValues[
+                    index
+                ] =
+                    nextBurn;
+
+                this.activeGrowthIndices[
+                    writeIndex
+                ] =
+                    index;
+
+                writeIndex += 1;
+            }
+
+            this.contourRebuildPending =
+                true;
+        }
+
+        this.activeGrowthIndices.length =
+            writeIndex;
+    }
+
+    private getNormalizedAuthoritativeBurn(
+        index:
+            number,
+    ): number {
 
         const maximumBurn =
             Math.max(
@@ -359,58 +596,87 @@ export class ScorchRenderer {
                     .maximumBurnAmount,
             );
 
-        let signature =
-            tracked.length *
-            486187739;
+        return this.clamp01(
+            this.environmentField
+                .getBurnAmountByIndex(
+                    index,
+                ) /
+            maximumBurn,
+        );
+    }
+
+    private synchronizeImmediatelyFromEnvironment():
+        void {
+
+        const tracked =
+            this.environmentField
+                .getTrackedBurnIndices();
+
+        let hasBurn =
+            false;
 
         for (
             const index
             of tracked
         ) {
+            if (
+                index < 0 ||
+                index >=
+                this.visualBurnValues.length
+            ) {
+                continue;
+            }
+
             const burn =
-                this.clamp01(
-                    this.environmentField
-                        .getBurnAmountByIndex(
-                            index,
-                        ) /
-                    maximumBurn,
+                this.getNormalizedAuthoritativeBurn(
+                    index,
                 );
 
-            /*
-             * Eight visual levels are sufficient for slowly accumulating
-             * terrain damage. Fire particles remain fully frame-rate driven.
-             */
-            const bucket =
-                Math.min(
-                    7,
-                    Math.floor(
-                        burn *
-                        8,
-                    ),
-                );
+            this.visualBurnValues[
+                index
+            ] =
+                burn;
 
-            signature =
-                (
-                    Math.imul(
-                        signature ^
-                        (
-                            index +
-                            1
-                        ),
-                        16777619,
-                    ) ^
-                    bucket
-                ) >>>
-                0;
+            if (
+                burn >
+                this.definition
+                    .outerBurnThreshold
+            ) {
+                hasBurn =
+                    true;
+            }
         }
 
-        return signature;
+        /*
+         * Consume any stale presentation-dirty notifications. The complete
+         * authoritative state has just been synchronized above.
+         */
+        this.environmentField
+            .consumeDirtyBurnIndices();
+
+        if (hasBurn) {
+            this.rebuild();
+        } else {
+            this.context.clearRect(
+                0,
+                0,
+                this.canvas.width,
+                this.canvas.height,
+            );
+
+            this.updateTextureSource();
+        }
+
+        this.contourRebuildPending =
+            false;
     }
 
     private rebuild():
         void {
 
-        this.readBurnField();
+        this.contourBurnValues.set(
+            this.visualBurnValues,
+        );
 
         this.closeAndSmoothField();
 
@@ -483,7 +749,7 @@ export class ScorchRenderer {
             const contours =
                 this.contourBuilder
                     .build(
-                        this.burnValues,
+                        this.contourBurnValues,
                         this.columns,
                         this.rows,
                         layer.threshold,
@@ -496,42 +762,6 @@ export class ScorchRenderer {
         }
 
         this.updateTextureSource();
-    }
-
-    private readBurnField():
-        void {
-
-        this.burnValues.fill(
-            0,
-        );
-
-        const maximumBurn =
-            Math.max(
-                0.0001,
-                this.environmentField
-                    .getDefinition()
-                    .maximumBurnAmount,
-            );
-
-        const tracked =
-            this.environmentField
-                .getTrackedBurnIndices();
-
-        for (
-            const index
-            of tracked
-        ) {
-            this.burnValues[
-                index
-            ] =
-                this.clamp01(
-                    this.environmentField
-                        .getBurnAmountByIndex(
-                            index,
-                        ) /
-                    maximumBurn,
-                );
-        }
     }
 
     private closeAndSmoothField():
@@ -552,11 +782,11 @@ export class ScorchRenderer {
             pass += 1
         ) {
             this.smoothPass(
-                this.burnValues,
+                this.contourBurnValues,
                 this.scratchValues,
             );
 
-            this.burnValues.set(
+            this.contourBurnValues.set(
                 this.scratchValues,
             );
         }
@@ -620,7 +850,8 @@ export class ScorchRenderer {
 
                     if (
                         sampleY < 0 ||
-                        sampleY >= this.rows
+                        sampleY >=
+                        this.rows
                     ) {
                         continue;
                     }
@@ -698,10 +929,6 @@ export class ScorchRenderer {
                         strength,
                     );
 
-                /*
-                 * A small bias closes cell-sized pinholes but is only applied
-                 * where neighbouring burn already exists.
-                 */
                 destination[index] =
                     neighbourMaximum > 0
                         ? this.clamp01(
@@ -728,26 +955,16 @@ export class ScorchRenderer {
             return;
         }
 
-        const color =
+        this.context.fillStyle =
             this.toCssColor(
                 layer.color,
                 layer.alpha,
             );
 
-        this.context.fillStyle =
-            color;
-
         for (
-            let contourIndex = 0;
-            contourIndex <
-            contours.length;
-            contourIndex += 1
+            const contour
+            of contours
         ) {
-            const contour =
-                contours[
-                contourIndex
-                ];
-
             if (
                 !contour ||
                 contour.length < 3
@@ -760,7 +977,6 @@ export class ScorchRenderer {
                     contour,
                     layer
                         .deformationPixels,
-                    contourIndex,
                 );
 
             if (
@@ -783,10 +999,6 @@ export class ScorchRenderer {
                 first.y,
             );
 
-            /*
-             * Quadratic midpoint smoothing removes the final piecewise-linear
-             * look from Marching Squares while retaining the deformed shape.
-             */
             for (
                 let index = 1;
                 index <=
@@ -843,14 +1055,22 @@ export class ScorchRenderer {
         }
     }
 
+    /**
+     * Deforms only the exposed contour boundary.
+     *
+     * There is intentionally no per-cell deformation. Adjacent burned cells
+     * therefore remain one continuous mass and only the final Marching-Squares
+     * perimeter receives irregularity.
+     *
+     * All deformation is derived exclusively from world position. This is the
+     * temporal-stability fix: adding another contour elsewhere cannot change
+     * the seed of an already existing boundary.
+     */
     private buildDeformedWorldContour(
         contour:
             ScorchContour,
 
         deformationPixels:
-            number,
-
-        contourIndex:
             number,
     ): ScorchContourPoint[] {
 
@@ -997,16 +1217,44 @@ export class ScorchRenderer {
                 current.y +
                 this.minimumWorldY;
 
-            const noise =
+            const broadNoise =
                 this.smoothNoise(
                     worldX *
                     this.definition
-                        .edgeNoiseFrequency,
+                        .broadEdgeNoiseFrequency,
                     worldY *
                     this.definition
-                        .edgeNoiseFrequency,
-                    contourIndex,
+                        .broadEdgeNoiseFrequency,
+                    0,
                 );
+
+            const detailNoise =
+                this.smoothNoise(
+                    worldX *
+                    this.definition
+                        .detailEdgeNoiseFrequency,
+                    worldY *
+                    this.definition
+                        .detailEdgeNoiseFrequency,
+                    1,
+                );
+
+            const broadDisplacement =
+                (
+                    broadNoise *
+                    2 -
+                    1
+                ) *
+                deformationPixels;
+
+            const detailDisplacement =
+                (
+                    detailNoise *
+                    2 -
+                    1
+                ) *
+                this.definition
+                    .detailEdgeDeformationPixels;
 
             const wave =
                 Math.sin(
@@ -1016,26 +1264,17 @@ export class ScorchRenderer {
                     worldY *
                     this.definition
                         .edgeWaveFrequency *
-                    0.73 +
-                    contourIndex *
-                    1.913,
+                    0.73
                 ) *
                 this.definition
                     .edgeWaveAmplitudePixels;
 
             const displacement =
-                (
-                    noise *
-                    2 -
-                    1
-                ) *
-                deformationPixels +
+                broadDisplacement +
+                detailDisplacement +
                 wave;
 
             result.push({
-                /*
-                 * Canvas coordinates are local to the field origin.
-                 */
                 x:
                     current.x +
                     normalX *

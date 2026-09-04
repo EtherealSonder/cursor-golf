@@ -1460,7 +1460,7 @@ export class World {
         this.fireManager.reset();
 
         this.fireVfxSystem
-            ?.reset();
+            ?.resetActiveFireOnly();
 
         this.fireManager
             .setValidationRandomSeed(

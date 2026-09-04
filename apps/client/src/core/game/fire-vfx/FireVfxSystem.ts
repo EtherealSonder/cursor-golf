@@ -295,7 +295,26 @@ export class FireVfxSystem {
         );
     }
 
+    /**
+     * Full presentation reset. Used when the Fire environment itself is
+     * reset, so persistent scorch is cleared together with authoritative
+     * EnvironmentField burn state.
+     */
     public reset():
+        void {
+
+        this.resetActiveFireOnly();
+
+        this.scorchRenderer
+            .reset();
+    }
+
+    /**
+     * Clears only active flame presentation. Historical scorch deliberately
+     * remains untouched because EnvironmentField burn also persists during
+     * an active-Fire-only reset.
+     */
+    public resetActiveFireOnly():
         void {
 
         this.testEmitter
@@ -305,9 +324,6 @@ export class FireVfxSystem {
             .reset();
 
         this.jetFireEmitter
-            .reset();
-
-        this.scorchRenderer
             .reset();
 
         this.pool.reset();

@@ -1,17 +1,32 @@
 /**
- * Presentation-only tuning for persistent scorched terrain.
+ * FIRE-VFX-8B presentation-only tuning for connected scorched terrain.
  *
- * EnvironmentField burn remains authoritative. The renderer converts that
- * scalar burn field into connected regional contours so individual field
- * cells are never rendered as circles or squares.
+ * EnvironmentField burn remains authoritative. ScorchRenderer maintains a
+ * separate visual scalar field that approaches authoritative burn smoothly,
+ * then Marching Squares converts that visual field into connected regions.
  */
 export interface ScorchVfxDefinition {
     readonly enabled: boolean;
 
     /**
-     * How often the scorch presentation may rebuild while burn is changing.
+     * Maximum cadence for expensive contour reconstruction / canvas upload.
+     *
+     * Visual burn itself is interpolated every frame only for actively
+     * changing indices. Marching Squares remains deliberately rate-limited.
      */
     readonly refreshIntervalSeconds: number;
+
+    /**
+     * Delta-time-independent response used when visual burn approaches the
+     * authoritative EnvironmentField burn value.
+     */
+    readonly visualBurnGrowthResponse: number;
+
+    /**
+     * When visual burn is this close to authoritative burn, growth is
+     * considered complete and the index leaves the active-growth list.
+     */
+    readonly visualBurnCompletionEpsilon: number;
 
     /**
      * Normalized burn thresholds used to build nested connected regions.
@@ -21,8 +36,7 @@ export interface ScorchVfxDefinition {
     readonly heavyCharThreshold: number;
 
     /**
-     * Number of inexpensive scalar-field smoothing passes before contouring.
-     * This removes cell-sized holes and softens the simulation lattice.
+     * Number of scalar-field smoothing passes before contour extraction.
      */
     readonly smoothingPasses: number;
 
@@ -32,45 +46,42 @@ export interface ScorchVfxDefinition {
     readonly smoothingStrength: number;
 
     /**
-     * Small expansion bias applied before contour extraction. This helps
-     * neighbouring burned samples close into one terrain mass.
+     * Small closing bias that helps neighbouring burn samples form one
+     * continuous mass instead of exposing the underlying field lattice.
      */
     readonly closingBias: number;
 
     /**
-     * Number of subdivisions added to each contour segment before boundary
-     * deformation. Higher values provide a less polygonal silhouette.
+     * Subdivisions per Marching-Squares segment before perimeter deformation.
      */
     readonly contourSubdivisions: number;
 
     /**
-     * Deterministic displacement applied only to contour points.
-     * Values are expressed in world pixels.
+     * Maximum broad perimeter displacement for each nested burn layer.
+     * Deformation is applied only to the final exposed contour, never to
+     * individual EnvironmentField or FireCell boundaries.
      */
     readonly outerEdgeDeformationPixels: number;
     readonly burnedEdgeDeformationPixels: number;
     readonly heavyEdgeDeformationPixels: number;
 
     /**
-     * Spatial frequency of the deterministic edge noise.
+     * Low-frequency deterministic world-space noise for broad silhouette
+     * deformation.
      */
-    readonly edgeNoiseFrequency: number;
+    readonly broadEdgeNoiseFrequency: number;
 
     /**
-     * Additional low-frequency wave deformation so the boundary does not
-     * simply look like random high-frequency fuzz.
+     * Secondary deterministic world-space noise for smaller edge breakup.
+     */
+    readonly detailEdgeNoiseFrequency: number;
+    readonly detailEdgeDeformationPixels: number;
+
+    /**
+     * Additional stable low-frequency wave component.
      */
     readonly edgeWaveAmplitudePixels: number;
     readonly edgeWaveFrequency: number;
-
-    /**
-     * Temporal presentation smoothing.
-     *
-     * Contours are still rebuilt at the slower refresh cadence above.
-     * The renderer then crossfades from the previously displayed contour
-     * texture toward the latest target texture every frame.
-     */
-    readonly transitionDurationSeconds: number;
 
     /**
      * Connected scorch-layer colors.
@@ -90,8 +101,19 @@ export const DEFAULT_SCORCH_VFX_DEFINITION:
     enabled:
         true,
 
+    /*
+     * Start conservatively. The previous contour renderer rebuilt at 0.24 s.
+     * 0.16 s is visibly more responsive while still keeping Marching Squares
+     * and the large canvas upload well below render-frame frequency.
+     */
     refreshIntervalSeconds:
-        0.24,
+        0.16,
+
+    visualBurnGrowthResponse:
+        7.5,
+
+    visualBurnCompletionEpsilon:
+        0.003,
 
     outerBurnThreshold:
         0.055,
@@ -115,25 +137,28 @@ export const DEFAULT_SCORCH_VFX_DEFINITION:
         2,
 
     outerEdgeDeformationPixels:
-        5.5,
+        6.0,
 
     burnedEdgeDeformationPixels:
-        4.0,
+        4.2,
 
     heavyEdgeDeformationPixels:
-        2.4,
+        2.6,
 
-    edgeNoiseFrequency:
-        0.035,
+    broadEdgeNoiseFrequency:
+        0.022,
+
+    detailEdgeNoiseFrequency:
+        0.072,
+
+    detailEdgeDeformationPixels:
+        1.6,
 
     edgeWaveAmplitudePixels:
-        3.2,
+        2.6,
 
     edgeWaveFrequency:
-        0.018,
-
-    transitionDurationSeconds:
-        0.18,
+        0.015,
 
     outerColor:
         0x76513f,
