@@ -709,3 +709,39 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
+
+
+/* ---------------------------------------------------------
+   FIRE-VFX-5 Jet Placement
+--------------------------------------------------------- */
+
+.hud-test-label {
+    color: var(--color-text-muted);
+    font-size: 0.59rem;
+    font-weight: 720;
+    letter-spacing: 0.105em;
+    text-transform: uppercase;
+}
+
+.hud-test-hint {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 8px;
+    color: var(--color-text-muted);
+    font-size: 0.57rem;
+    font-weight: 620;
+    line-height: 1.4;
+    text-align: center;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.game-container--fire-placement {
+    cursor: crosshair;
+}
+
+    .game-container--fire-placement .game-canvas {
+        cursor: crosshair;
+    }

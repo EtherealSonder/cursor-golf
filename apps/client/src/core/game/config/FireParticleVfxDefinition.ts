@@ -30,6 +30,10 @@ export interface FireParticleMaterialVariantDefinition {
 export interface FireParticleVfxDefinition {
     readonly enabled: boolean;
     readonly testEmitter: {
+        /**
+         * Isolated diagnostic emitter. Disabled during normal gameplay.
+         */
+        readonly enabled: boolean;
         readonly positionX: number;
         readonly positionY: number;
         readonly spawnRadiusX: number;
@@ -91,6 +95,7 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
     enabled: true,
 
     testEmitter: {
+        enabled: false,
         positionX: 430,
         positionY: 500,
         spawnRadiusX: 26,

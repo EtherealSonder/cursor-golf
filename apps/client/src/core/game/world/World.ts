@@ -140,10 +140,6 @@ import {
 } from "../environment/FireManager";
 
 import {
-    FireVisualizer,
-} from "../environment/FireVisualizer";
-
-import {
     FireSourceSystem,
 } from "../environment/FireSourceSystem";
 
@@ -348,10 +344,6 @@ export class World {
 
     private fireSourceTestSequence =
         0;
-
-    private fireVisualizer:
-        FireVisualizer | null =
-        null;
 
     private fireVfxSystem:
         FireVfxSystem | null =
@@ -558,8 +550,6 @@ export class World {
 
 
         this.createFireSourceVisualizer();
-
-        this.createFireVisualizer();
 
         this.createFireVfxSystem();
 
@@ -869,11 +859,6 @@ export class World {
         this.fireSourceVisualizer
             ?.update();
 
-        this.fireVisualizer
-            ?.update(
-                deltaTime,
-            );
-
         this.fireVfxSystem
             ?.update(
                 deltaTime,
@@ -974,12 +959,6 @@ export class World {
             ?.destroy();
 
         this.fireVfxSystem =
-            null;
-
-        this.fireVisualizer
-            ?.destroy();
-
-        this.fireVisualizer =
             null;
 
         this.fireManager
@@ -2101,48 +2080,26 @@ export class World {
         this.fireVfxSystem =
             new FireVfxSystem(
                 this.fireManager,
+                this.fireSourceSystem,
                 this.environmentField,
+                this.localWindSystem,
             );
 
         /*
-         * Phase 4B-6E-R1/R2 installs only the cheap connected burning base.
-         * Experimental metaball/noise/cluster renderers and ember emitters
-         * are intentionally inactive while we establish the FPS baseline.
+         * FIRE-VFX-5 normal runtime Fire presentation path.
+         *
+         * GroundFireEmitter reads FireManager.
+         * JetFireEmitter reads Directional FireSource records.
+         * Both feed the same pooled particle material.
+         *
+         * FireSourceSystem remains authoritative for Jet heat deposition and
+         * source direction. VFX remains presentation-only.
          *
          * The container is world-space and presentation-only.
          */
         this.worldContainer
             .addChild(
                 this.fireVfxSystem
-                    .getContainer(),
-            );
-    }
-
-    private createFireVisualizer():
-        void {
-
-        if (
-            this.fireVisualizer
-        ) {
-            throw new Error(
-                "World fire visualizer has already been created.",
-            );
-        }
-
-        this.fireVisualizer =
-            new FireVisualizer(
-                this.fireManager,
-            );
-
-        /*
-         * Fire is world-space presentation. At this point
-         * initialization has not created gameplay entities,
-         * so adding it now keeps it above terrain/surface
-         * state visuals and below obstacles/entities.
-         */
-        this.worldContainer
-            .addChild(
-                this.fireVisualizer
                     .getContainer(),
             );
     }

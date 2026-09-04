@@ -64,6 +64,15 @@ export interface ScorchVfxDefinition {
     readonly edgeWaveFrequency: number;
 
     /**
+     * Temporal presentation smoothing.
+     *
+     * Contours are still rebuilt at the slower refresh cadence above.
+     * The renderer then crossfades from the previously displayed contour
+     * texture toward the latest target texture every frame.
+     */
+    readonly transitionDurationSeconds: number;
+
+    /**
      * Connected scorch-layer colors.
      */
     readonly outerColor: number;
@@ -122,6 +131,9 @@ export const DEFAULT_SCORCH_VFX_DEFINITION:
 
     edgeWaveFrequency:
         0.018,
+
+    transitionDurationSeconds:
+        0.18,
 
     outerColor:
         0x76513f,

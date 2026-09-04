@@ -19,6 +19,14 @@ import type {
     EnvironmentField,
 } from "../environment/EnvironmentField";
 
+import type {
+    LocalWindSystem,
+} from "../environment/LocalWindSystem";
+
+import type {
+    FireSourceSystem,
+} from "../environment/FireSourceSystem";
+
 import {
     FireVfxPool,
 } from "./FireVfxPool";
@@ -44,6 +52,10 @@ import {
 } from "./GroundFireEmitter";
 
 import {
+    JetFireEmitter,
+} from "./JetFireEmitter";
+
+import {
     ScorchRenderer,
 } from "./ScorchRenderer";
 
@@ -54,7 +66,10 @@ export type FireVfxTextureVariant =
     | "ember";
 
 /**
- * FIRE-VFX-3A presentation-only Fire coordinator.
+ * FIRE-VFX-5 presentation-only Fire coordinator.
+ *
+ * GroundFireEmitter and JetFireEmitter intentionally converge on the same
+ * FireVfxPool, FireVfxParticle class and texture material set.
  *
  * Normal runtime path:
  *
@@ -69,8 +84,9 @@ export type FireVfxTextureVariant =
  * FireCells remain invisible simulation records. They are never represented
  * by one circle, one stamp or one persistent visible cell object.
  *
- * FireTestEmitter is deliberately retained as an isolated VFX diagnostic,
- * but is not updated during normal FIRE-VFX-3A runtime.
+ * FireTestEmitter is retained only as an optional isolated diagnostic.
+ * It is disabled by default through FireParticleVfxDefinition and is never
+ * part of the normal runtime Fire presentation path.
  */
 export class FireVfxSystem {
 
@@ -84,10 +100,13 @@ export class FireVfxSystem {
         FireVfxPool;
 
     private readonly testEmitter:
-        FireTestEmitter;
+        FireTestEmitter | null;
 
     private readonly groundFireEmitter:
         GroundFireEmitter;
+
+    private readonly jetFireEmitter:
+        JetFireEmitter;
 
     private readonly scorchRenderer:
         ScorchRenderer;
@@ -96,8 +115,14 @@ export class FireVfxSystem {
         fireManager:
             FireManager,
 
+        fireSourceSystem:
+            FireSourceSystem,
+
         environmentField:
             EnvironmentField,
+
+        localWindSystem:
+            LocalWindSystem,
     ) {
 
         this.textures =
@@ -120,14 +145,41 @@ export class FireVfxSystem {
             );
 
         /*
-         * Retained only as an isolated diagnostic tool.
+         * Isolated diagnostic emitter.
          *
-         * FIRE-VFX-3A does not call testEmitter.update(), so the old fixed
-         * world-position test flame no longer appears during normal play.
+         * Normal gameplay never needs this emitter. It is only constructed
+         * when explicitly enabled in FireParticleVfxDefinition.
          */
         this.testEmitter =
-            new FireTestEmitter(
-                DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
+            DEFAULT_FIRE_PARTICLE_VFX_DEFINITION
+                .testEmitter
+                .enabled
+                ? new FireTestEmitter(
+                    DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
+                    (
+                        variant,
+                        materialLayer,
+                        activation,
+                    ): boolean => {
+
+                        return this.emitParticle(
+                            variant,
+                            materialLayer,
+                            activation,
+                        );
+                    },
+                )
+                : null;
+
+        this.scorchRenderer =
+            new ScorchRenderer(
+                environmentField,
+            );
+
+        this.groundFireEmitter =
+            new GroundFireEmitter(
+                fireManager,
+                localWindSystem,
                 (
                     variant,
                     materialLayer,
@@ -142,14 +194,10 @@ export class FireVfxSystem {
                 },
             );
 
-        this.scorchRenderer =
-            new ScorchRenderer(
-                environmentField,
-            );
-
-        this.groundFireEmitter =
-            new GroundFireEmitter(
-                fireManager,
+        this.jetFireEmitter =
+            new JetFireEmitter(
+                fireSourceSystem,
+                localWindSystem,
                 (
                     variant,
                     materialLayer,
@@ -222,9 +270,10 @@ export class FireVfxSystem {
         }
 
         /*
-         * FIRE-VFX-3A normal runtime path.
+         * FIRE-VFX-3D normal runtime path.
          *
-         * The isolated FireTestEmitter is intentionally not updated.
+         * The diagnostic FireTestEmitter is deliberately excluded from
+         * normal gameplay updates.
          */
         this.scorchRenderer
             .update(
@@ -232,6 +281,11 @@ export class FireVfxSystem {
             );
 
         this.groundFireEmitter
+            .update(
+                deltaTime,
+            );
+
+        this.jetFireEmitter
             .update(
                 deltaTime,
             );
@@ -244,9 +298,13 @@ export class FireVfxSystem {
     public reset():
         void {
 
-        this.testEmitter.reset();
+        this.testEmitter
+            ?.reset();
 
         this.groundFireEmitter
+            .reset();
+
+        this.jetFireEmitter
             .reset();
 
         this.scorchRenderer
@@ -272,9 +330,13 @@ export class FireVfxSystem {
     public destroy():
         void {
 
-        this.testEmitter.destroy();
+        this.testEmitter
+            ?.destroy();
 
         this.groundFireEmitter
+            .destroy();
+
+        this.jetFireEmitter
             .destroy();
 
         this.scorchRenderer

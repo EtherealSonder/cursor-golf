@@ -1,6 +1,7 @@
 ﻿import {
     useEffect,
     useRef,
+    useState,
 } from "react";
 
 import {
@@ -10,6 +11,10 @@ import {
 import type {
     FireWindTestConfigurationId,
 } from "../../core/game/config/FireWindTestDefinition";
+
+import {
+    FireSourcePlacementMode,
+} from "../../core/game/config/FireSourcePlacementMode";
 
 import "./HomePage.css";
 
@@ -28,6 +33,25 @@ function HomePage() {
         useRef<Game | null>(
             null,
         );
+
+    const [
+        fireSourcePlacementMode,
+        setFireSourcePlacementMode,
+    ] =
+        useState<FireSourcePlacementMode>(
+            FireSourcePlacementMode.None,
+        );
+
+    const [fireSourcesEnabled, setFireSourcesEnabled] = useState(true);
+    const [fireSourceDebugVisible, setFireSourceDebugVisible] = useState(false);
+    const [activeFireSourceCount, setActiveFireSourceCount] = useState(0);
+
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setActiveFireSourceCount(gameRef.current?.getActiveFireSourceCount() ?? 0);
+        }, 250);
+        return () => window.clearInterval(intervalId);
+    }, []);
 
     // -------------------------------------------------------
     // Game Lifecycle
@@ -54,6 +78,10 @@ function HomePage() {
             let disposed =
                 false;
 
+            let unsubscribeFromFireSourcePlacement:
+                (() => void) | null =
+                null;
+
             const initializeGame =
                 async (): Promise<void> => {
 
@@ -64,6 +92,23 @@ function HomePage() {
 
                         return;
                     }
+
+                    game.setFireSourceDebugVisible(
+                        false,
+                    );
+
+                    unsubscribeFromFireSourcePlacement =
+                        game.subscribeToFireSourcePlacementMode(
+                            (
+                                mode:
+                                    FireSourcePlacementMode,
+                            ): void => {
+
+                                setFireSourcePlacementMode(
+                                    mode,
+                                );
+                            },
+                        );
                 };
 
             void initializeGame();
@@ -72,6 +117,9 @@ function HomePage() {
 
                 disposed =
                     true;
+
+                unsubscribeFromFireSourcePlacement
+                    ?.();
 
                 game.stop();
 
@@ -99,11 +147,75 @@ function HomePage() {
                 FireWindTestConfigurationId,
         ): void => {
 
-            gameRef.current
-                ?.applyFireWindTestConfiguration(
-                    configurationId,
-                );
+            gameRef.current?.applyFireWindTestConfiguration(
+                configurationId,
+            );
         };
+
+    const handleSelectFireSourcePlacement =
+        (
+            mode:
+                FireSourcePlacementMode,
+        ): void => {
+
+            const game =
+                gameRef.current;
+
+            if (!game) {
+                return;
+            }
+
+            const nextMode =
+                fireSourcePlacementMode ===
+                    mode
+                    ? FireSourcePlacementMode.None
+                    : mode;
+
+            game.setFireSourcePlacementMode(
+                nextMode,
+            );
+        };
+
+    const handleRemoveFireSources =
+        (): void => {
+
+            const game =
+                gameRef.current;
+
+            if (!game) {
+                return;
+            }
+
+            game.clearFireSources();
+            game.setFireSourcePlacementMode(FireSourcePlacementMode.None);
+            setActiveFireSourceCount(0);
+        };
+
+    const handleToggleFireSources = (): void => {
+        const game = gameRef.current;
+        if (!game) return;
+        const next = !fireSourcesEnabled;
+        game.setAllFireSourcesEnabled(next);
+        setFireSourcesEnabled(next);
+    };
+
+    const handleClearActiveFire = (): void => { gameRef.current?.clearActiveFire(); };
+
+    const handleResetFireSourceEnvironment = (): void => {
+        const game = gameRef.current;
+        if (!game) return;
+        game.resetFireSourceTestEnvironment();
+        setFireSourcesEnabled(true);
+        setActiveFireSourceCount(0);
+    };
+
+    const handleToggleFireSourceDebug = (): void => {
+        const game = gameRef.current;
+        if (!game) return;
+        const next = !fireSourceDebugVisible;
+        game.setFireSourceDebugVisible(next);
+        setFireSourceDebugVisible(next);
+    };
 
     // -------------------------------------------------------
     // Page Structure
@@ -219,57 +331,111 @@ function HomePage() {
                                 Fire / Wind Test
                             </div>
 
-                            <button
-                                type="button"
-                                className="hud-action-button"
-                                onClick={
-                                    () =>
-                                        handleFireWindConfiguration(
-                                            "no-wind",
-                                        )
-                                }
-                            >
+                            <button type="button" className="hud-action-button"
+                                onClick={() => handleFireWindConfiguration("no-wind")}>
                                 No Wind
                             </button>
 
-                            <button
-                                type="button"
-                                className="hud-action-button"
-                                onClick={
-                                    () =>
-                                        handleFireWindConfiguration(
-                                            "east-wind",
-                                        )
-                                }
-                            >
+                            <button type="button" className="hud-action-button"
+                                onClick={() => handleFireWindConfiguration("east-wind")}>
                                 East Wind →
                             </button>
 
+                            <button type="button" className="hud-action-button"
+                                onClick={() => handleFireWindConfiguration("south-wind")}>
+                                South Wind ↓
+                            </button>
+
+                            <button type="button" className="hud-action-button"
+                                onClick={() => handleFireWindConfiguration("mixed-wind")}>
+                                Mixed Wind ↘
+                            </button>
+
+                            <span className="hud-test-hint">
+                                Right-click course to ignite
+                            </span>
+
+                            <div className="hud-test-divider" />
+
+                            <div className="hud-test-label">
+                                Fire Jet Test
+                            </div>
+
                             <button
                                 type="button"
-                                className="hud-action-button"
+                                className={
+                                    fireSourcePlacementMode ===
+                                        FireSourcePlacementMode.Directional
+                                        ? "hud-action-button hud-action-button--selected"
+                                        : "hud-action-button"
+                                }
+                                aria-pressed={
+                                    fireSourcePlacementMode ===
+                                    FireSourcePlacementMode.Directional
+                                }
                                 onClick={
                                     () =>
-                                        handleFireWindConfiguration(
-                                            "south-wind",
+                                        handleSelectFireSourcePlacement(
+                                            FireSourcePlacementMode.Directional,
                                         )
                                 }
                             >
-                                South Wind ↓
+                                Directional Jet
+                            </button>
+
+                            <button
+                                type="button"
+                                className={
+                                    fireSourcePlacementMode ===
+                                        FireSourcePlacementMode.Sweeping
+                                        ? "hud-action-button hud-action-button--selected"
+                                        : "hud-action-button"
+                                }
+                                aria-pressed={
+                                    fireSourcePlacementMode ===
+                                    FireSourcePlacementMode.Sweeping
+                                }
+                                onClick={
+                                    () =>
+                                        handleSelectFireSourcePlacement(
+                                            FireSourcePlacementMode.Sweeping,
+                                        )
+                                }
+                            >
+                                Sweeping Jet
+                            </button>
+
+                            <div className="hud-source-status">Sources: {activeFireSourceCount}</div>
+
+                            <button type="button" className={!fireSourcesEnabled ? "hud-action-button hud-action-button--selected" : "hud-action-button"} onClick={handleToggleFireSources}>
+                                {fireSourcesEnabled ? "Disable Sources" : "Enable Sources"}
                             </button>
 
                             <button
                                 type="button"
                                 className="hud-action-button"
-                                onClick={
-                                    () =>
-                                        handleFireWindConfiguration(
-                                            "mixed-wind",
-                                        )
-                                }
+                                onClick={handleRemoveFireSources}
                             >
-                                Mixed Wind ↘
+                                Remove Sources
                             </button>
+
+                            <button type="button" className="hud-action-button" onClick={handleClearActiveFire}>Clear Active Fire</button>
+                            <button type="button" className="hud-action-button" onClick={handleResetFireSourceEnvironment}>Reset Environment</button>
+                            <button type="button" className={fireSourceDebugVisible ? "hud-action-button hud-action-button--selected" : "hud-action-button"} onClick={handleToggleFireSourceDebug}>
+                                {fireSourceDebugVisible ? "Hide Source Debug" : "Show Source Debug"}
+                            </button>
+
+                            <span className="hud-test-hint">
+                                {
+                                    fireSourcePlacementMode ===
+                                        FireSourcePlacementMode.Directional
+                                        ? "Directional Jet armed: click-drag-release on the course"
+                                        : fireSourcePlacementMode ===
+                                            FireSourcePlacementMode.Sweeping
+                                            ? "Sweeping Jet armed: click-drag-release on the course"
+                                            : "Jet tools are one-shot and automatically disarm after placement"
+                                }
+                            </span>
 
                         </div>
 
@@ -288,7 +454,16 @@ function HomePage() {
 
                             <div
                                 ref={gameContainerRef}
-                                className="game-container"
+                                className={
+                                    (
+                                        fireSourcePlacementMode ===
+                                        FireSourcePlacementMode.Directional ||
+                                        fireSourcePlacementMode ===
+                                        FireSourcePlacementMode.Sweeping
+                                    )
+                                        ? "game-container game-container--fire-placement"
+                                        : "game-container"
+                                }
                             />
 
                         </div>

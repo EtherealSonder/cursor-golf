@@ -26,9 +26,15 @@ export const DEFAULT_FIRE_TEST_DEFINITION: FireTestDefinition = {
     sandBlocker: {
         id: "phase-4-fire-sand-blocker",
         surfaceType: SurfaceType.Sand,
+        /*
+         * Legacy Fire/Sand blocker moved above the initial visible viewport
+         * so local-Wind and Jet debugging starts on a clean Grass field.
+         *
+         * It remains inside the playable world for later surface testing.
+         */
         x: 144,
-        y: 176,
+        y: -900,
         width: 216,
-        height: 336,
+        height: 260,
     },
 };

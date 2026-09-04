@@ -10,6 +10,26 @@ export interface FireVfxParticleActivation {
     readonly velocityX: number;
     readonly velocityY: number;
 
+    /**
+     * FIRE-VFX-4 presentation-only Wind acceleration sampled when this
+     * particle is spawned.
+     *
+     * Optional so the isolated diagnostic emitter and any future non-Wind
+     * emitters naturally retain zero Wind response.
+     */
+    readonly windAccelerationX?: number;
+    readonly windAccelerationY?: number;
+
+    /**
+     * FIRE-VFX-4B orientation response.
+     *
+     * Textures are authored vertically, so velocity-following rotation uses
+     * a +PI/2 orientation offset internally.
+     */
+    readonly orientToVelocity?: boolean;
+    readonly orientationFollowSpeed?: number;
+    readonly angularVelocityRetention?: number;
+
     readonly lifetime: number;
 
     /**
@@ -108,6 +128,21 @@ export class FireVfxParticle {
 
     private velocityY =
         0;
+
+    private windAccelerationX =
+        0;
+
+    private windAccelerationY =
+        0;
+
+    private orientToVelocity =
+        false;
+
+    private orientationFollowSpeed =
+        0;
+
+    private angularVelocityRetention =
+        1;
 
     private startScaleX =
         1;
@@ -221,6 +256,43 @@ export class FireVfxParticle {
 
         this.velocityY =
             activation.velocityY;
+
+        this.windAccelerationX =
+            Number.isFinite(
+                activation.windAccelerationX,
+            )
+                ? activation.windAccelerationX ?? 0
+                : 0;
+
+        this.windAccelerationY =
+            Number.isFinite(
+                activation.windAccelerationY,
+            )
+                ? activation.windAccelerationY ?? 0
+                : 0;
+
+        this.orientToVelocity =
+            activation.orientToVelocity ??
+            false;
+
+        this.orientationFollowSpeed =
+            Math.max(
+                0,
+                Number.isFinite(
+                    activation.orientationFollowSpeed,
+                )
+                    ? activation.orientationFollowSpeed ?? 0
+                    : 0,
+            );
+
+        this.angularVelocityRetention =
+            this.clamp01(
+                Number.isFinite(
+                    activation.angularVelocityRetention,
+                )
+                    ? activation.angularVelocityRetention ?? 1
+                    : 1,
+            );
 
         this.startScaleX =
             Math.max(
@@ -358,6 +430,29 @@ export class FireVfxParticle {
         }
 
         // ---------------------------------------------------
+        // FIRE-VFX-4 Wind acceleration
+        // ---------------------------------------------------
+
+        /*
+         * Local Wind is sampled once at spawn by GroundFireEmitter.
+         *
+         * Integrating that acceleration over the particle lifetime creates
+         * a natural curved bend:
+         *
+         * velocity += windAcceleration * dt
+         * position += velocity * dt
+         *
+         * No Fire spread or authoritative Wind state is modified here.
+         */
+        this.velocityX +=
+            this.windAccelerationX *
+            deltaTime;
+
+        this.velocityY +=
+            this.windAccelerationY *
+            deltaTime;
+
+        // ---------------------------------------------------
         // Translation
         // ---------------------------------------------------
 
@@ -373,9 +468,19 @@ export class FireVfxParticle {
         // Rotation
         // ---------------------------------------------------
 
-        this.sprite.rotation +=
-            this.angularVelocity *
-            deltaTime;
+        if (
+            this.orientToVelocity &&
+            this.orientationFollowSpeed >
+            0
+        ) {
+            this.applyVelocityOrientation(
+                deltaTime,
+            );
+        } else {
+            this.sprite.rotation +=
+                this.angularVelocity *
+                deltaTime;
+        }
 
         // ---------------------------------------------------
         // Normalized lifetime
@@ -518,6 +623,21 @@ export class FireVfxParticle {
             0.001,
             0.001,
         );
+
+        this.windAccelerationX =
+            0;
+
+        this.windAccelerationY =
+            0;
+
+        this.orientToVelocity =
+            false;
+
+        this.orientationFollowSpeed =
+            0;
+
+        this.angularVelocityRetention =
+            1;
     }
 
     public destroy():
@@ -527,6 +647,109 @@ export class FireVfxParticle {
             texture:
                 false,
         });
+    }
+
+    // -------------------------------------------------------
+    // FIRE-VFX-4B Velocity orientation
+    // -------------------------------------------------------
+
+    private applyVelocityOrientation(
+        deltaTime:
+            number,
+    ): void {
+
+        const speedSquared =
+            this.velocityX *
+            this.velocityX +
+            this.velocityY *
+            this.velocityY;
+
+        if (
+            speedSquared <=
+            0.0001
+        ) {
+            this.sprite.rotation +=
+                this.angularVelocity *
+                this.angularVelocityRetention *
+                deltaTime;
+
+            return;
+        }
+
+        /*
+         * atan2() returns the angle of the velocity vector assuming the
+         * texture's forward axis points along +X.
+         *
+         * Our Fire masks are authored vertically with their long axis along
+         * Y, so +PI/2 aligns the sprite's vertical axis with travel.
+         */
+        const targetRotation =
+            Math.atan2(
+                this.velocityY,
+                this.velocityX,
+            ) +
+            Math.PI /
+            2;
+
+        const angularOffset =
+            this.getShortestAngleDifference(
+                this.sprite.rotation,
+                targetRotation,
+            );
+
+        const followAmount =
+            1 -
+            Math.exp(
+                -this.orientationFollowSpeed *
+                deltaTime,
+            );
+
+        this.sprite.rotation +=
+            angularOffset *
+            followAmount;
+
+        /*
+         * Keep a restrained fraction of the original angular velocity so the
+         * flame remains organic rather than behaving like a rigid arrow.
+         */
+        this.sprite.rotation +=
+            this.angularVelocity *
+            this.angularVelocityRetention *
+            deltaTime;
+    }
+
+    private getShortestAngleDifference(
+        from:
+            number,
+
+        to:
+            number,
+    ): number {
+
+        let difference =
+            (
+                to -
+                from +
+                Math.PI
+            ) %
+            (
+                Math.PI *
+                2
+            );
+
+        if (
+            difference <
+            0
+        ) {
+            difference +=
+                Math.PI *
+                2;
+        }
+
+        return (
+            difference -
+            Math.PI
+        );
     }
 
     // -------------------------------------------------------
