@@ -32,6 +32,8 @@ function HomePage() {
 
     const [fireSourceDebugVisible, setFireSourceDebugVisible] = useState(false);
 
+    const [localWindDebugVisible, setLocalWindDebugVisible] = useState(false);
+
     // -------------------------------------------------------
     // Game Lifecycle
     // -------------------------------------------------------
@@ -69,6 +71,10 @@ function HomePage() {
                     }
 
                     game.setFireSourceDebugVisible(
+                        false,
+                    );
+
+                    game.setLocalWindDebugVisible(
                         false,
                     );
 
@@ -126,6 +132,14 @@ function HomePage() {
         const next = !fireSourceDebugVisible;
         game.setFireSourceDebugVisible(next);
         setFireSourceDebugVisible(next);
+    };
+
+    const handleToggleLocalWindDebug = (): void => {
+        const game = gameRef.current;
+        if (!game) return;
+        const next = !localWindDebugVisible;
+        game.setLocalWindDebugVisible(next);
+        setLocalWindDebugVisible(next);
     };
 
     // -------------------------------------------------------
@@ -261,6 +275,18 @@ function HomePage() {
                                 onClick={() => handleFireWindConfiguration("mixed-wind")}>
                                 Mixed Wind ↘
                             </button>
+
+                            <button
+                                type="button"
+                                className={localWindDebugVisible ? "hud-action-button hud-action-button--selected" : "hud-action-button"}
+                                onClick={handleToggleLocalWindDebug}
+                            >
+                                {localWindDebugVisible ? "Hide Wind Debug" : "Show Wind Debug"}
+                            </button>
+
+                            <span className="hud-test-hint">
+                                Wind Debug shows each Fan's authoritative Local Wind volume.
+                            </span>
 
                             <span className="hud-test-hint">
                                 Right-click course to ignite

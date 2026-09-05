@@ -356,6 +356,18 @@ export class Game {
     }
 
     // -------------------------------------------------------------------------
+    // Local Wind Debug Bridge
+    // -------------------------------------------------------------------------
+
+    public setLocalWindDebugVisible(visible: boolean): void {
+        this.world?.setLocalWindDebugVisible(visible);
+    }
+
+    public isLocalWindDebugVisible(): boolean {
+        return this.world?.isLocalWindDebugVisible() ?? false;
+    }
+
+    // -------------------------------------------------------------------------
     // Fire Source Debug Bridge
     // -------------------------------------------------------------------------
 

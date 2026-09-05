@@ -62,6 +62,11 @@ export interface LocalWindSourceDefinition {
     readonly enabled: boolean;
 }
 
+/**
+ * @deprecated Legacy Graphics-based local Wind presentation.
+ * WindVfxDefinition is authoritative for the new pooled Sprite VFX.
+ * Kept temporarily so LocalWindVisualizer.ts can remain compilable until archived.
+ */
 export interface LocalWindVisualDefinition {
 
     readonly enabled: boolean;
@@ -111,10 +116,15 @@ export interface LocalWindVisualDefinition {
 /**
  * Temporary fixed local-wind test layout.
  *
- * These values are deliberately exaggerated. Fans
- * are gameplay hazards, not ordinary ambient wind.
- * A fast golf shot should still visibly bend while
- * crossing one of these streams.
+ * The Fan airflow is authored as a straight rectangular tube:
+ *
+ * - source.position = exact Fan outlet
+ * - constant half-width for the complete range
+ * - no widening cone/trapezoid
+ *
+ * Keeping startHalfWidth and endHalfWidth equal lets the existing
+ * LocalWindSystem remain generic while this Fan configuration behaves
+ * as a constant-width gameplay stream.
  */
 export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
     readonly LocalWindSourceDefinition[] = [
@@ -124,9 +134,9 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 170,
             positionY: 150,
             directionRadians: 0,
-            range: 760,
-            startHalfWidth: 62,
-            endHalfWidth: 168,
+            range: 560,
+            startHalfWidth: 55,
+            endHalfWidth: 55,
             acceleration: 1100,
             endStrengthMultiplier: 0.60,
             edgeFalloffFraction: 0.22,
@@ -138,9 +148,9 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 820,
             positionY: 110,
             directionRadians: Math.PI / 2,
-            range: 760,
-            startHalfWidth: 62,
-            endHalfWidth: 168,
+            range: 560,
+            startHalfWidth: 55,
+            endHalfWidth: 55,
             acceleration: 1050,
             endStrengthMultiplier: 0.60,
             edgeFalloffFraction: 0.22,
@@ -152,9 +162,9 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 1030,
             positionY: 545,
             directionRadians: Math.PI,
-            range: 760,
-            startHalfWidth: 62,
-            endHalfWidth: 168,
+            range: 560,
+            startHalfWidth: 55,
+            endHalfWidth: 55,
             acceleration: 1150,
             endStrengthMultiplier: 0.60,
             edgeFalloffFraction: 0.22,
@@ -166,9 +176,9 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
             positionX: 250,
             positionY: 610,
             directionRadians: -Math.PI / 4,
-            range: 760,
-            startHalfWidth: 60,
-            endHalfWidth: 160,
+            range: 560,
+            startHalfWidth: 55,
+            endHalfWidth: 55,
             acceleration: 1100,
             endStrengthMultiplier: 0.60,
             edgeFalloffFraction: 0.22,
@@ -176,6 +186,7 @@ export const DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS:
         },
     ];
 
+/** @deprecated See WindVfxDefinition.ts. */
 export const DEFAULT_LOCAL_WIND_VISUAL_DEFINITION:
     LocalWindVisualDefinition = {
 
@@ -205,4 +216,58 @@ export const DEFAULT_LOCAL_WIND_VISUAL_DEFINITION:
     sourceDensityBias: 1.65,
 
     recyclePadding: 24,
+};
+
+/**
+ * Development-only rendering definition for the exact Local Wind simulation
+ * volume. This is presentation/debug data only and never changes airflow.
+ */
+export interface LocalWindDebugVisualDefinition {
+    readonly enabledByDefault: boolean;
+
+    readonly fillColor: number;
+    readonly fillAlpha: number;
+
+    readonly lineColor: number;
+    readonly lineWidth: number;
+    readonly lineAlpha: number;
+
+    readonly centerLineColor: number;
+    readonly centerLineWidth: number;
+    readonly centerLineAlpha: number;
+
+    readonly originColor: number;
+    readonly originRadius: number;
+    readonly originAlpha: number;
+
+    readonly directionArrowColor: number;
+    readonly directionArrowLength: number;
+    readonly arrowHeadLength: number;
+    readonly directionArrowAlpha: number;
+}
+
+export const DEFAULT_LOCAL_WIND_DEBUG_VISUAL_DEFINITION:
+    LocalWindDebugVisualDefinition = {
+
+    enabledByDefault: false,
+
+    fillColor: 0x55c9df,
+    fillAlpha: 0.08,
+
+    lineColor: 0x55c9df,
+    lineWidth: 2,
+    lineAlpha: 0.90,
+
+    centerLineColor: 0xffd84a,
+    centerLineWidth: 2,
+    centerLineAlpha: 0.95,
+
+    originColor: 0xf05a5a,
+    originRadius: 6,
+    originAlpha: 1.00,
+
+    directionArrowColor: 0xffd84a,
+    directionArrowLength: 28,
+    arrowHeadLength: 12,
+    directionArrowAlpha: 0.95,
 };

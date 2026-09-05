@@ -30,18 +30,6 @@ import {
 } from "../config/FireTestDefinition";
 
 import {
-    DEFAULT_FIRE_MOISTURE_TEST_DEFINITION,
-} from "../config/FireMoistureTestDefinition";
-
-import {
-    DEFAULT_WIND_VISUAL_DEFINITION,
-} from "../config/WindVisualDefinition";
-
-import {
-    DEFAULT_LOCAL_WIND_VISUAL_DEFINITION,
-} from "../config/LocalWindDefinition";
-
-import {
     DEFAULT_HOLE_DEFINITION,
 } from "../config/HoleDefinition";
 
@@ -94,6 +82,10 @@ import {
 import {
     PerformanceDebugOverlay,
 } from "../debug/PerformanceDebugOverlay";
+
+import {
+    LocalWindDebugVisualizer,
+} from "../debug/LocalWindDebugVisualizer";
 
 import {
     AimIndicator,
@@ -160,6 +152,10 @@ import {
 } from "../fire-vfx/FireVfxSystem";
 
 import {
+    WindVfxSystem,
+} from "../wind-vfx/WindVfxSystem";
+
+import {
     EnvironmentField,
 } from "../environment/EnvironmentField";
 
@@ -168,16 +164,8 @@ import {
 } from "../environment/WindManager";
 
 import {
-    WindVisualizer,
-} from "../environment/WindVisualizer";
-
-import {
     LocalWindSystem,
 } from "../environment/LocalWindSystem";
-
-import {
-    LocalWindVisualizer,
-} from "../environment/LocalWindVisualizer";
 
 import {
     SurfaceSystem,
@@ -224,14 +212,6 @@ export class World {
     private surfaceGraphics:
         Graphics | null = null;
 
-    /**
-     * Development-only visualization of continuous moisture test bands.
-     * EnvironmentField remains authoritative; this Graphics object is
-     * presentation only.
-     */
-    private fireMoistureTestGraphics:
-        Graphics | null = null;
-
     private readonly courseVisualDefinition:
         CourseVisualDefinition;
 
@@ -259,16 +239,16 @@ export class World {
     private readonly windManager:
         WindManager;
 
-    private windVisualizer:
-        WindVisualizer | null =
+    private windVfxSystem:
+        WindVfxSystem | null =
+        null;
+
+    private localWindDebugVisualizer:
+        LocalWindDebugVisualizer | null =
         null;
 
     private readonly localWindSystem:
         LocalWindSystem;
-
-    private localWindVisualizer:
-        LocalWindVisualizer | null =
-        null;
 
     private readonly fans:
         Fan[] = [];
@@ -471,22 +451,9 @@ export class World {
                     );
         }
 
-        if (
-            DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                .enabled
-        ) {
-            this.applyFireMoistureTestLayout();
-            this.createFireMoistureTestGraphics();
-        }
+        this.createWindVfxSystem();
 
-        if (
-            DEFAULT_WIND_VISUAL_DEFINITION
-                .enabled
-        ) {
-            this.createWindVisualizer();
-        }
-
-        this.createLocalWindVisualizer();
+        this.createLocalWindDebugVisualizer();
 
         this.createFanEntities();
 
@@ -789,16 +756,6 @@ export class World {
                 deltaTime,
             );
 
-        this.windVisualizer
-            ?.update(
-                deltaTime,
-            );
-
-        this.localWindVisualizer
-            ?.update(
-                deltaTime,
-            );
-
         this.fireSourceVisualizer
             ?.update();
 
@@ -815,6 +772,14 @@ export class World {
                 deltaTime,
             );
         }
+
+        this.localWindDebugVisualizer
+            ?.update();
+
+        this.windVfxSystem
+            ?.update(
+                deltaTime,
+            );
 
         if (
             this.connector &&
@@ -924,20 +889,20 @@ export class World {
         this.environmentField
             .reset();
 
-        this.localWindVisualizer
+        this.localWindDebugVisualizer
             ?.destroy();
 
-        this.localWindVisualizer =
+        this.localWindDebugVisualizer =
+            null;
+
+        this.windVfxSystem
+            ?.destroy();
+
+        this.windVfxSystem =
             null;
 
         this.fans.length =
             0;
-
-        this.windVisualizer
-            ?.destroy();
-
-        this.windVisualizer =
-            null;
 
         this.windManager
             .reset();
@@ -970,12 +935,6 @@ export class World {
             ?.destroy();
 
         this.surfaceGraphics =
-            null;
-
-        this.fireMoistureTestGraphics
-            ?.destroy();
-
-        this.fireMoistureTestGraphics =
             null;
 
         this.courseBackground
@@ -1243,13 +1202,6 @@ export class World {
 
         this.environmentField.reset();
 
-        if (
-            DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                .enabled
-        ) {
-            this.applyFireMoistureTestLayout();
-        }
-
         this.surfaceSystem.removeStateRegionsByIdPrefix(
             "fire-scorch-",
         );
@@ -1342,119 +1294,6 @@ export class World {
         return this.fireFieldIgnitionValidation
             ?.getState() ??
             null;
-    }
-
-    // -------------------------------------------------------
-    // Fire Moisture Test Harness
-    // -------------------------------------------------------
-
-    private applyFireMoistureTestLayout():
-        void {
-
-        for (
-            const band
-            of DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                .bands
-        ) {
-            this.environmentField
-                .setMoistureInRectangle(
-                    band.x,
-                    band.y,
-                    band.width,
-                    band.height,
-                    band.moisture,
-                );
-        }
-    }
-
-    private createFireMoistureTestGraphics():
-        void {
-
-        if (
-            this.fireMoistureTestGraphics
-        ) {
-            throw new Error(
-                "World Fire moisture test graphics have already been created.",
-            );
-        }
-
-        if (
-            !DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                .enabled
-        ) {
-            return;
-        }
-
-        this.fireMoistureTestGraphics =
-            new Graphics();
-
-        for (
-            const band
-            of DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                .bands
-        ) {
-            this.fireMoistureTestGraphics
-                .rect(
-                    band.x,
-                    band.y,
-                    band.width,
-                    band.height,
-                )
-                .fill({
-                    color:
-                        band.color,
-                    alpha:
-                        DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                            .overlayAlpha,
-                })
-                .stroke({
-                    width:
-                        2,
-                    color:
-                        DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                            .outlineColor,
-                    alpha:
-                        DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                            .outlineAlpha,
-                });
-        }
-
-        /*
-         * Keep the test overlay directly above terrain and below Fire,
-         * Wind presentation, obstacles, and gameplay entities.
-         */
-        this.worldContainer
-            .addChildAt(
-                this.fireMoistureTestGraphics,
-                Math.min(
-                    2,
-                    this.worldContainer
-                        .children
-                        .length,
-                ),
-            );
-
-        console.log(
-            "Fire moisture test bands active.",
-            DEFAULT_FIRE_MOISTURE_TEST_DEFINITION
-                .bands
-                .map(
-                    (band) => ({
-                        label:
-                            band.label,
-                        moisture:
-                            band.moisture,
-                        x:
-                            band.x,
-                        y:
-                            band.y,
-                        width:
-                            band.width,
-                        height:
-                            band.height,
-                    }),
-                ),
-        );
     }
 
     // -------------------------------------------------------
@@ -1742,6 +1581,23 @@ export class World {
         return this.localWindSystem;
     }
 
+    public setLocalWindDebugVisible(
+        visible:
+            boolean,
+    ): void {
+        this.localWindDebugVisualizer
+            ?.setVisible(
+                visible,
+            );
+    }
+
+    public isLocalWindDebugVisible():
+        boolean {
+        return this.localWindDebugVisualizer
+            ?.isVisible() ??
+            false;
+    }
+
     public getFans():
         readonly Fan[] {
 
@@ -1931,43 +1787,6 @@ export class World {
     // -------------------------------------------------------
     // Local Wind / Fan Test Mechanisms
     // -------------------------------------------------------
-
-    private createLocalWindVisualizer():
-        void {
-
-        if (
-            this.localWindVisualizer
-        ) {
-            throw new Error(
-                "World local wind visualizer has already been created.",
-            );
-        }
-
-        if (
-            !DEFAULT_LOCAL_WIND_VISUAL_DEFINITION
-                .enabled
-        ) {
-            return;
-        }
-
-        this.localWindVisualizer =
-            new LocalWindVisualizer(
-                this.localWindSystem,
-            );
-
-        this.worldContainer
-            .addChildAt(
-                this.localWindVisualizer
-                    .getGraphics(),
-
-                Math.min(
-                    1,
-                    this.worldContainer
-                        .children
-                        .length,
-                ),
-            );
-    }
 
     private destroyFanEntities(): void {
 
@@ -2243,37 +2062,59 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Wind Visualization
+    // Local Wind Debug Visualization
     // -------------------------------------------------------
 
-    private createWindVisualizer():
+    private createLocalWindDebugVisualizer():
         void {
 
-        if (
-            this.windVisualizer
-        ) {
+        if (this.localWindDebugVisualizer) {
             throw new Error(
-                "World wind visualizer has already been created.",
+                "World Local Wind debug visualizer has already been created.",
             );
         }
 
-        this.windVisualizer =
-            new WindVisualizer(
-                this.windManager,
-                this.camera,
+        this.localWindDebugVisualizer =
+            new LocalWindDebugVisualizer(
+                this.localWindSystem,
             );
 
         /*
-         * Course background occupies index 0.
-         *
-         * Insert wind immediately above the terrain.
-         * Surface-state visuals remain above wind.
+         * Debug geometry is placed above the normal Wind VFX so the exact
+         * simulation volume remains readable while diagnosing particle
+         * placement. It remains presentation-only.
          */
         this.worldContainer
-            .addChildAt(
-                this.windVisualizer
+            .addChild(
+                this.localWindDebugVisualizer
                     .getGraphics(),
+            );
+    }
 
+    // -------------------------------------------------------
+    // Wind Visualization
+    // -------------------------------------------------------
+
+    private createWindVfxSystem():
+        void {
+
+        if (this.windVfxSystem) {
+            throw new Error(
+                "World Wind VFX system has already been created.",
+            );
+        }
+
+        this.windVfxSystem =
+            new WindVfxSystem(
+                this.windManager,
+                this.localWindSystem,
+                this.camera,
+            );
+
+        this.worldContainer
+            .addChildAt(
+                this.windVfxSystem
+                    .getContainer(),
                 Math.min(
                     1,
                     this.worldContainer

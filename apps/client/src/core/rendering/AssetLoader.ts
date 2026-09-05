@@ -20,6 +20,11 @@ import fireNoiseCloudTexture from "../../assets/textures/fire/noise/fire_noise_c
 import fireNoisePerlinTexture from "../../assets/textures/fire/noise/fire_noise_perlin.png";
 import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG";
 
+import windStreak01Texture from "../../assets/textures/wind/masks/wind_streak_01.png";
+import windStreak02Texture from "../../assets/textures/wind/masks/wind_streak_02.png";
+import windStreak03Texture from "../../assets/textures/wind/masks/wind_streak_03.png";
+import windStreak04Texture from "../../assets/textures/wind/masks/wind_streak_04.png";
+
 export class AssetLoader {
 
     private static initialized =
@@ -128,6 +133,31 @@ export class AssetLoader {
         await this.loadTexture(
             "fireNoiseFine",
             fireNoiseFineTexture,
+        );
+
+        // ---------------------------------------------------
+        // WIND-VFX-2
+        // Transparent pooled Sprite masks
+        // ---------------------------------------------------
+
+        await this.loadTexture(
+            "windStreak01",
+            windStreak01Texture,
+        );
+
+        await this.loadTexture(
+            "windStreak02",
+            windStreak02Texture,
+        );
+
+        await this.loadTexture(
+            "windStreak03",
+            windStreak03Texture,
+        );
+
+        await this.loadTexture(
+            "windStreak04",
+            windStreak04Texture,
         );
 
         this.initialized =

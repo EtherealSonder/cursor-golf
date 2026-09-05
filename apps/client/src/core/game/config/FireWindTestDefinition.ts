@@ -50,10 +50,18 @@ export interface FireWindTestDefinition {
     readonly configurations: readonly FireWindTestConfiguration[];
 }
 
+/*
+ * Local Wind geometry used by the current Fan test configurations.
+ *
+ * A Fan emits a straight rectangular airflow tube beginning at the
+ * authoritative source position (the Fan outlet). The width remains
+ * constant for the complete range, so startHalfWidth and endHalfWidth
+ * intentionally match.
+ */
 const TEST_FAN_ACCELERATION = 1100;
-const TEST_FAN_RANGE = 900;
-const TEST_FAN_START_HALF_WIDTH = 105;
-const TEST_FAN_END_HALF_WIDTH = 250;
+const TEST_FAN_RANGE = 560;
+const TEST_FAN_START_HALF_WIDTH = 55;
+const TEST_FAN_END_HALF_WIDTH = 55;
 const TEST_FAN_END_STRENGTH_MULTIPLIER = 0.42;
 const TEST_FAN_EDGE_FALLOFF_FRACTION = 0.24;
 
@@ -77,9 +85,9 @@ const SOUTH_WIND_SOURCE: LocalWindSourceDefinition = {
     positionX: 600,
     positionY: 90,
     directionRadians: Math.PI / 2,
-    range: 620,
+    range: TEST_FAN_RANGE,
     startHalfWidth: TEST_FAN_START_HALF_WIDTH,
-    endHalfWidth: 220,
+    endHalfWidth: TEST_FAN_END_HALF_WIDTH,
     acceleration: TEST_FAN_ACCELERATION,
     endStrengthMultiplier: TEST_FAN_END_STRENGTH_MULTIPLIER,
     edgeFalloffFraction: TEST_FAN_EDGE_FALLOFF_FRACTION,
