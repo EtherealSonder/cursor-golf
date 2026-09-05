@@ -128,6 +128,10 @@ import {
 } from "../entities/mechanisms/Fan";
 
 import {
+    FireTube,
+} from "../entities/mechanisms/FireTube";
+
+import {
     DynamicObstacle,
 } from "../entities/obstacles/DynamicObstacle";
 
@@ -152,24 +156,8 @@ import {
 } from "../environment/FireSourceVisualizer";
 
 import {
-    FireSourceTestController,
-} from "../debug/FireSourceTestController";
-
-import {
     FireVfxSystem,
 } from "../fire-vfx/FireVfxSystem";
-
-import {
-    FireSourceType,
-} from "../config/FireSourceDefinition";
-
-import {
-    DEFAULT_FIRE_SOURCE_TEST_DEFINITION,
-} from "../config/FireSourceTestDefinition";
-
-import {
-    DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION,
-} from "../config/DirectionalFireSourceDefinition";
 
 import {
     EnvironmentField,
@@ -200,54 +188,12 @@ import {
 } from "../surface/SurfaceType";
 
 import {
-    SurfaceState,
-} from "../surface/SurfaceState";
-
-import {
     ShotFeedback,
 } from "../ui/ShotFeedback";
 
 import {
     AssetLoader,
 } from "../../rendering/AssetLoader";
-
-const SURFACE_TEST_ZONES_ENABLED =
-    false;
-
-const PHASE_2_SURFACE_ZONES = [
-    {
-        id: "phase-2-wet-grass-zone",
-        surfaceType: SurfaceType.Grass,
-        x: 80,
-        y: 60,
-        width: 360,
-        height: 260,
-    },
-    {
-        id: "phase-2-scorched-grass-zone",
-        surfaceType: SurfaceType.Grass,
-        x: 760,
-        y: 60,
-        width: 360,
-        height: 260,
-    },
-    {
-        id: "phase-2-dry-sand-zone",
-        surfaceType: SurfaceType.Sand,
-        x: 80,
-        y: 400,
-        width: 360,
-        height: 260,
-    },
-    {
-        id: "phase-2-wet-sand-zone",
-        surfaceType: SurfaceType.Sand,
-        x: 760,
-        y: 400,
-        width: 360,
-        height: 260,
-    },
-] as const;
 
 export class World {
 
@@ -327,6 +273,9 @@ export class World {
     private readonly fans:
         Fan[] = [];
 
+    private readonly fireTubes:
+        FireTube[] = [];
+
     private readonly surfaceSystem:
         SurfaceSystem;
 
@@ -339,15 +288,9 @@ export class World {
     private readonly fireSourceSystem:
         FireSourceSystem;
 
-    private readonly fireSourceTestController:
-        FireSourceTestController;
-
     private fireSourceVisualizer:
         FireSourceVisualizer | null =
         null;
-
-    private fireSourceTestSequence =
-        0;
 
     private fireVfxSystem:
         FireVfxSystem | null =
@@ -475,11 +418,6 @@ export class World {
                 this.environmentField,
             );
 
-        this.fireSourceTestController =
-            new FireSourceTestController(
-                this.fireSourceSystem,
-            );
-
         this.fireManager =
             new FireManager(
                 this.surfaceSystem,
@@ -511,12 +449,6 @@ export class World {
         this.createCourse();
 
         if (
-            SURFACE_TEST_ZONES_ENABLED
-        ) {
-            this.createPhase2SurfaceZones();
-        }
-
-        if (
             DEFAULT_FIRE_TEST_DEFINITION
                 .enabled
         ) {
@@ -524,7 +456,6 @@ export class World {
         }
 
         if (
-            SURFACE_TEST_ZONES_ENABLED ||
             DEFAULT_FIRE_TEST_DEFINITION
                 .enabled
         ) {
@@ -697,6 +628,8 @@ export class World {
                 ballDisplayIndex,
             );
 
+        this.createFireTubeEntities();
+
         this.windValidationMetrics =
             new WindValidationMetrics(
                 this.ball,
@@ -838,11 +771,6 @@ export class World {
                 deltaTime,
             );
 
-        this.fireSourceTestController
-            .update(
-                deltaTime,
-            );
-
         this.fireSourceSystem
             .update(
                 deltaTime,
@@ -926,6 +854,9 @@ export class World {
             0;
 
         this.dynamicCollidables.length =
+            0;
+
+        this.fireTubes.length =
             0;
 
         this.staticObstacleDefinitions =
@@ -1120,209 +1051,8 @@ export class World {
     }
 
     // -------------------------------------------------------
-    // Fire Source Test Bridge
+    // Fire Source Debug Bridge
     // -------------------------------------------------------
-
-    public placePointFireSourceAtScreenPosition(
-        screenX: number,
-        screenY: number,
-    ): boolean {
-
-        const worldPosition =
-            this.getWorldPositionFromScreen(
-                screenX,
-                screenY,
-            );
-
-        if (!worldPosition) {
-            return false;
-        }
-
-        this.fireSourceTestSequence +=
-            1;
-
-        this.fireSourceSystem.addSource({
-            id:
-                `fire-test-point-${this.fireSourceTestSequence}`,
-            type:
-                FireSourceType.Point,
-            enabled:
-                true,
-            positionX:
-                worldPosition.x,
-            positionY:
-                worldPosition.y,
-            radius:
-                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
-                    .pointRadius,
-            heatAmount:
-                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
-                    .pointHeatAmount,
-        });
-
-        return true;
-    }
-
-    public placePersistentFireSourceAtScreenPosition(
-        screenX: number,
-        screenY: number,
-    ): boolean {
-
-        const worldPosition =
-            this.getWorldPositionFromScreen(
-                screenX,
-                screenY,
-            );
-
-        if (!worldPosition) {
-            return false;
-        }
-
-        this.fireSourceTestSequence +=
-            1;
-
-        this.fireSourceSystem.addSource({
-            id:
-                `fire-test-persistent-${this.fireSourceTestSequence}`,
-            type:
-                FireSourceType.Persistent,
-            enabled:
-                true,
-            positionX:
-                worldPosition.x,
-            positionY:
-                worldPosition.y,
-            radius:
-                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
-                    .persistentRadius,
-            heatPerSecond:
-                DEFAULT_FIRE_SOURCE_TEST_DEFINITION
-                    .persistentHeatPerSecond,
-        });
-
-        return true;
-    }
-
-    public placeDirectionalFireSourceAtScreenPositions(
-        originScreenX: number,
-        originScreenY: number,
-        targetScreenX: number,
-        targetScreenY: number,
-    ): boolean {
-
-        const origin =
-            this.getWorldPositionFromScreen(
-                originScreenX,
-                originScreenY,
-            );
-
-        const target =
-            this.getWorldPositionFromScreen(
-                targetScreenX,
-                targetScreenY,
-            );
-
-        if (!origin || !target) {
-            return false;
-        }
-
-        const deltaX =
-            target.x -
-            origin.x;
-
-        const deltaY =
-            target.y -
-            origin.y;
-
-        const dragLengthSquared =
-            deltaX * deltaX +
-            deltaY * deltaY;
-
-        /*
-         * Reject a near-zero drag because it does not provide a stable
-         * directional intent.
-         */
-        if (dragLengthSquared < 16) {
-            return false;
-        }
-
-        const tuning =
-            DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION;
-
-        this.fireSourceTestSequence +=
-            1;
-
-        this.fireSourceSystem.addSource({
-            id:
-                `fire-test-directional-${this.fireSourceTestSequence}`,
-            type:
-                FireSourceType.Directional,
-            enabled:
-                true,
-            positionX:
-                origin.x,
-            positionY:
-                origin.y,
-            directionRadians:
-                Math.atan2(
-                    deltaY,
-                    deltaX,
-                ),
-            length:
-                tuning.length,
-            halfWidth:
-                tuning.halfWidth,
-            heatPerSecond:
-                tuning.heatPerSecond,
-            endHeatMultiplier:
-                tuning.endHeatMultiplier,
-        });
-
-        return true;
-    }
-
-    public placeSweepingFireSourceAtScreenPositions(
-        originScreenX: number,
-        originScreenY: number,
-        targetScreenX: number,
-        targetScreenY: number,
-    ): boolean {
-        const origin = this.getWorldPositionFromScreen(originScreenX, originScreenY);
-        const target = this.getWorldPositionFromScreen(targetScreenX, targetScreenY);
-        if (!origin || !target) return false;
-        const dx = target.x - origin.x;
-        const dy = target.y - origin.y;
-        if (dx * dx + dy * dy < 16) return false;
-        const tuning = DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION;
-        const initialDirection = Math.atan2(dy, dx);
-        this.fireSourceTestSequence += 1;
-        const sourceId = `fire-test-sweeping-${this.fireSourceTestSequence}`;
-        this.fireSourceSystem.addSource({
-            id: sourceId,
-            type: FireSourceType.Directional,
-            enabled: true,
-            positionX: origin.x,
-            positionY: origin.y,
-            directionRadians: initialDirection,
-            length: tuning.length,
-            halfWidth: tuning.halfWidth,
-            heatPerSecond: tuning.heatPerSecond,
-            endHeatMultiplier: tuning.endHeatMultiplier,
-        });
-        this.fireSourceTestController.registerSweepingSource(sourceId, initialDirection);
-        return true;
-    }
-
-    public clearFireSources():
-        void {
-
-        this.fireSourceTestController.clear();
-        this.fireSourceSystem.clearSources();
-    }
-
-    public getActiveFireSourceCount(): number {
-        return this.fireSourceSystem.getActiveSourceCount();
-    }
 
     public setFireSourceDebugVisible(visible: boolean): void {
         this.fireSourceVisualizer?.setDebugVisible(visible);
@@ -1330,21 +1060,6 @@ export class World {
 
     public isFireSourceDebugVisible(): boolean {
         return this.fireSourceVisualizer?.isDebugVisible() ?? false;
-    }
-
-    public setAllFireSourcesEnabled(
-        enabled: boolean,
-    ): void {
-
-        for (
-            const source
-            of this.fireSourceSystem
-                .getSources()
-        ) {
-            source.setEnabled(
-                enabled,
-            );
-        }
     }
 
     private getWorldPositionFromScreen(
@@ -1517,11 +1232,14 @@ export class World {
         this.fireFieldIgnitionValidation
             ?.reset();
 
-        this.fireSourceTestController.clear();
-        this.fireSourceSystem.clearSources();
+        this.removeNonFireTubeSources();
 
-        this.fireSourceTestSequence =
-            0;
+        for (
+            const fireTube
+            of this.fireTubes
+        ) {
+            fireTube.resetCycle();
+        }
 
         this.environmentField.reset();
 
@@ -1807,7 +1525,8 @@ export class World {
 
         if (
             entity instanceof DynamicObstacle ||
-            entity instanceof Fan
+            entity instanceof Fan ||
+            entity instanceof FireTube
         ) {
             const dynamicCollidableIndex =
                 this.dynamicCollidables
@@ -1821,6 +1540,22 @@ export class World {
             ) {
                 this.dynamicCollidables.splice(
                     dynamicCollidableIndex,
+                    1,
+                );
+            }
+        }
+
+        if (
+            entity instanceof FireTube
+        ) {
+            const fireTubeIndex =
+                this.fireTubes.indexOf(
+                    entity,
+                );
+
+            if (fireTubeIndex !== -1) {
+                this.fireTubes.splice(
+                    fireTubeIndex,
                     1,
                 );
             }
@@ -2011,6 +1746,12 @@ export class World {
         readonly Fan[] {
 
         return this.fans;
+    }
+
+    public getFireTubes():
+        readonly FireTube[] {
+
+        return this.fireTubes;
     }
 
     public getSurfaceSystem():
@@ -2292,6 +2033,216 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Fire Tube Mechanisms
+    // -------------------------------------------------------
+
+    private createFireTubeEntities(): void {
+        if (this.fireTubes.length > 0) {
+            throw new Error(
+                "World Fire Tube entities have already been created.",
+            );
+        }
+
+        const count =
+            2 +
+            Math.floor(
+                Math.random() * 2,
+            );
+
+        const positions:
+            { readonly x: number; readonly y: number }[] = [];
+
+        for (
+            let index = 0;
+            index < count;
+            index += 1
+        ) {
+            const position =
+                this.findFireTubeSpawnPosition(
+                    positions,
+                );
+
+            positions.push(
+                position,
+            );
+
+            const fireTube =
+                new FireTube(
+                    `fire-tube-${index + 1}`,
+                    position.x,
+                    position.y,
+                    Math.random() * Math.PI * 2 - Math.PI,
+                    this.fireSourceSystem,
+                );
+
+            this.fireTubes.push(
+                fireTube,
+            );
+
+            this.dynamicCollidables.push(
+                fireTube,
+            );
+
+            this.addEntity(
+                fireTube,
+            );
+        }
+    }
+
+    private findFireTubeSpawnPosition(
+        existingPositions:
+            readonly { readonly x: number; readonly y: number }[],
+    ): { readonly x: number; readonly y: number } {
+        const boundary =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION;
+
+        const margin = 180;
+        const minimumSeparation = 360;
+        const obstacleSeparation = 150;
+        const gameplayEntitySeparation = 260;
+
+        for (
+            let attempt = 0;
+            attempt < 80;
+            attempt += 1
+        ) {
+            const x =
+                boundary.minimumX +
+                margin +
+                Math.random() *
+                (
+                    boundary.maximumX -
+                    boundary.minimumX -
+                    margin * 2
+                );
+
+            const y =
+                boundary.minimumY +
+                margin +
+                Math.random() *
+                (
+                    boundary.maximumY -
+                    boundary.minimumY -
+                    margin * 2
+                );
+
+            const tooCloseToAnotherTube =
+                existingPositions.some(
+                    (position): boolean =>
+                        Math.hypot(
+                            x - position.x,
+                            y - position.y,
+                        ) < minimumSeparation,
+                );
+
+            if (tooCloseToAnotherTube) {
+                continue;
+            }
+
+            const tooCloseToStaticObstacle =
+                this.staticObstacleDefinitions.some(
+                    (obstacle): boolean =>
+                        Math.hypot(
+                            x - obstacle.positionX,
+                            y - obstacle.positionY,
+                        ) < obstacleSeparation,
+                );
+
+            if (tooCloseToStaticObstacle) {
+                continue;
+            }
+
+            const tooCloseToDynamicObstacle =
+                this.dynamicObstacles.some(
+                    (obstacle): boolean =>
+                        Math.hypot(
+                            x - obstacle.getX(),
+                            y - obstacle.getY(),
+                        ) < obstacleSeparation,
+                );
+
+            if (tooCloseToDynamicObstacle) {
+                continue;
+            }
+
+            const tooCloseToFan =
+                this.fans.some(
+                    (fan): boolean =>
+                        Math.hypot(
+                            x - fan.getX(),
+                            y - fan.getY(),
+                        ) < obstacleSeparation,
+                );
+
+            if (tooCloseToFan) {
+                continue;
+            }
+
+            const tooCloseToBall =
+                this.ball
+                    ? Math.hypot(
+                        x - this.ball.getX(),
+                        y - this.ball.getY(),
+                    ) < gameplayEntitySeparation
+                    : false;
+
+            const tooCloseToHole =
+                this.hole
+                    ? Math.hypot(
+                        x - this.hole.getX(),
+                        y - this.hole.getY(),
+                    ) < gameplayEntitySeparation
+                    : false;
+
+            if (
+                tooCloseToBall ||
+                tooCloseToHole
+            ) {
+                continue;
+            }
+
+            return { x, y };
+        }
+
+        /*
+         * Extremely unlikely fallback. It remains safely inside the course
+         * even if a very dense procedural obstacle layout rejects all tries.
+         */
+        return {
+            x:
+                (boundary.minimumX + boundary.maximumX) / 2 +
+                existingPositions.length * 240,
+            y:
+                (boundary.minimumY + boundary.maximumY) / 2,
+        };
+    }
+
+    private removeNonFireTubeSources(): void {
+        const sourceIdsToRemove =
+            this.fireSourceSystem
+                .getSources()
+                .filter(
+                    (source): boolean =>
+                        !source.getId().startsWith(
+                            "fire-tube-",
+                        ),
+                )
+                .map(
+                    (source): string =>
+                        source.getId(),
+                );
+
+        for (
+            const sourceId
+            of sourceIdsToRemove
+        ) {
+            this.fireSourceSystem.removeSource(
+                sourceId,
+            );
+        }
+    }
+
+    // -------------------------------------------------------
     // Wind Visualization
     // -------------------------------------------------------
 
@@ -2335,49 +2286,6 @@ export class World {
     // -------------------------------------------------------
     // Surface States
     // -------------------------------------------------------
-
-    private createPhase2SurfaceZones():
-        void {
-
-        if (
-            this.surfaceSystem
-                .getZones()
-                .length >
-            0
-        ) {
-            throw new Error(
-                "World surface zones have already been created.",
-            );
-        }
-
-        for (
-            const definition
-            of PHASE_2_SURFACE_ZONES
-        ) {
-            this.surfaceSystem
-                .addZone(
-                    definition,
-                );
-        }
-
-        this.surfaceSystem
-            .setZoneState(
-                "phase-2-wet-grass-zone",
-                SurfaceState.Wet,
-            );
-
-        this.surfaceSystem
-            .setZoneState(
-                "phase-2-scorched-grass-zone",
-                SurfaceState.Scorched,
-            );
-
-        this.surfaceSystem
-            .setZoneState(
-                "phase-2-wet-sand-zone",
-                SurfaceState.Wet,
-            );
-    }
 
     private createSurfaceGraphics():
         void {

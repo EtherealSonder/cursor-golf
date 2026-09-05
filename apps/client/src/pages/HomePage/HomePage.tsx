@@ -12,10 +12,6 @@ import type {
     FireWindTestConfigurationId,
 } from "../../core/game/config/FireWindTestDefinition";
 
-import {
-    FireSourcePlacementMode,
-} from "../../core/game/config/FireSourcePlacementMode";
-
 import "./HomePage.css";
 
 function HomePage() {
@@ -34,24 +30,7 @@ function HomePage() {
             null,
         );
 
-    const [
-        fireSourcePlacementMode,
-        setFireSourcePlacementMode,
-    ] =
-        useState<FireSourcePlacementMode>(
-            FireSourcePlacementMode.None,
-        );
-
-    const [fireSourcesEnabled, setFireSourcesEnabled] = useState(true);
     const [fireSourceDebugVisible, setFireSourceDebugVisible] = useState(false);
-    const [activeFireSourceCount, setActiveFireSourceCount] = useState(0);
-
-    useEffect(() => {
-        const intervalId = window.setInterval(() => {
-            setActiveFireSourceCount(gameRef.current?.getActiveFireSourceCount() ?? 0);
-        }, 250);
-        return () => window.clearInterval(intervalId);
-    }, []);
 
     // -------------------------------------------------------
     // Game Lifecycle
@@ -78,10 +57,6 @@ function HomePage() {
             let disposed =
                 false;
 
-            let unsubscribeFromFireSourcePlacement:
-                (() => void) | null =
-                null;
-
             const initializeGame =
                 async (): Promise<void> => {
 
@@ -97,18 +72,6 @@ function HomePage() {
                         false,
                     );
 
-                    unsubscribeFromFireSourcePlacement =
-                        game.subscribeToFireSourcePlacementMode(
-                            (
-                                mode:
-                                    FireSourcePlacementMode,
-                            ): void => {
-
-                                setFireSourcePlacementMode(
-                                    mode,
-                                );
-                            },
-                        );
                 };
 
             void initializeGame();
@@ -117,9 +80,6 @@ function HomePage() {
 
                 disposed =
                     true;
-
-                unsubscribeFromFireSourcePlacement
-                    ?.();
 
                 game.stop();
 
@@ -152,61 +112,12 @@ function HomePage() {
             );
         };
 
-    const handleSelectFireSourcePlacement =
-        (
-            mode:
-                FireSourcePlacementMode,
-        ): void => {
-
-            const game =
-                gameRef.current;
-
-            if (!game) {
-                return;
-            }
-
-            const nextMode =
-                fireSourcePlacementMode ===
-                    mode
-                    ? FireSourcePlacementMode.None
-                    : mode;
-
-            game.setFireSourcePlacementMode(
-                nextMode,
-            );
-        };
-
-    const handleRemoveFireSources =
-        (): void => {
-
-            const game =
-                gameRef.current;
-
-            if (!game) {
-                return;
-            }
-
-            game.clearFireSources();
-            game.setFireSourcePlacementMode(FireSourcePlacementMode.None);
-            setActiveFireSourceCount(0);
-        };
-
-    const handleToggleFireSources = (): void => {
-        const game = gameRef.current;
-        if (!game) return;
-        const next = !fireSourcesEnabled;
-        game.setAllFireSourcesEnabled(next);
-        setFireSourcesEnabled(next);
-    };
-
     const handleClearActiveFire = (): void => { gameRef.current?.clearActiveFire(); };
 
     const handleResetFireSourceEnvironment = (): void => {
         const game = gameRef.current;
         if (!game) return;
         game.resetFireSourceTestEnvironment();
-        setFireSourcesEnabled(true);
-        setActiveFireSourceCount(0);
     };
 
     const handleToggleFireSourceDebug = (): void => {
@@ -358,66 +269,8 @@ function HomePage() {
                             <div className="hud-test-divider" />
 
                             <div className="hud-test-label">
-                                Fire Jet Test
+                                Fire Controls
                             </div>
-
-                            <button
-                                type="button"
-                                className={
-                                    fireSourcePlacementMode ===
-                                        FireSourcePlacementMode.Directional
-                                        ? "hud-action-button hud-action-button--selected"
-                                        : "hud-action-button"
-                                }
-                                aria-pressed={
-                                    fireSourcePlacementMode ===
-                                    FireSourcePlacementMode.Directional
-                                }
-                                onClick={
-                                    () =>
-                                        handleSelectFireSourcePlacement(
-                                            FireSourcePlacementMode.Directional,
-                                        )
-                                }
-                            >
-                                Directional Jet
-                            </button>
-
-                            <button
-                                type="button"
-                                className={
-                                    fireSourcePlacementMode ===
-                                        FireSourcePlacementMode.Sweeping
-                                        ? "hud-action-button hud-action-button--selected"
-                                        : "hud-action-button"
-                                }
-                                aria-pressed={
-                                    fireSourcePlacementMode ===
-                                    FireSourcePlacementMode.Sweeping
-                                }
-                                onClick={
-                                    () =>
-                                        handleSelectFireSourcePlacement(
-                                            FireSourcePlacementMode.Sweeping,
-                                        )
-                                }
-                            >
-                                Sweeping Jet
-                            </button>
-
-                            <div className="hud-source-status">Sources: {activeFireSourceCount}</div>
-
-                            <button type="button" className={!fireSourcesEnabled ? "hud-action-button hud-action-button--selected" : "hud-action-button"} onClick={handleToggleFireSources}>
-                                {fireSourcesEnabled ? "Disable Sources" : "Enable Sources"}
-                            </button>
-
-                            <button
-                                type="button"
-                                className="hud-action-button"
-                                onClick={handleRemoveFireSources}
-                            >
-                                Remove Sources
-                            </button>
 
                             <button type="button" className="hud-action-button" onClick={handleClearActiveFire}>Clear Active Fire</button>
                             <button type="button" className="hud-action-button" onClick={handleResetFireSourceEnvironment}>Reset Environment</button>
@@ -426,15 +279,7 @@ function HomePage() {
                             </button>
 
                             <span className="hud-test-hint">
-                                {
-                                    fireSourcePlacementMode ===
-                                        FireSourcePlacementMode.Directional
-                                        ? "Directional Jet armed: click-drag-release on the course"
-                                        : fireSourcePlacementMode ===
-                                            FireSourcePlacementMode.Sweeping
-                                            ? "Sweeping Jet armed: click-drag-release on the course"
-                                            : "Jet tools are one-shot and automatically disarm after placement"
-                                }
+                                Fire Tubes cycle automatically. Right-click course to ignite.
                             </span>
 
                         </div>
@@ -454,16 +299,7 @@ function HomePage() {
 
                             <div
                                 ref={gameContainerRef}
-                                className={
-                                    (
-                                        fireSourcePlacementMode ===
-                                        FireSourcePlacementMode.Directional ||
-                                        fireSourcePlacementMode ===
-                                        FireSourcePlacementMode.Sweeping
-                                    )
-                                        ? "game-container game-container--fire-placement"
-                                        : "game-container"
-                                }
+                                className="game-container"
                             />
 
                         </div>

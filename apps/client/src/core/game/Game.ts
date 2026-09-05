@@ -30,14 +30,6 @@ import type {
     FireWindTestConfigurationId,
 } from "./config/FireWindTestDefinition";
 
-import {
-    FireSourcePlacementMode,
-} from "./config/FireSourcePlacementMode";
-
-import type {
-    FireSourcePlacementModeListener,
-} from "./config/FireSourcePlacementMode";
-
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
 
@@ -66,21 +58,6 @@ export class Game {
 
     private shotController:
         ShotController | null = null;
-
-    private fireSourcePlacementMode:
-        FireSourcePlacementMode =
-        FireSourcePlacementMode.None;
-
-    private readonly fireSourcePlacementModeListeners:
-        Set<FireSourcePlacementModeListener> =
-        new Set<FireSourcePlacementModeListener>();
-
-    private directionalFirePlacementStart:
-        {
-            readonly x: number;
-            readonly y: number;
-        } | null =
-        null;
 
     private state:
         EngineState =
@@ -379,153 +356,8 @@ export class Game {
     }
 
     // -------------------------------------------------------------------------
-    // Fire Source Placement Mode
+    // Fire Source Debug Bridge
     // -------------------------------------------------------------------------
-
-    public getFireSourcePlacementMode():
-        FireSourcePlacementMode {
-
-        return this.fireSourcePlacementMode;
-    }
-
-    public setFireSourcePlacementMode(
-        mode:
-            FireSourcePlacementMode,
-    ): void {
-
-        if (
-            this.fireSourcePlacementMode ===
-            mode
-        ) {
-            return;
-        }
-
-        this.fireSourcePlacementMode =
-            mode;
-
-        this.directionalFirePlacementStart =
-            null;
-
-        this.emitFireSourcePlacementMode();
-    }
-
-    public subscribeToFireSourcePlacementMode(
-        listener:
-            FireSourcePlacementModeListener,
-    ): () => void {
-
-        this.fireSourcePlacementModeListeners
-            .add(
-                listener,
-            );
-
-        listener(
-            this.fireSourcePlacementMode,
-        );
-
-        return (): void => {
-
-            this.fireSourcePlacementModeListeners
-                .delete(
-                    listener,
-                );
-        };
-    }
-
-    private emitFireSourcePlacementMode():
-        void {
-
-        for (
-            const listener
-            of this.fireSourcePlacementModeListeners
-        ) {
-            listener(
-                this.fireSourcePlacementMode,
-            );
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Fire Source Test Bridge
-    // -------------------------------------------------------------------------
-
-    public placePointFireSourceAtScreenPosition(
-        screenX: number,
-        screenY: number,
-    ): boolean {
-
-        return (
-            this.world
-                ?.placePointFireSourceAtScreenPosition(
-                    screenX,
-                    screenY,
-                ) ??
-            false
-        );
-    }
-
-    public placePersistentFireSourceAtScreenPosition(
-        screenX: number,
-        screenY: number,
-    ): boolean {
-
-        return (
-            this.world
-                ?.placePersistentFireSourceAtScreenPosition(
-                    screenX,
-                    screenY,
-                ) ??
-            false
-        );
-    }
-
-    public placeDirectionalFireSourceAtScreenPositions(
-        originScreenX: number,
-        originScreenY: number,
-        targetScreenX: number,
-        targetScreenY: number,
-    ): boolean {
-
-        return (
-            this.world
-                ?.placeDirectionalFireSourceAtScreenPositions(
-                    originScreenX,
-                    originScreenY,
-                    targetScreenX,
-                    targetScreenY,
-                ) ??
-            false
-        );
-    }
-
-    public placeSweepingFireSourceAtScreenPositions(
-        originScreenX: number, originScreenY: number, targetScreenX: number, targetScreenY: number,
-    ): boolean {
-        return this.world?.placeSweepingFireSourceAtScreenPositions(
-            originScreenX, originScreenY, targetScreenX, targetScreenY,
-        ) ?? false;
-    }
-
-    public clearFireSources():
-        void {
-
-        this.world
-            ?.clearFireSources();
-    }
-
-    public setAllFireSourcesEnabled(
-        enabled: boolean,
-    ): void {
-
-        this.world
-            ?.setAllFireSourcesEnabled(
-                enabled,
-            );
-    }
-
-    public getActiveFireSourceCount(): number {
-        return this.world?.getActiveFireSourceCount() ?? 0;
-    }
 
     public setFireSourceDebugVisible(visible: boolean): void {
         this.world?.setFireSourceDebugVisible(visible);
@@ -541,7 +373,6 @@ export class Game {
 
     public resetFireSourceTestEnvironment(): void {
         this.world?.resetFireEnvironment();
-        this.setFireSourcePlacementMode(FireSourcePlacementMode.None);
     }
 
     // -------------------------------------------------------------------------
@@ -638,140 +469,11 @@ export class Game {
             return;
         }
 
-        let fireSourcePlacementHandled =
-            false;
-
-        const placementMode =
-            this.fireSourcePlacementMode;
-
-        if (
-            (
-                placementMode === FireSourcePlacementMode.Directional ||
-                placementMode === FireSourcePlacementMode.Sweeping
-            ) &&
-            this.inputManager
-                .isPointerInsideTarget() &&
-            !(this.shotController
-                ?.isPreparingShot() ?? false)
-        ) {
-            if (
-                this.inputManager
-                    .wasLeftMousePressed()
-            ) {
-                this.directionalFirePlacementStart = {
-                    x:
-                        this.inputManager
-                            .getMouseX(),
-                    y:
-                        this.inputManager
-                            .getMouseY(),
-                };
-
-                /*
-                 * Suppress normal golf interaction from the press that
-                 * begins the Fire-jet placement drag.
-                 */
-                fireSourcePlacementHandled =
-                    true;
-            }
-
-            if (
-                this.directionalFirePlacementStart &&
-                this.inputManager
-                    .isLeftMouseDown()
-            ) {
-                fireSourcePlacementHandled =
-                    true;
-            }
-
-            if (
-                this.directionalFirePlacementStart &&
-                this.inputManager
-                    .wasLeftMouseReleased()
-            ) {
-                const start =
-                    this.directionalFirePlacementStart;
-
-                const targetX = this.inputManager.getMouseX();
-                const targetY = this.inputManager.getMouseY();
-                const placed = placementMode === FireSourcePlacementMode.Sweeping
-                    ? this.placeSweepingFireSourceAtScreenPositions(start.x, start.y, targetX, targetY)
-                    : this.placeDirectionalFireSourceAtScreenPositions(start.x, start.y, targetX, targetY);
-
-                this.directionalFirePlacementStart =
-                    null;
-
-                fireSourcePlacementHandled =
-                    true;
-
-                if (placed) {
-                    this.setFireSourcePlacementMode(
-                        FireSourcePlacementMode.None,
-                    );
-                }
-            }
-        } else if (
-            placementMode !==
-            FireSourcePlacementMode.None &&
-            this.inputManager
-                .wasLeftMousePressed() &&
-            this.inputManager
-                .isPointerInsideTarget() &&
-            !(this.shotController
-                ?.isPreparingShot() ?? false)
-        ) {
-            const screenX =
-                this.inputManager
-                    .getMouseX();
-
-            const screenY =
-                this.inputManager
-                    .getMouseY();
-
-            switch (placementMode) {
-                case FireSourcePlacementMode.Point:
-                    fireSourcePlacementHandled =
-                        this.placePointFireSourceAtScreenPosition(
-                            screenX,
-                            screenY,
-                        );
-                    break;
-
-                case FireSourcePlacementMode.Persistent:
-                    fireSourcePlacementHandled =
-                        this.placePersistentFireSourceAtScreenPosition(
-                            screenX,
-                            screenY,
-                        );
-                    break;
-
-                case FireSourcePlacementMode.Directional:
-                case FireSourcePlacementMode.Sweeping:
-                case FireSourcePlacementMode.None:
-                    break;
-            }
-
-            if (
-                fireSourcePlacementHandled
-            ) {
-                this.setFireSourcePlacementMode(
-                    FireSourcePlacementMode.None,
-                );
-            }
-        }
-
         /*
-         * FIRE-VFX-3A temporary validation bridge:
-         *
-         * Right-click on the course creates an authoritative FireManager
-         * ignition area at the pointer's world position. GroundFireEmitter
-         * then reads those real FireCells and produces presentation particles.
-         *
-         * This is development/test input only. Fire VFX never creates or
-         * modifies combustion state directly.
+         * Development/test input retained intentionally. Right-click creates
+         * an authoritative FireManager ignition at the pointer world position.
          */
         if (
-            !fireSourcePlacementHandled &&
             this.inputManager
                 .wasContextActionPressed() &&
             this.inputManager
@@ -783,7 +485,6 @@ export class Game {
                 ?.igniteTestFireAtScreenPosition(
                     this.inputManager
                         .getMouseX(),
-
                     this.inputManager
                         .getMouseY(),
                 );
@@ -803,19 +504,15 @@ export class Game {
                 deltaTime,
             );
 
-        if (
-            !fireSourcePlacementHandled
-        ) {
-            this.playerController
-                ?.update(
-                    deltaTime,
-                );
+        this.playerController
+            ?.update(
+                deltaTime,
+            );
 
-            this.shotController
-                ?.update(
-                    deltaTime,
-                );
-        }
+        this.shotController
+            ?.update(
+                deltaTime,
+            );
 
         this.world
             ?.update(
@@ -860,15 +557,6 @@ export class Game {
 
         this.world =
             null;
-
-        this.fireSourcePlacementMode =
-            FireSourcePlacementMode.None;
-
-        this.directionalFirePlacementStart =
-            null;
-
-        this.fireSourcePlacementModeListeners
-            .clear();
 
         this.inputManager.destroy(
             this.container,

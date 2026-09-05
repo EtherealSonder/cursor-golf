@@ -22,7 +22,7 @@ export interface DirectionalFireSourceTuning {
 export const DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION:
     DirectionalFireSourceTuning = {
 
-    length: 320,
+    length: 460,
     halfWidth: 14,
 
     /*
