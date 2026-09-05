@@ -1,7 +1,3 @@
-import {
-    GAME_COLOR_PALETTE,
-} from "./GameColorPalette";
-
 /**
  * Immutable definition for one local directional
  * airflow source.
@@ -112,40 +108,6 @@ export interface LocalWindVisualDefinition {
     readonly recyclePadding: number;
 }
 
-export interface FanVisualDefinition {
-
-    /**
-     * Fan art is authored pointing to the right and
-     * the complete Entity is rotated to match airflow.
-     *
-     * The silhouette is intentionally directional:
-     * a rounded body with a narrower intake/rear and
-     * an obvious open outlet on the downwind side.
-     */
-    readonly bodyLength: number;
-    readonly bodyHalfHeight: number;
-    readonly rearHalfHeight: number;
-    readonly outletDepth: number;
-
-    readonly bladeLength: number;
-    readonly bladeWidth: number;
-    readonly bladeCount: number;
-
-    readonly bodyFillColor: number;
-    readonly bodyShadowColor: number;
-    readonly housingOutlineColor: number;
-    readonly outletColor: number;
-    readonly bladeColor: number;
-    readonly hubColor: number;
-    readonly accentColor: number;
-
-    readonly outlineWidth: number;
-    readonly shadowOffsetX: number;
-    readonly shadowOffsetY: number;
-
-    readonly bladeRotationSpeed: number;
-}
-
 /**
  * Temporary fixed local-wind test layout.
  *
@@ -243,32 +205,4 @@ export const DEFAULT_LOCAL_WIND_VISUAL_DEFINITION:
     sourceDensityBias: 1.65,
 
     recyclePadding: 24,
-};
-
-export const DEFAULT_FAN_VISUAL_DEFINITION:
-    FanVisualDefinition = {
-
-    bodyLength: 59,
-    bodyHalfHeight: 26,
-    rearHalfHeight: 21,
-    outletDepth: 12,
-
-    bladeLength: 15,
-    bladeWidth: 7,
-    bladeCount: 3,
-
-    bodyFillColor: GAME_COLOR_PALETTE.terrain.water,
-    bodyShadowColor: GAME_COLOR_PALETTE.terrain.waterShadow,
-    housingOutlineColor: GAME_COLOR_PALETTE.ink.outline,
-    outletColor: GAME_COLOR_PALETTE.golf.hole,
-    bladeColor: GAME_COLOR_PALETTE.golf.ball,
-    hubColor: GAME_COLOR_PALETTE.ink.outline,
-    accentColor: GAME_COLOR_PALETTE.fire.hot,
-
-    outlineWidth: 3,
-
-    shadowOffsetX: 4,
-    shadowOffsetY: 5,
-
-    bladeRotationSpeed: 5.8,
 };

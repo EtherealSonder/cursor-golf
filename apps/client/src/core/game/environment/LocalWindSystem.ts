@@ -6,6 +6,21 @@ import {
     DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS,
 } from "../config/LocalWindDefinition";
 
+
+interface MutableLocalWindSourceDefinition {
+    id: string;
+    positionX: number;
+    positionY: number;
+    directionRadians: number;
+    range: number;
+    startHalfWidth: number;
+    endHalfWidth: number;
+    acceleration: number;
+    endStrengthMultiplier: number;
+    edgeFalloffFraction: number;
+    enabled: boolean;
+}
+
 export interface LocalWindVector {
     readonly x: number;
     readonly y: number;
@@ -28,7 +43,7 @@ export interface LocalWindSample {
 export class LocalWindSystem {
 
     private sources:
-        readonly LocalWindSourceDefinition[];
+        MutableLocalWindSourceDefinition[];
 
     constructor(
         sources:
@@ -68,6 +83,51 @@ export class LocalWindSystem {
                     ...source,
                 }),
             );
+    }
+
+
+    /**
+     * Updates only the runtime transform of one source.
+     *
+     * This is used by physical mechanisms such as Fan. The airflow
+     * shape and strength configuration remain unchanged. Source objects
+     * are updated in place so presentation systems holding a reference
+     * to the source observe the new transform without rebuilding the
+     * complete source collection.
+     */
+    public updateSourceTransform(
+        sourceId: string,
+        positionX: number,
+        positionY: number,
+        directionRadians: number,
+    ): boolean {
+
+        if (
+            sourceId.trim().length === 0 ||
+            ![
+                positionX,
+                positionY,
+                directionRadians,
+            ].every(Number.isFinite)
+        ) {
+            return false;
+        }
+
+        const source =
+            this.sources.find(
+                (candidate) =>
+                    candidate.id === sourceId,
+            );
+
+        if (!source) {
+            return false;
+        }
+
+        source.positionX = positionX;
+        source.positionY = positionY;
+        source.directionRadians = directionRadians;
+
+        return true;
     }
 
     public getAccelerationAt(

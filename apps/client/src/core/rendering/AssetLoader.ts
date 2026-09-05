@@ -6,6 +6,8 @@ import {
 import golfClubTexture from "../../assets/sprites/golf/golf_club_temp.png";
 import golfBallTexture from "../../assets/sprites/golf/golf_ball.png";
 import golfBallDimplesTexture from "../../assets/textures/golf/golf_ball_dimples.png";
+import fanBodyTexture from "../../assets/sprites/mechanisms/fan_body.png";
+import fanRotorTexture from "../../assets/sprites/mechanisms/fan_rotator.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
 
@@ -53,6 +55,16 @@ export class AssetLoader {
         await this.loadTexture(
             "golfBallDimples",
             golfBallDimplesTexture,
+        );
+
+        await this.loadTexture(
+            "fanBody",
+            fanBodyTexture,
+        );
+
+        await this.loadTexture(
+            "fanRotor",
+            fanRotorTexture,
         );
 
         await this.loadTexture(

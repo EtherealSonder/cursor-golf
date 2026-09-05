@@ -18,6 +18,15 @@ export interface CameraDefinition {
     readonly viewportHeight:
     number;
 
+    /**
+     * Fixed world-render zoom.
+     *
+     * 1.0 = original 1:1 world-to-screen scale.
+     * 1.25 = each world pixel occupies 1.25 logical screen pixels.
+     */
+    readonly zoom:
+    number;
+
     // -------------------------------------------------------
     // Initial Camera Position
     // -------------------------------------------------------
@@ -177,6 +186,15 @@ export const DEFAULT_CAMERA_DEFINITION:
     viewportHeight:
         DEFAULT_GAME_VIEWPORT_DEFINITION
             .height,
+
+    /*
+     * Fixed gameplay zoom.
+     *
+     * The logical renderer viewport remains unchanged.
+     * This only reduces how much world-space area is visible.
+     */
+    zoom:
+        1.25,
 
     // -------------------------------------------------------
     // Initial Camera Position

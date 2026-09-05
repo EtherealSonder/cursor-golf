@@ -179,6 +179,12 @@ export class LocalWindVisualizer {
             this.localWindSystem
                 .getSources();
 
+        /*
+         * Runtime Fan translation/rotation is intentionally excluded from
+         * the pool signature. Existing particles read the current source
+         * transform every draw, so rebuilding the pool while a Fan moves
+         * would create needless allocations and visible particle resets.
+         */
         const nextSignature =
             sources
                 .filter(
@@ -192,9 +198,6 @@ export class LocalWindVisualizer {
                         [
                             source.id,
                             source.enabled ? "1" : "0",
-                            source.positionX,
-                            source.positionY,
-                            source.directionRadians,
                             source.range,
                             source.startHalfWidth,
                             source.endHalfWidth,

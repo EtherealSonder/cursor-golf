@@ -408,14 +408,20 @@ export class Camera {
             number,
     ): CameraPoint {
 
+        const zoom =
+            this.definition
+                .zoom;
+
         return {
             x:
-                viewportX +
-                this.positionX,
+                this.positionX +
+                viewportX /
+                zoom,
 
             y:
-                viewportY +
-                this.positionY,
+                this.positionY +
+                viewportY /
+                zoom,
         };
     }
 
@@ -427,14 +433,24 @@ export class Camera {
             number,
     ): CameraPoint {
 
+        const zoom =
+            this.definition
+                .zoom;
+
         return {
             x:
-                worldX -
-                this.positionX,
+                (
+                    worldX -
+                    this.positionX
+                ) *
+                zoom,
 
             y:
-                worldY -
-                this.positionY,
+                (
+                    worldY -
+                    this.positionY
+                ) *
+                zoom,
         };
     }
 
@@ -622,6 +638,44 @@ export class Camera {
         number {
 
         return this.viewportHeight;
+    }
+
+    /**
+     * Fixed world-render zoom.
+     */
+    public getZoom():
+        number {
+
+        return this.definition
+            .zoom;
+    }
+
+    /**
+     * Width of world-space currently visible through
+     * the logical viewport at the configured zoom.
+     */
+    public getVisibleWorldWidth():
+        number {
+
+        return (
+            this.viewportWidth /
+            this.definition
+                .zoom
+        );
+    }
+
+    /**
+     * Height of world-space currently visible through
+     * the logical viewport at the configured zoom.
+     */
+    public getVisibleWorldHeight():
+        number {
+
+        return (
+            this.viewportHeight /
+            this.definition
+                .zoom
+        );
     }
 
     public getDefinition():
@@ -818,7 +872,7 @@ export class Camera {
                 this.courseBoundaryDefinition
                     .maximumX,
 
-                this.viewportWidth,
+                this.getVisibleWorldWidth(),
             );
 
         const verticalLimits =
@@ -829,7 +883,7 @@ export class Camera {
                 this.courseBoundaryDefinition
                     .maximumY,
 
-                this.viewportHeight,
+                this.getVisibleWorldHeight(),
             );
 
         this.minimumPositionX =
@@ -908,6 +962,7 @@ export class Camera {
         const finiteValues = [
             definition.viewportWidth,
             definition.viewportHeight,
+            definition.zoom,
             definition.initialPositionX,
             definition.initialPositionY,
             definition.horizontalActivationInsetRatio,
@@ -939,6 +994,15 @@ export class Camera {
             definition.viewportWidth,
             definition.viewportHeight,
         );
+
+        if (
+            definition.zoom <=
+            0
+        ) {
+            throw new Error(
+                "Camera zoom must be greater than zero.",
+            );
+        }
 
         if (
             definition

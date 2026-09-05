@@ -1,62 +1,100 @@
 import {
-    Container,
-    Graphics,
+    Sprite,
 } from "pixi.js";
 
 import {
-    DEFAULT_FAN_VISUAL_DEFINITION,
+    DEFAULT_COURSE_BOUNDARY_DEFINITION,
+} from "../../config/CourseBoundaryDefinition";
+
+import {
+    DEFAULT_FAN_DEFINITION,
+} from "../../config/FanDefinition";
+
+import type {
+    CourseBoundaryDefinition,
+} from "../../config/CourseBoundaryDefinition";
+
+import type {
+    FanDefinition,
+} from "../../config/FanDefinition";
+
+import type {
+    LocalWindSourceDefinition,
 } from "../../config/LocalWindDefinition";
 
 import type {
-    FanVisualDefinition,
-    LocalWindSourceDefinition,
-} from "../../config/LocalWindDefinition";
+    DynamicObstacleDefinition,
+} from "../../config/ObstacleDefinition";
+
+import type {
+    LocalWindSystem,
+} from "../../environment/LocalWindSystem";
+
+import {
+    calculateRectangleMomentOfInertia,
+} from "../../physics/RigidBodyMath";
+
+import {
+    RigidBody2D,
+} from "../../physics/RigidBody2D";
+
+import {
+    AssetLoader,
+} from "../../../rendering/AssetLoader";
 
 import {
     Entity,
 } from "../Entity";
 
 /**
- * Simple top-down procedural Fan.
+ * Interactive physical Fan mechanism.
  *
- * The art is authored pointing to the right. The
- * complete Entity rotates with directionRadians, so
- * the silhouette itself communicates airflow
- * direction without a separate arrow.
- *
- * Physics remains owned by LocalWindSystem.
+ * The complete entity is authored facing right. Its rigid-body rotation is
+ * the gameplay orientation and therefore drives the associated Local Wind
+ * source. The internal rotor spin is presentation-only.
  */
 export class Fan extends Entity {
 
     private readonly sourceDefinition:
         LocalWindSourceDefinition;
 
-    private readonly visualDefinition:
-        FanVisualDefinition;
+    private readonly localWindSystem:
+        LocalWindSystem;
 
-    private shadowGraphics:
-        Graphics | null =
-        null;
+    private readonly definition:
+        FanDefinition;
 
-    private housingGraphics:
-        Graphics | null =
-        null;
+    private readonly courseBoundaryDefinition:
+        CourseBoundaryDefinition;
 
-    private bladeContainer:
-        Container | null =
-        null;
+    private readonly rigidBody:
+        RigidBody2D;
 
-    private bladeGraphics:
-        Graphics | null =
-        null;
+    private readonly collisionDefinition:
+        DynamicObstacleDefinition;
+
+    private bodySprite:
+        Sprite | null = null;
+
+    private rotorSprite:
+        Sprite | null = null;
+
+    private rotationRadians = 0;
 
     constructor(
         sourceDefinition:
             LocalWindSourceDefinition,
 
-        visualDefinition:
-            FanVisualDefinition =
-            DEFAULT_FAN_VISUAL_DEFINITION,
+        localWindSystem:
+            LocalWindSystem,
+
+        definition:
+            FanDefinition =
+            DEFAULT_FAN_DEFINITION,
+
+        courseBoundaryDefinition:
+            CourseBoundaryDefinition =
+            DEFAULT_COURSE_BOUNDARY_DEFINITION,
     ) {
         super();
 
@@ -64,11 +102,62 @@ export class Fan extends Entity {
             sourceDefinition,
         );
 
+        this.validateDefinition(
+            definition,
+        );
+
         this.sourceDefinition =
             sourceDefinition;
 
-        this.visualDefinition =
-            visualDefinition;
+        this.localWindSystem =
+            localWindSystem;
+
+        this.definition =
+            definition;
+
+        this.courseBoundaryDefinition =
+            courseBoundaryDefinition;
+
+        this.rotationRadians =
+            sourceDefinition
+                .directionRadians;
+
+        this.collisionDefinition = {
+            id:
+                `fan-${sourceDefinition.id}`,
+            shape:
+                "rectangle",
+            positionX:
+                sourceDefinition.positionX,
+            positionY:
+                sourceDefinition.positionY,
+            rotationRadians:
+                sourceDefinition.directionRadians,
+            width:
+                definition.colliderWidth,
+            height:
+                definition.colliderHeight,
+            fillColor:
+                0xffffff,
+            outlineColor:
+                0x000000,
+            outlineWidth:
+                0,
+            material:
+                definition.material,
+            rigidBody:
+                definition.rigidBody,
+        };
+
+        this.rigidBody =
+            new RigidBody2D(
+                definition.rigidBody,
+                calculateRectangleMomentOfInertia(
+                    definition.rigidBody.mass,
+                    definition.colliderWidth,
+                    definition.colliderHeight,
+                ),
+            );
     }
 
     public getSourceDefinition():
@@ -77,257 +166,411 @@ export class Fan extends Entity {
         return this.sourceDefinition;
     }
 
+    /**
+     * DynamicCollidable contract. The definition exists only for collision
+     * geometry/material data. Fan presentation remains Sprite-based.
+     */
+    public getDefinition():
+        DynamicObstacleDefinition {
+
+        return this.collisionDefinition;
+    }
+
+    public getRotationRadians(): number {
+        return this.rotationRadians;
+    }
+
+    public getVelocityX(): number {
+        return this.rigidBody.getVelocityX();
+    }
+
+    public getVelocityY(): number {
+        return this.rigidBody.getVelocityY();
+    }
+
+    public getAngularVelocity(): number {
+        return this.rigidBody.getAngularVelocity();
+    }
+
+    public getInverseMass(): number {
+        return this.rigidBody.getInverseMass();
+    }
+
+    public getInverseMomentOfInertia():
+        number {
+
+        return this.rigidBody
+            .getInverseMomentOfInertia();
+    }
+
+    public applyImpulseAtWorldPoint(
+        impulseX: number,
+        impulseY: number,
+        contactPointX: number,
+        contactPointY: number,
+    ): void {
+
+        this.rigidBody
+            .applyImpulseAtWorldPoint(
+                impulseX,
+                impulseY,
+                contactPointX -
+                this.getX(),
+                contactPointY -
+                this.getY(),
+            );
+    }
+
     protected onInitialize():
         void {
 
+        /*
+         * Existing Local Wind definitions describe the airflow origin. Place
+         * the physical body behind that point so the new outlet aligns with
+         * the previously authored source position.
+         */
+        const directionX =
+            Math.cos(
+                this.rotationRadians,
+            );
+
+        const directionY =
+            Math.sin(
+                this.rotationRadians,
+            );
+
         this.setPosition(
             this.sourceDefinition
-                .positionX,
+                .positionX -
+            directionX *
+            this.definition
+                .windOutletOffset,
             this.sourceDefinition
-                .positionY,
+                .positionY -
+            directionY *
+            this.definition
+                .windOutletOffset,
         );
 
         this.container.rotation =
-            this.sourceDefinition
-                .directionRadians;
+            this.rotationRadians;
 
-        this.shadowGraphics =
-            new Graphics();
-
-        this.housingGraphics =
-            new Graphics();
-
-        this.bladeContainer =
-            new Container();
-
-        this.bladeGraphics =
-            new Graphics();
-
-        this.bladeContainer
-            .addChild(
-                this.bladeGraphics,
-            );
-
-        /*
-         * Shadow first, then housing, then moving
-         * internal blade hint.
-         */
-        this.container
-            .addChild(
-                this.shadowGraphics,
-            );
-
-        this.container
-            .addChild(
-                this.housingGraphics,
-            );
-
-        this.container
-            .addChild(
-                this.bladeContainer,
-            );
-
-        this.drawShadow();
-        this.drawHousing();
-        this.drawBlades();
+        this.createSprites();
+        this.resolveCourseBoundaryCollision();
+        this.synchronizeWindSourceTransform();
     }
 
     protected onUpdate(
         deltaTime: number,
     ): void {
 
+        const safeDeltaTime =
+            Number.isFinite(deltaTime)
+                ? Math.max(0, deltaTime)
+                : 0;
+
+        const integration =
+            this.rigidBody.integrate(
+                safeDeltaTime,
+            );
+
+        this.translate(
+            integration.positionDeltaX,
+            integration.positionDeltaY,
+        );
+
+        this.rotationRadians +=
+            integration.rotationDelta;
+
+        this.rotationRadians =
+            this.normalizeRadians(
+                this.rotationRadians,
+            );
+
+        this.resolveCourseBoundaryCollision();
+
+        this.container.rotation =
+            this.rotationRadians;
+
         if (
-            !this.bladeContainer ||
-            !this.sourceDefinition
-                .enabled ||
-            !Number.isFinite(
-                deltaTime,
-            )
+            this.rotorSprite &&
+            this.sourceDefinition.enabled
         ) {
-            return;
+            this.rotorSprite.rotation +=
+                this.definition
+                    .rotorRotationSpeed *
+                safeDeltaTime;
         }
 
-        this.bladeContainer.rotation +=
-            this.visualDefinition
-                .bladeRotationSpeed *
-            Math.max(
-                0,
-                deltaTime,
-            );
+        this.synchronizeWindSourceTransform();
     }
 
     protected onDestroy():
         void {
 
-        this.bladeGraphics
-            ?.destroy();
+        this.bodySprite?.destroy();
+        this.rotorSprite?.destroy();
 
-        this.housingGraphics
-            ?.destroy();
-
-        this.shadowGraphics
-            ?.destroy();
-
-        this.bladeGraphics =
-            null;
-
-        this.housingGraphics =
-            null;
-
-        this.shadowGraphics =
-            null;
-
-        this.bladeContainer =
-            null;
+        this.bodySprite = null;
+        this.rotorSprite = null;
 
         this.container.destroy({
             children: true,
         });
     }
 
-    private drawShadow():
+    private createSprites():
         void {
 
-        if (!this.shadowGraphics) {
-            return;
-        }
+        this.rotorSprite =
+            new Sprite(
+                AssetLoader.getTexture(
+                    this.definition
+                        .rotorTextureKey,
+                ),
+            );
 
-        const d = this.visualDefinition;
-        const rearX = -d.bodyLength * 0.50;
-        const frontX = d.bodyLength * 0.50;
-
-        this.shadowGraphics.clear();
-
-        this.shadowGraphics
-            .roundRect(
-                rearX + d.shadowOffsetX,
-                -d.bodyHalfHeight + d.shadowOffsetY,
-                d.bodyLength,
-                d.bodyHalfHeight * 2,
-                12,
-            )
-            .fill({
-                color: d.bodyShadowColor,
-                alpha: 0.24,
-            });
-
-        this.shadowGraphics
-            .ellipse(
-                frontX + d.shadowOffsetX,
-                d.shadowOffsetY,
-                12,
-                d.bodyHalfHeight,
-            )
-            .fill({
-                color: d.bodyShadowColor,
-                alpha: 0.24,
-            });
-    }
-
-    private drawHousing():
-        void {
-
-        if (!this.housingGraphics) {
-            return;
-        }
-
-        const d = this.visualDefinition;
-        const rearX = -d.bodyLength * 0.50;
-        const frontX = d.bodyLength * 0.50;
-
-        this.housingGraphics.clear();
-
-        // One simple saturated drum body.
-        this.housingGraphics
-            .roundRect(
-                rearX,
-                -d.bodyHalfHeight,
-                d.bodyLength,
-                d.bodyHalfHeight * 2,
-                12,
-            )
-            .fill(d.bodyFillColor)
-            .stroke({
-                width: d.outlineWidth,
-                color: d.housingOutlineColor,
-                join: "round",
-            });
-
-        // Minimal darker rear band for cylindrical depth.
-        this.housingGraphics
-            .roundRect(
-                rearX + 7,
-                -d.bodyHalfHeight + 5,
-                10,
-                d.bodyHalfHeight * 2 - 10,
-                5,
-            )
-            .fill(d.bodyShadowColor);
-
-        // Large oval front opening is the main directional cue.
-        this.housingGraphics
-            .ellipse(
-                frontX,
-                0,
-                13,
-                d.bodyHalfHeight + 2,
-            )
-            .fill(d.bladeColor)
-            .stroke({
-                width: d.outlineWidth,
-                color: d.housingOutlineColor,
-            });
-
-        this.housingGraphics
-            .ellipse(
-                frontX,
-                0,
-                9,
-                d.bodyHalfHeight - 4,
-            )
-            .fill(d.outletColor);
-    }
-
-    private drawBlades():
-        void {
-
-        if (!this.bladeGraphics || !this.bladeContainer) {
-            return;
-        }
-
-        const d = this.visualDefinition;
-        const frontX = d.bodyLength * 0.50;
-
-        this.bladeContainer.position.set(
-            frontX,
-            0,
+        this.rotorSprite.anchor.set(
+            0.5,
         );
 
-        this.bladeGraphics.clear();
+        this.rotorSprite.width =
+            this.definition
+                .rotorRenderSize;
 
-        // Only a symbolic three-spoke fan element.
-        for (let i = 0; i < 3; i += 1) {
-            const angle = (Math.PI * 2 * i) / 3;
+        this.rotorSprite.height =
+            this.definition
+                .rotorRenderSize;
 
-            this.bladeGraphics
-                .moveTo(
-                    Math.cos(angle) * 5,
-                    Math.sin(angle) * 5,
-                )
-                .lineTo(
-                    Math.cos(angle) * 16,
-                    Math.sin(angle) * 16,
-                )
-                .stroke({
-                    width: 6,
-                    color: d.bladeColor,
-                    cap: "round",
-                });
+        this.rotorSprite.position.set(
+            this.definition
+                .rotorOffsetX,
+            this.definition
+                .rotorOffsetY,
+        );
+
+        this.bodySprite =
+            new Sprite(
+                AssetLoader.getTexture(
+                    this.definition
+                        .bodyTextureKey,
+                ),
+            );
+
+        this.bodySprite.anchor.set(
+            0.5,
+        );
+
+        this.bodySprite.width =
+            this.definition
+                .bodyRenderWidth;
+
+        this.bodySprite.height =
+            this.definition
+                .bodyRenderHeight;
+
+        /*
+         * Body first, rotor second.
+         *
+         * The rotor is intentionally rendered above the body so the complete
+         * blade shape remains clearly visible inside the Fan opening.
+         */
+        this.container.addChild(
+            this.bodySprite,
+        );
+
+        this.container.addChild(
+            this.rotorSprite,
+        );
+    }
+
+    private synchronizeWindSourceTransform():
+        void {
+
+        const directionX =
+            Math.cos(
+                this.rotationRadians,
+            );
+
+        const directionY =
+            Math.sin(
+                this.rotationRadians,
+            );
+
+        const outletX =
+            this.getX() +
+            directionX *
+            this.definition
+                .windOutletOffset;
+
+        const outletY =
+            this.getY() +
+            directionY *
+            this.definition
+                .windOutletOffset;
+
+        const updated =
+            this.localWindSystem
+                .updateSourceTransform(
+                    this.sourceDefinition.id,
+                    outletX,
+                    outletY,
+                    this.rotationRadians,
+                );
+
+        if (!updated) {
+            throw new Error(
+                `Fan could not synchronize Local Wind source '${this.sourceDefinition.id}'.`,
+            );
+        }
+    }
+
+    private resolveCourseBoundaryCollision():
+        void {
+
+        const radius =
+            Math.hypot(
+                this.definition
+                    .colliderWidth / 2,
+                this.definition
+                    .colliderHeight / 2,
+            );
+
+        const minimumX =
+            this.courseBoundaryDefinition
+                .minimumX +
+            radius;
+
+        const maximumX =
+            this.courseBoundaryDefinition
+                .maximumX -
+            radius;
+
+        const minimumY =
+            this.courseBoundaryDefinition
+                .minimumY +
+            radius;
+
+        const maximumY =
+            this.courseBoundaryDefinition
+                .maximumY -
+            radius;
+
+        let correctedX =
+            this.getX();
+
+        let correctedY =
+            this.getY();
+
+        let velocityX =
+            this.rigidBody
+                .getVelocityX();
+
+        let velocityY =
+            this.rigidBody
+                .getVelocityY();
+
+        let collided =
+            false;
+
+        if (correctedX < minimumX) {
+            correctedX = minimumX;
+
+            if (velocityX < 0) {
+                velocityX =
+                    -velocityX *
+                    this.definition
+                        .material
+                        .restitution;
+            }
+
+            collided = true;
+        } else if (correctedX > maximumX) {
+            correctedX = maximumX;
+
+            if (velocityX > 0) {
+                velocityX =
+                    -velocityX *
+                    this.definition
+                        .material
+                        .restitution;
+            }
+
+            collided = true;
         }
 
-        this.bladeGraphics
-            .circle(0, 0, 5)
-            .fill(d.hubColor);
+        if (correctedY < minimumY) {
+            correctedY = minimumY;
+
+            if (velocityY < 0) {
+                velocityY =
+                    -velocityY *
+                    this.definition
+                        .material
+                        .restitution;
+            }
+
+            collided = true;
+        } else if (correctedY > maximumY) {
+            correctedY = maximumY;
+
+            if (velocityY > 0) {
+                velocityY =
+                    -velocityY *
+                    this.definition
+                        .material
+                        .restitution;
+            }
+
+            collided = true;
+        }
+
+        if (!collided) {
+            return;
+        }
+
+        this.setPosition(
+            correctedX,
+            correctedY,
+        );
+
+        this.rigidBody.setVelocity(
+            velocityX,
+            velocityY,
+        );
+
+        this.rigidBody.setAngularVelocity(
+            this.rigidBody
+                .getAngularVelocity() *
+            (
+                1 -
+                Math.min(
+                    this.definition
+                        .material
+                        .friction,
+                    1,
+                )
+            ),
+        );
+    }
+
+    private normalizeRadians(
+        radians: number,
+    ): number {
+
+        const fullTurn =
+            Math.PI * 2;
+
+        return (
+            (
+                radians +
+                Math.PI
+            ) %
+            fullTurn +
+            fullTurn
+        ) %
+            fullTurn -
+            Math.PI;
     }
 
     private validateSourceDefinition(
@@ -336,8 +579,7 @@ export class Fan extends Entity {
     ): void {
 
         if (
-            definition.id.trim()
-                .length ===
+            definition.id.trim().length ===
             0
         ) {
             throw new Error(
@@ -350,12 +592,55 @@ export class Fan extends Entity {
                 definition.positionX,
                 definition.positionY,
                 definition.directionRadians,
-            ].every(
-                Number.isFinite,
-            )
+            ].every(Number.isFinite)
         ) {
             throw new Error(
                 `Fan '${definition.id}' requires finite position and direction values.`,
+            );
+        }
+    }
+
+    private validateDefinition(
+        definition:
+            FanDefinition,
+    ): void {
+
+        if (
+            definition.bodyTextureKey.trim().length === 0 ||
+            definition.rotorTextureKey.trim().length === 0
+        ) {
+            throw new Error(
+                "Fan texture keys cannot be empty.",
+            );
+        }
+
+        const positiveValues = [
+            definition.bodyRenderWidth,
+            definition.bodyRenderHeight,
+            definition.rotorRenderSize,
+            definition.colliderWidth,
+            definition.colliderHeight,
+            definition.windOutletOffset,
+        ];
+
+        if (
+            !positiveValues.every(
+                (value) =>
+                    Number.isFinite(value) &&
+                    value > 0,
+            ) ||
+            !Number.isFinite(
+                definition.rotorOffsetX,
+            ) ||
+            !Number.isFinite(
+                definition.rotorOffsetY,
+            ) ||
+            !Number.isFinite(
+                definition.rotorRotationSpeed,
+            )
+        ) {
+            throw new Error(
+                "Fan visual and collider values are invalid.",
             );
         }
     }

@@ -74,8 +74,8 @@ import {
 import { Entity } from "./Entity";
 
 import type {
-    DynamicObstacle,
-} from "./obstacles/DynamicObstacle";
+    DynamicCollidable,
+} from "../physics/DynamicCollidable";
 
 export enum BallInteractionState {
     Normal,
@@ -171,8 +171,8 @@ export class Ball extends Entity {
     private readonly staticObstacleDefinitions:
         readonly StaticObstacleDefinition[];
 
-    private readonly dynamicObstacles:
-        readonly DynamicObstacle[];
+    private readonly dynamicCollidables:
+        readonly DynamicCollidable[];
 
     private readonly windManager:
         WindManager;
@@ -263,8 +263,8 @@ export class Ball extends Entity {
         staticObstacleDefinitions:
             readonly StaticObstacleDefinition[] = [],
 
-        dynamicObstacles:
-            readonly DynamicObstacle[] = [],
+        dynamicCollidables:
+            readonly DynamicCollidable[] = [],
 
         windManager:
             WindManager,
@@ -298,12 +298,12 @@ export class Ball extends Entity {
         this.staticObstacleDefinitions =
             staticObstacleDefinitions;
 
-        this.validateDynamicObstacles(
-            dynamicObstacles,
+        this.validateDynamicCollidables(
+            dynamicCollidables,
         );
 
-        this.dynamicObstacles =
-            dynamicObstacles;
+        this.dynamicCollidables =
+            dynamicCollidables;
 
         this.windManager =
             windManager;
@@ -1963,7 +1963,7 @@ export class Ball extends Entity {
         boolean {
 
         if (
-            this.dynamicObstacles
+            this.dynamicCollidables
                 .length ===
             0
         ) {
@@ -1975,7 +1975,7 @@ export class Ball extends Entity {
 
         for (
             const obstacle
-            of this.dynamicObstacles
+            of this.dynamicCollidables
         ) {
             const obstacleDefinition =
                 obstacle.getDefinition();
@@ -2235,7 +2235,7 @@ export class Ball extends Entity {
 
     private createObstacleCollisionBody(
         obstacle:
-            DynamicObstacle,
+            DynamicCollidable,
     ): DynamicCollisionBody {
 
         return {
@@ -2491,7 +2491,7 @@ export class Ball extends Entity {
 
     private logDynamicObstacleCollision(
         obstacle:
-            DynamicObstacle,
+            DynamicCollidable,
 
         manifold:
             DynamicCollisionManifold,
@@ -3735,9 +3735,9 @@ export class Ball extends Entity {
         }
     }
 
-    private validateDynamicObstacles(
+    private validateDynamicCollidables(
         obstacles:
-            readonly DynamicObstacle[],
+            readonly DynamicCollidable[],
     ): void {
 
         const ids =

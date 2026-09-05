@@ -131,6 +131,10 @@ import {
     DynamicObstacle,
 } from "../entities/obstacles/DynamicObstacle";
 
+import type {
+    DynamicCollidable,
+} from "../physics/DynamicCollidable";
+
 import {
     StaticObstacle,
 } from "../entities/obstacles/StaticObstacle";
@@ -374,6 +378,13 @@ export class World {
     private readonly dynamicObstacles:
         DynamicObstacle[] = [];
 
+    /**
+     * Shared live collection consumed by Ball. It contains generic dynamic
+     * obstacles plus interactive mechanisms such as Fans.
+     */
+    private readonly dynamicCollidables:
+        DynamicCollidable[] = [];
+
     private staticObstacleDefinitions:
         readonly StaticObstacleDefinition[] = [];
 
@@ -601,6 +612,10 @@ export class World {
                 obstacle,
             );
 
+            this.dynamicCollidables.push(
+                obstacle,
+            );
+
             this.addEntity(
                 obstacle,
             );
@@ -628,7 +643,7 @@ export class World {
                 undefined,
                 undefined,
                 this.staticObstacleDefinitions,
-                this.dynamicObstacles,
+                this.dynamicCollidables,
                 this.windManager,
                 this.surfaceSystem,
                 this.localWindSystem,
@@ -908,6 +923,9 @@ export class World {
             0;
 
         this.dynamicObstacles.length =
+            0;
+
+        this.dynamicCollidables.length =
             0;
 
         this.staticObstacleDefinitions =
@@ -1344,15 +1362,11 @@ export class World {
             return null;
         }
 
-        return {
-            x:
-                screenX +
-                this.camera.getPositionX(),
-
-            y:
-                screenY +
-                this.camera.getPositionY(),
-        };
+        return this.camera
+            .viewportToWorld(
+                screenX,
+                screenY,
+            );
     }
 
     // -------------------------------------------------------
@@ -1771,20 +1785,45 @@ export class World {
             1,
         );
 
-        const dynamicObstacleIndex =
-            this.dynamicObstacles
-                .indexOf(
-                    entity as DynamicObstacle,
+        if (
+            entity instanceof DynamicObstacle
+        ) {
+            const dynamicObstacleIndex =
+                this.dynamicObstacles
+                    .indexOf(
+                        entity,
+                    );
+
+            if (
+                dynamicObstacleIndex !==
+                -1
+            ) {
+                this.dynamicObstacles.splice(
+                    dynamicObstacleIndex,
+                    1,
                 );
+            }
+        }
 
         if (
-            dynamicObstacleIndex !==
-            -1
+            entity instanceof DynamicObstacle ||
+            entity instanceof Fan
         ) {
-            this.dynamicObstacles.splice(
-                dynamicObstacleIndex,
-                1,
-            );
+            const dynamicCollidableIndex =
+                this.dynamicCollidables
+                    .indexOf(
+                        entity,
+                    );
+
+            if (
+                dynamicCollidableIndex !==
+                -1
+            ) {
+                this.dynamicCollidables.splice(
+                    dynamicCollidableIndex,
+                    1,
+                );
+            }
         }
 
         if (
@@ -1835,33 +1874,55 @@ export class World {
     private applyCameraTransform():
         void {
 
+        const zoom =
+            this.camera
+                .getZoom();
+
         const requestedShakeOffset =
             this.cameraShake
                 .getOffset();
 
+        /*
+         * CameraShake offsets are presentation-space pixels.
+         *
+         * Camera boundary distances are world-space values, so they are
+         * multiplied by zoom before clamping the screen-space shake.
+         */
         const minimumShakeOffsetX =
-            this.camera
-                .getPositionX() -
-            this.camera
-                .getMaximumPositionX();
+            (
+                this.camera
+                    .getPositionX() -
+                this.camera
+                    .getMaximumPositionX()
+            ) *
+            zoom;
 
         const maximumShakeOffsetX =
-            this.camera
-                .getPositionX() -
-            this.camera
-                .getMinimumPositionX();
+            (
+                this.camera
+                    .getPositionX() -
+                this.camera
+                    .getMinimumPositionX()
+            ) *
+            zoom;
 
         const minimumShakeOffsetY =
-            this.camera
-                .getPositionY() -
-            this.camera
-                .getMaximumPositionY();
+            (
+                this.camera
+                    .getPositionY() -
+                this.camera
+                    .getMaximumPositionY()
+            ) *
+            zoom;
 
         const maximumShakeOffsetY =
-            this.camera
-                .getPositionY() -
-            this.camera
-                .getMinimumPositionY();
+            (
+                this.camera
+                    .getPositionY() -
+                this.camera
+                    .getMinimumPositionY()
+            ) *
+            zoom;
 
         const safeShakeOffsetX =
             Math.max(
@@ -1881,15 +1942,27 @@ export class World {
                 ),
             );
 
+        /*
+         * Scale world-space presentation while keeping the screen overlay
+         * unscaled. Authoritative gameplay coordinates remain unchanged.
+         */
+        this.worldContainer
+            .scale
+            .set(
+                zoom,
+            );
+
         this.worldContainer
             .position
             .set(
                 -this.camera
-                    .getPositionX() +
+                    .getPositionX() *
+                zoom +
                 safeShakeOffsetX,
 
                 -this.camera
-                    .getPositionY() +
+                    .getPositionY() *
+                zoom +
                 safeShakeOffsetY,
             );
     }
@@ -2201,9 +2274,14 @@ export class World {
             const fan =
                 new Fan(
                     source,
+                    this.localWindSystem,
                 );
 
             this.fans.push(
+                fan,
+            );
+
+            this.dynamicCollidables.push(
                 fan,
             );
 
