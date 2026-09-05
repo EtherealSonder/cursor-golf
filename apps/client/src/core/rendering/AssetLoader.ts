@@ -4,6 +4,8 @@ import {
 } from "pixi.js";
 
 import golfClubTexture from "../../assets/sprites/golf/golf_club_temp.png";
+import golfBallTexture from "../../assets/sprites/golf/golf_ball.png";
+import golfBallDimplesTexture from "../../assets/textures/golf/golf_ball_dimples.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
 
@@ -41,6 +43,16 @@ export class AssetLoader {
         await this.loadTexture(
             "golfClub",
             golfClubTexture,
+        );
+
+        await this.loadTexture(
+            "golfBall",
+            golfBallTexture,
+        );
+
+        await this.loadTexture(
+            "golfBallDimples",
+            golfBallDimplesTexture,
         );
 
         await this.loadTexture(

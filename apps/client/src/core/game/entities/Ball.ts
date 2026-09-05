@@ -1,6 +1,8 @@
 import {
     Container,
     Graphics,
+    Sprite,
+    TilingSprite,
 } from "pixi.js";
 
 import {
@@ -14,9 +16,6 @@ import {
 import {
     DEFAULT_GAME_VIEWPORT_DEFINITION,
 } from "../config/GameViewportDefinition";
-import {
-    GAME_COLOR_PALETTE,
-} from "../config/GameColorPalette";
 
 import type {
     BallPhysicsDefinition,
@@ -67,6 +66,10 @@ import type {
 import type {
     SurfaceSystem,
 } from "../surface/SurfaceSystem";
+
+import {
+    AssetLoader,
+} from "../../rendering/AssetLoader";
 
 import { Entity } from "./Entity";
 
@@ -125,16 +128,39 @@ export class Ball extends Entity {
     private visualContainer:
         Container | null = null;
 
-    private ballGraphics:
+    private ballShellSprite:
+        Sprite | null = null;
+
+    private ballDimpleSprite:
+        TilingSprite | null = null;
+
+    private ballDimpleMask:
         Graphics | null = null;
 
     private readonly radius = 10;
 
-    private readonly ballColor =
-        GAME_COLOR_PALETTE.golf.ball;
+    /**
+     * The dimple texture is clipped slightly inside the physics radius so
+     * moving dimples never visually overwrite the authored outer outline.
+     */
+    private readonly dimpleMaskRadiusRatio =
+        0.82;
 
-    private readonly ballShadowColor =
-        GAME_COLOR_PALETTE.golf.ballShadow;
+    /**
+     * Scale applied to the 512 x 512 source dimple tile.
+     *
+     * This intentionally shows only a portion of the source tile inside the
+     * 20 px gameplay Ball, keeping individual dimples readable.
+     */
+    private readonly dimpleTileScale =
+        0.055;
+
+    /**
+     * Presentation-only multiplier controlling how quickly the dimple pattern
+     * appears to roll relative to world-space Ball displacement.
+     */
+    private readonly dimpleRollingVisualMultiplier =
+        0.90;
 
     private readonly physicsDefinition:
         BallPhysicsDefinition;
@@ -298,17 +324,12 @@ export class Ball extends Entity {
         this.visualContainer =
             new Container();
 
-        this.ballGraphics =
-            new Graphics();
-
         this.container.position.set(
             this.getInitialPositionX(),
             this.getInitialPositionY(),
         );
 
-        this.visualContainer.addChild(
-            this.ballGraphics,
-        );
+        this.createBallVisuals();
 
         this.container.addChild(
             this.visualContainer,
@@ -334,7 +355,7 @@ export class Ball extends Entity {
 
         this.applyVisualScale();
         this.resetVisualOffset();
-        this.drawBall();
+        this.resetRollingVisual();
     }
 
     protected onUpdate(
@@ -383,10 +404,22 @@ export class Ball extends Entity {
             false,
         );
 
-        this.ballGraphics
+        this.ballShellSprite
             ?.destroy();
 
-        this.ballGraphics =
+        this.ballShellSprite =
+            null;
+
+        this.ballDimpleSprite
+            ?.destroy();
+
+        this.ballDimpleSprite =
+            null;
+
+        this.ballDimpleMask
+            ?.destroy();
+
+        this.ballDimpleMask =
             null;
 
         this.visualContainer =
@@ -452,6 +485,8 @@ export class Ball extends Entity {
         this.tensionPower = 0;
 
         this.applyVisualScale();
+
+        this.resetRollingVisual();
 
         this.resetVibration();
 
@@ -1411,6 +1446,11 @@ export class Ball extends Entity {
             );
 
         this.translate(
+            movementX,
+            movementY,
+        );
+
+        this.updateRollingVisual(
             movementX,
             movementY,
         );
@@ -3165,43 +3205,181 @@ export class Ball extends Entity {
     // Rendering
     // -------------------------------------------------------
 
-    private drawBall():
+    private createBallVisuals():
         void {
 
         if (
-            !this.ballGraphics
+            !this.visualContainer
+        ) {
+            throw new Error(
+                "Ball visual container must exist before creating Ball visuals.",
+            );
+        }
+
+        if (
+            this.ballShellSprite ||
+            this.ballDimpleSprite ||
+            this.ballDimpleMask
+        ) {
+            throw new Error(
+                "Ball visuals have already been created.",
+            );
+        }
+
+        const diameter =
+            this.radius *
+            2;
+
+        // ---------------------------------------------------
+        // Static authored shell
+        // ---------------------------------------------------
+
+        this.ballShellSprite =
+            new Sprite(
+                AssetLoader.getTexture(
+                    "golfBall",
+                ),
+            );
+
+        this.ballShellSprite
+            .anchor
+            .set(
+                0.5,
+            );
+
+        this.ballShellSprite.width =
+            diameter;
+
+        this.ballShellSprite.height =
+            diameter;
+
+        this.visualContainer.addChild(
+            this.ballShellSprite,
+        );
+
+        // ---------------------------------------------------
+        // Animated dimple material
+        // ---------------------------------------------------
+
+        const dimpleMaskRadius =
+            this.radius *
+            this.dimpleMaskRadiusRatio;
+
+        const dimpleDiameter =
+            dimpleMaskRadius *
+            2;
+
+        this.ballDimpleSprite =
+            new TilingSprite({
+                texture:
+                    AssetLoader.getTexture(
+                        "golfBallDimples",
+                    ),
+                width:
+                    dimpleDiameter,
+                height:
+                    dimpleDiameter,
+            });
+
+        this.ballDimpleSprite.position.set(
+            -dimpleMaskRadius,
+            -dimpleMaskRadius,
+        );
+
+        this.ballDimpleSprite.tileScale.set(
+            this.dimpleTileScale,
+        );
+
+        this.ballDimpleMask =
+            new Graphics();
+
+        this.ballDimpleMask
+            .circle(
+                0,
+                0,
+                dimpleMaskRadius,
+            )
+            .fill({
+                color:
+                    0xffffff,
+                alpha:
+                    1,
+            });
+
+        this.ballDimpleSprite.mask =
+            this.ballDimpleMask;
+
+        this.visualContainer.addChild(
+            this.ballDimpleSprite,
+        );
+
+        this.visualContainer.addChild(
+            this.ballDimpleMask,
+        );
+    }
+
+    private updateRollingVisual(
+        movementX:
+            number,
+
+        movementY:
+            number,
+    ): void {
+
+        if (
+            !this.ballDimpleSprite ||
+            !Number.isFinite(
+                movementX,
+            ) ||
+            !Number.isFinite(
+                movementY,
+            )
         ) {
             return;
         }
 
-        this.ballGraphics
-            .clear();
+        /*
+         * tilePosition is expressed in texture-local units before tileScale.
+         * Divide by tileScale so the apparent on-screen material movement
+         * remains proportional to the Ball's actual world displacement.
+         *
+         * The negative sign makes surface features visually travel opposite
+         * the Ball's translation, which gives the clearest rolling cue for a
+         * top-down sphere.
+         *
+         * This is presentation only. It never feeds back into Ball physics.
+         */
+        const textureDisplacementScale =
+            this.dimpleTileScale >
+                0
+                ? (
+                    this.dimpleRollingVisualMultiplier /
+                    this.dimpleTileScale
+                )
+                : 0;
 
-        this.ballGraphics
-            .circle(
+        this.ballDimpleSprite
+            .tilePosition
+            .x -=
+            movementX *
+            textureDisplacementScale;
+
+        this.ballDimpleSprite
+            .tilePosition
+            .y -=
+            movementY *
+            textureDisplacementScale;
+    }
+
+    private resetRollingVisual():
+        void {
+
+        this.ballDimpleSprite
+            ?.tilePosition
+            .set(
                 0,
                 0,
-                this.radius,
             );
-
-        this.ballGraphics
-            .fill(
-                this.ballColor,
-            );
-
-        this.ballGraphics
-            .ellipse(
-                2.5,
-                3.5,
-                this.radius * 0.45,
-                this.radius * 0.24,
-            );
-
-        this.ballGraphics
-            .fill({
-                color: this.ballShadowColor,
-                alpha: 0.72,
-            });
     }
 
     // -------------------------------------------------------
