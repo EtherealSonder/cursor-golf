@@ -2,6 +2,14 @@ import type {
     LocalWindSourceDefinition,
 } from "./LocalWindDefinition";
 
+import {
+    DEFAULT_PERFORMANCE_PROFILING_DEFINITION,
+} from "./PerformanceProfilingDefinition";
+
+import type {
+    PerformanceProfilingDefinition,
+} from "./PerformanceProfilingDefinition";
+
 export type PerformanceBenchmarkId =
     | "baseline"
     | "fan-1"
@@ -74,6 +82,10 @@ export interface PerformanceBenchmarkDefinition {
 
     readonly globalWindStrength:
     number;
+
+    /** Formal warm-up/measurement window used by Phase G profiling. */
+    readonly profiling:
+    PerformanceProfilingDefinition;
 }
 
 const FAN_RANGE =
@@ -254,6 +266,9 @@ const THREE_FIRE_TUBES =
     ] as const;
 
 const COMMON_BENCHMARK_STATE = {
+    profiling:
+        DEFAULT_PERFORMANCE_PROFILING_DEFINITION,
+
     fireRandomSeed:
         FIRE_RANDOM_SEED,
 

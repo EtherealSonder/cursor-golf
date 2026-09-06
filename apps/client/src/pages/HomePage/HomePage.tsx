@@ -369,7 +369,7 @@ function HomePage() {
 
                             <div className="hud-test-divider" />
 
-                            <div className="hud-test-label">
+                            <div className="hud-test-label performance-benchmark-heading">
                                 Performance Benchmark
                             </div>
 
@@ -429,7 +429,7 @@ function HomePage() {
                             </button>
 
                             <span className="hud-test-hint">
-                                Selecting a benchmark resets Fire/environment state and restarts timing from zero.
+                                Each benchmark runs a 5 s warm-up, then records 30 s. The final result freezes until another benchmark is selected.
                             </span>
 
                         </div>

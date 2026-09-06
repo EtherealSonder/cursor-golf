@@ -1272,7 +1272,9 @@ export class World {
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
         this.performanceMetrics
-            .reset();
+            .beginProfiling(
+                benchmark.profiling,
+            );
 
         this.performanceDebugOverlay
             ?.resetDisplay();
@@ -1300,6 +1302,12 @@ export class World {
                 fireVfxEnabled:
                     benchmark
                         .fireVfxEnabled,
+
+                warmupSeconds:
+                    benchmark.profiling.warmupSeconds,
+
+                measurementSeconds:
+                    benchmark.profiling.measurementSeconds,
             },
         );
     }
@@ -1366,6 +1374,11 @@ export class World {
         return this.activePerformanceBenchmark
             ?.id ??
             null;
+    }
+
+    public getPerformanceSnapshot() {
+        return this.performanceMetrics
+            .getSnapshot();
     }
 
     private setFireVfxEnabled(

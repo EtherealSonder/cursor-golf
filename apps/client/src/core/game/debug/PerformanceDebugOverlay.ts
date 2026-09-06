@@ -293,6 +293,15 @@ export class PerformanceDebugOverlay {
             PerformanceDebugRuntimeState,
     ): string {
 
+        const phaseLabel =
+            snapshot.phase === "warmup"
+                ? `WARM-UP ${snapshot.phaseRemainingSeconds.toFixed(1)} s`
+                : snapshot.phase === "measuring"
+                    ? `MEASURE ${snapshot.phaseRemainingSeconds.toFixed(1)} s`
+                    : snapshot.phase === "complete"
+                        ? "COMPLETE / FROZEN"
+                        : "LIVE RUNTIME";
+
         const windVfxState =
             runtimeState
                 .windVfxEnabled
@@ -308,6 +317,7 @@ export class PerformanceDebugOverlay {
         return (
             `PERFORMANCE\n` +
             `BENCH  ${runtimeState.benchmarkLabel}\n` +
+            `PHASE  ${phaseLabel}\n` +
             `TIME   ${snapshot.elapsedSeconds.toFixed(1)} s  ` +
             `FRAMES ${snapshot.totalFrames}\n` +
             `FPS    ${snapshot.currentFps.toFixed(0)}  ` +

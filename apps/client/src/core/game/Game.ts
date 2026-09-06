@@ -34,6 +34,10 @@ import type {
     PerformanceBenchmarkId,
 } from "./config/PerformanceBenchmarkDefinition";
 
+import type {
+    PerformanceSnapshot,
+} from "./debug/PerformanceMetrics";
+
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
 
@@ -343,6 +347,14 @@ export class Game {
 
         return this.world
             ?.getActivePerformanceBenchmarkId() ??
+            null;
+    }
+
+    public getPerformanceSnapshot():
+        PerformanceSnapshot | null {
+
+        return this.world
+            ?.getPerformanceSnapshot() ??
             null;
     }
 
