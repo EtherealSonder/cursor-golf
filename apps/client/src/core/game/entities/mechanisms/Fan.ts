@@ -221,6 +221,23 @@ export class Fan extends Entity {
             );
     }
 
+    /**
+     * World calls this after the mechanism-to-mechanism collision pass.
+     * Positional correction can move the body after its normal Entity update,
+     * so the presentation transform and authoritative Local Wind source must
+     * be synchronized again in the same frame.
+     */
+    public synchronizeAfterCollisionResolution():
+        void {
+
+        this.resolveCourseBoundaryCollision();
+
+        this.container.rotation =
+            this.rotationRadians;
+
+        this.synchronizeWindSourceTransform();
+    }
+
     protected onInitialize():
         void {
 

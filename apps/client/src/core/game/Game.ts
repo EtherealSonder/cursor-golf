@@ -30,6 +30,10 @@ import type {
     FireWindTestConfigurationId,
 } from "./config/FireWindTestDefinition";
 
+import type {
+    PerformanceBenchmarkId,
+} from "./config/PerformanceBenchmarkDefinition";
+
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
 
@@ -310,6 +314,36 @@ export class Game {
         this.world
             .getWindTuningController()
             .applyRandomWind();
+    }
+
+    // -------------------------------------------------------------------------
+    // G4/G5 Performance Benchmark Bridge
+    // -------------------------------------------------------------------------
+
+    public applyPerformanceBenchmark(
+        benchmarkId:
+            PerformanceBenchmarkId,
+    ): void {
+
+        this.world
+            ?.applyPerformanceBenchmark(
+                benchmarkId,
+            );
+    }
+
+    public clearPerformanceBenchmark():
+        void {
+
+        this.world
+            ?.clearPerformanceBenchmark();
+    }
+
+    public getActivePerformanceBenchmarkId():
+        PerformanceBenchmarkId | null {
+
+        return this.world
+            ?.getActivePerformanceBenchmarkId() ??
+            null;
     }
 
     // -------------------------------------------------------------------------

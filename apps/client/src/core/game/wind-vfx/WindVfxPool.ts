@@ -42,6 +42,17 @@ export class WindVfxPool {
         this.freeParticles.push(particle);
     }
 
+    public getActiveCount(): number {
+        return (
+            this.particles.length -
+            this.freeParticles.length
+        );
+    }
+
+    public getCapacity(): number {
+        return this.particles.length;
+    }
+
     public reset(): void {
         this.freeParticles.length = 0;
         for (const particle of this.particles) {

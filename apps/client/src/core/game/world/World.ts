@@ -26,6 +26,16 @@ import {
 } from "../config/CourseVisualDefinition";
 
 import {
+    getPerformanceBenchmarkDefinition,
+} from "../config/PerformanceBenchmarkDefinition";
+
+import type {
+    PerformanceBenchmarkDefinition,
+    PerformanceBenchmarkFireTubeDefinition,
+    PerformanceBenchmarkId,
+} from "../config/PerformanceBenchmarkDefinition";
+
+import {
     DEFAULT_FIRE_TEST_DEFINITION,
 } from "../config/FireTestDefinition";
 
@@ -84,6 +94,10 @@ import {
 } from "../debug/PerformanceDebugOverlay";
 
 import {
+    PerformanceMetrics,
+} from "../debug/PerformanceMetrics";
+
+import {
     LocalWindDebugVisualizer,
 } from "../debug/LocalWindDebugVisualizer";
 
@@ -130,6 +144,10 @@ import {
 import type {
     DynamicCollidable,
 } from "../physics/DynamicCollidable";
+
+import {
+    DynamicCollisionSystem,
+} from "../physics/DynamicCollisionSystem";
 
 import {
     StaticObstacle,
@@ -200,6 +218,17 @@ export class World {
     private performanceDebugOverlay:
         PerformanceDebugOverlay | null =
         null;
+
+    private readonly performanceMetrics:
+        PerformanceMetrics =
+        new PerformanceMetrics();
+
+    private activePerformanceBenchmark:
+        PerformanceBenchmarkDefinition | null =
+        null;
+
+    private fireVfxEnabled =
+        true;
 
     private courseBackground:
         TilingSprite | null = null;
@@ -308,6 +337,22 @@ export class World {
     private readonly dynamicCollidables:
         DynamicCollidable[] = [];
 
+    /**
+     * Phase G mechanism-only collision collection.
+     *
+     * Ball continues to consume dynamicCollidables. This collection is kept
+     * deliberately narrower so this phase adds only:
+     *
+     * Fan <-> Fan
+     * Fan <-> FireTube
+     * FireTube <-> FireTube
+     */
+    private readonly mechanismCollidables:
+        DynamicCollidable[] = [];
+
+    private readonly dynamicCollisionSystem:
+        DynamicCollisionSystem;
+
     private staticObstacleDefinitions:
         readonly StaticObstacleDefinition[] = [];
 
@@ -409,6 +454,9 @@ export class World {
             new WindTuningController(
                 this.windManager,
             );
+
+        this.dynamicCollisionSystem =
+            new DynamicCollisionSystem();
     }
 
     // -------------------------------------------------------
@@ -417,6 +465,15 @@ export class World {
 
     public initialize():
         void {
+
+        /*
+         * G1 render-order invariant.
+         *
+         * Explicit zIndex values are used for interaction-critical entities so
+         * later-created Fans or Fire Tubes can never cover the Golf Club.
+         */
+        this.worldContainer.sortableChildren =
+            true;
 
         this.app.stage.addChild(
             this.worldContainer,
@@ -650,6 +707,15 @@ export class World {
             this.club,
         );
 
+        /*
+         * The Club is the player's world-space interaction tool and must
+         * remain readable above mechanisms regardless of creation order.
+         */
+        this.club
+            .getContainer()
+            .zIndex =
+            1000;
+
         // ---------------------------------------------------
         // Create Aim Indicator
         // ---------------------------------------------------
@@ -759,10 +825,14 @@ export class World {
         this.fireSourceVisualizer
             ?.update();
 
-        this.fireVfxSystem
-            ?.update(
-                deltaTime,
-            );
+        if (
+            this.fireVfxEnabled
+        ) {
+            this.fireVfxSystem
+                ?.update(
+                    deltaTime,
+                );
+        }
 
         for (
             const entity
@@ -772,6 +842,38 @@ export class World {
                 deltaTime,
             );
         }
+
+        /*
+         * G2/G3. Resolve physical mechanism pairs only after their rigid-body
+         * integration for this frame. The shared response solver applies
+         * penetration correction, normal impulse, friction and angular
+         * impulse.
+         */
+        this.dynamicCollisionSystem
+            .resolve(
+                this.mechanismCollidables,
+            );
+
+        /*
+         * Collision correction can change mechanism positions after their
+         * normal update. Synchronize their visual/environmental transforms
+         * immediately so Wind and Fire never lag one frame behind physics.
+         */
+        for (
+            const fan
+            of this.fans
+        ) {
+            fan.synchronizeAfterCollisionResolution();
+        }
+
+        for (
+            const fireTube
+            of this.fireTubes
+        ) {
+            fireTube.synchronizeAfterCollisionResolution();
+        }
+
+        this.forceBenchmarkFireTubeSourcesIfRequired();
 
         this.localWindDebugVisualizer
             ?.update();
@@ -796,9 +898,60 @@ export class World {
         this.windValidationMetrics
             ?.update();
 
+        this.performanceMetrics
+            .update(
+                deltaTime,
+            );
+
         this.performanceDebugOverlay
             ?.update(
                 deltaTime,
+                this.performanceMetrics
+                    .getSnapshot(),
+                {
+                    benchmarkLabel:
+                        this.activePerformanceBenchmark
+                            ?.label ??
+                        "Normal Runtime",
+
+                    windVfxEnabled:
+                        this.windVfxSystem
+                            ?.isEnabled() ??
+                        false,
+
+                    fireVfxEnabled:
+                        this.fireVfxEnabled,
+
+                    fanCount:
+                        this.fans.length,
+
+                    fireTubeCount:
+                        this.fireTubes.length,
+
+                    windParticleCount:
+                        this.windVfxSystem
+                            ?.getActiveParticleCount() ??
+                        0,
+
+                    windParticleCapacity:
+                        this.windVfxSystem
+                            ?.getParticleCapacity() ??
+                        0,
+
+                    fireParticleCount:
+                        this.fireVfxSystem
+                            ?.getActiveParticleCount() ??
+                        0,
+
+                    fireParticleCapacity:
+                        this.fireVfxSystem
+                            ?.getParticleCapacity() ??
+                        0,
+
+                    fireCellCount:
+                        this.fireManager
+                            .getActiveCellCount(),
+                },
             );
     }
 
@@ -819,6 +972,9 @@ export class World {
             0;
 
         this.dynamicCollidables.length =
+            0;
+
+        this.mechanismCollidables.length =
             0;
 
         this.fireTubes.length =
@@ -929,6 +1085,12 @@ export class World {
             ?.destroy();
 
         this.performanceDebugOverlay =
+            null;
+
+        this.performanceMetrics
+            .reset();
+
+        this.activePerformanceBenchmark =
             null;
 
         this.surfaceGraphics
@@ -1044,6 +1206,217 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // G4/G5 Performance Benchmark Harness
+    // -------------------------------------------------------
+
+    public applyPerformanceBenchmark(
+        benchmarkId:
+            PerformanceBenchmarkId,
+    ): void {
+
+        const benchmark =
+            getPerformanceBenchmarkDefinition(
+                benchmarkId,
+            );
+
+        /*
+         * Clear authoritative Fire/environment state before replacing
+         * mechanisms. This prevents the previous benchmark's heat, burn,
+         * particles or FireCells from contaminating the next measurement.
+         */
+        this.resetFireTestState();
+
+        this.destroyFanEntities();
+        this.destroyFireTubeEntities();
+
+        this.localWindSystem
+            .replaceSources(
+                benchmark.fanSources,
+            );
+
+        this.windManager
+            .setWind(
+                benchmark
+                    .globalWindDirectionDegrees,
+
+                benchmark
+                    .globalWindStrength,
+            );
+
+        this.createFanEntities();
+
+        this.createBenchmarkFireTubeEntities(
+            benchmark.fireTubes,
+        );
+
+        this.fireManager
+            .setValidationRandomSeed(
+                benchmark
+                    .fireRandomSeed,
+            );
+
+        this.windVfxSystem
+            ?.setEnabled(
+                benchmark
+                    .windVfxEnabled,
+            );
+
+        this.setFireVfxEnabled(
+            benchmark
+                .fireVfxEnabled,
+        );
+
+        this.activePerformanceBenchmark =
+            benchmark;
+
+        this.forceBenchmarkFireTubeSourcesIfRequired();
+
+        this.performanceMetrics
+            .reset();
+
+        this.performanceDebugOverlay
+            ?.resetDisplay();
+
+        console.log(
+            "Performance benchmark applied.",
+            {
+                id:
+                    benchmark.id,
+
+                fans:
+                    benchmark
+                        .fanSources
+                        .length,
+
+                fireTubes:
+                    benchmark
+                        .fireTubes
+                        .length,
+
+                windVfxEnabled:
+                    benchmark
+                        .windVfxEnabled,
+
+                fireVfxEnabled:
+                    benchmark
+                        .fireVfxEnabled,
+            },
+        );
+    }
+
+    public clearPerformanceBenchmark():
+        void {
+
+        if (
+            !this.activePerformanceBenchmark
+        ) {
+            return;
+        }
+
+        this.resetFireTestState();
+
+        this.destroyFanEntities();
+        this.destroyFireTubeEntities();
+
+        const normalConfiguration =
+            getFireWindTestConfiguration(
+                DEFAULT_FIRE_WIND_TEST_DEFINITION
+                    .defaultConfigurationId,
+            );
+
+        this.localWindSystem
+            .replaceSources(
+                normalConfiguration
+                    .sources,
+            );
+
+        this.windManager
+            .reset();
+
+        this.createFanEntities();
+        this.createFireTubeEntities();
+
+        this.windVfxSystem
+            ?.setEnabled(
+                true,
+            );
+
+        this.setFireVfxEnabled(
+            true,
+        );
+
+        this.fireManager
+            .setValidationRandomSeed(
+                null,
+            );
+
+        this.activePerformanceBenchmark =
+            null;
+
+        this.performanceMetrics
+            .reset();
+
+        this.performanceDebugOverlay
+            ?.resetDisplay();
+    }
+
+    public getActivePerformanceBenchmarkId():
+        PerformanceBenchmarkId | null {
+
+        return this.activePerformanceBenchmark
+            ?.id ??
+            null;
+    }
+
+    private setFireVfxEnabled(
+        enabled:
+            boolean,
+    ): void {
+
+        this.fireVfxEnabled =
+            enabled;
+
+        if (
+            !this.fireVfxSystem
+        ) {
+            return;
+        }
+
+        if (!enabled) {
+            this.fireVfxSystem
+                .reset();
+        }
+
+        this.fireVfxSystem
+            .getContainer()
+            .visible =
+            enabled;
+    }
+
+    private forceBenchmarkFireTubeSourcesIfRequired():
+        void {
+
+        if (
+            !this.activePerformanceBenchmark
+                ?.forceFireTubesFiring
+        ) {
+            return;
+        }
+
+        for (
+            const definition
+            of this.activePerformanceBenchmark
+                .fireTubes
+        ) {
+            this.fireSourceSystem
+                .setSourceEnabled(
+                    definition.sourceId,
+                    true,
+                );
+        }
+    }
+
+    // -------------------------------------------------------
     // Fire / Wind Test Harness
     // -------------------------------------------------------
 
@@ -1051,6 +1424,12 @@ export class World {
         configurationId:
             FireWindTestConfigurationId,
     ): void {
+
+        if (
+            this.activePerformanceBenchmark
+        ) {
+            this.clearPerformanceBenchmark();
+        }
 
         const configuration =
             getFireWindTestConfiguration(
@@ -1379,6 +1758,46 @@ export class World {
             ) {
                 this.dynamicCollidables.splice(
                     dynamicCollidableIndex,
+                    1,
+                );
+            }
+        }
+
+        if (
+            entity instanceof Fan ||
+            entity instanceof FireTube
+        ) {
+            const mechanismCollidableIndex =
+                this.mechanismCollidables
+                    .indexOf(
+                        entity,
+                    );
+
+            if (
+                mechanismCollidableIndex !==
+                -1
+            ) {
+                this.mechanismCollidables.splice(
+                    mechanismCollidableIndex,
+                    1,
+                );
+            }
+        }
+
+        if (
+            entity instanceof Fan
+        ) {
+            const fanIndex =
+                this.fans.indexOf(
+                    entity,
+                );
+
+            if (
+                fanIndex !==
+                -1
+            ) {
+                this.fans.splice(
+                    fanIndex,
                     1,
                 );
             }
@@ -1788,21 +2207,29 @@ export class World {
     // Local Wind / Fan Test Mechanisms
     // -------------------------------------------------------
 
-    private destroyFanEntities(): void {
+    private destroyFanEntities():
+        void {
 
-        for (
-            let index = this.fans.length - 1;
-            index >= 0;
-            index -= 1
+        while (
+            this.fans.length >
+            0
         ) {
-            const fan = this.fans[index];
+            const fan =
+                this.fans[
+                this.fans.length -
+                1
+                ];
 
-            if (fan) {
-                this.removeEntity(fan);
+            if (!fan) {
+                this.fans.pop();
+
+                continue;
             }
-        }
 
-        this.fans.length = 0;
+            this.removeEntity(
+                fan,
+            );
+        }
     }
 
     private createFanEntities():
@@ -1845,6 +2272,10 @@ export class World {
                 fan,
             );
 
+            this.mechanismCollidables.push(
+                fan,
+            );
+
             this.addEntity(
                 fan,
             );
@@ -1854,6 +2285,83 @@ export class World {
     // -------------------------------------------------------
     // Fire Tube Mechanisms
     // -------------------------------------------------------
+
+    private destroyFireTubeEntities():
+        void {
+
+        for (
+            let index =
+                this.fireTubes.length -
+                1;
+
+            index >=
+            0;
+
+            index -=
+            1
+        ) {
+            const fireTube =
+                this.fireTubes[
+                index
+                ];
+
+            if (
+                fireTube
+            ) {
+                this.removeEntity(
+                    fireTube,
+                );
+            }
+        }
+
+        this.fireTubes.length =
+            0;
+    }
+
+    private createBenchmarkFireTubeEntities(
+        definitions:
+            readonly PerformanceBenchmarkFireTubeDefinition[],
+    ): void {
+
+        if (
+            this.fireTubes.length >
+            0
+        ) {
+            throw new Error(
+                "World Fire Tube entities have already been created.",
+            );
+        }
+
+        for (
+            const definition
+            of definitions
+        ) {
+            const fireTube =
+                new FireTube(
+                    definition.sourceId,
+                    definition.positionX,
+                    definition.positionY,
+                    definition.rotationRadians,
+                    this.fireSourceSystem,
+                );
+
+            this.fireTubes.push(
+                fireTube,
+            );
+
+            this.dynamicCollidables.push(
+                fireTube,
+            );
+
+            this.mechanismCollidables.push(
+                fireTube,
+            );
+
+            this.addEntity(
+                fireTube,
+            );
+        }
+    }
 
     private createFireTubeEntities(): void {
         if (this.fireTubes.length > 0) {
@@ -1899,6 +2407,10 @@ export class World {
             );
 
             this.dynamicCollidables.push(
+                fireTube,
+            );
+
+            this.mechanismCollidables.push(
                 fireTube,
             );
 
@@ -2329,9 +2841,18 @@ export class World {
             minY,
         );
 
+        /*
+         * Render the striped Grass texture at a larger scale so each mowing
+         * band reads as a broad golf-fairway stripe instead of a dense
+         * pinstripe pattern.
+         *
+         * This is presentation-only. Surface physics and camera zoom remain
+         * unchanged.
+         */
         this.courseBackground.tileScale.set(
             this.courseVisualDefinition
-                .grassTileScale,
+                .grassTileScale *
+            3,
         );
 
         this.courseBackground.alpha =

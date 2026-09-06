@@ -5,10 +5,14 @@ import {
     TextStyle,
 } from "pixi.js";
 
+import type {
+    PerformanceSnapshot,
+} from "./PerformanceMetrics";
+
 const PERFORMANCE_DEBUG_ENABLED =
     true;
 
-const PERFORMANCE_SAMPLE_INTERVAL_SECONDS =
+const PERFORMANCE_DISPLAY_REFRESH_SECONDS =
     0.25;
 
 const OVERLAY_MARGIN =
@@ -18,13 +22,13 @@ const OVERLAY_PADDING_X =
     10;
 
 const OVERLAY_PADDING_Y =
-    7;
+    8;
 
 const OVERLAY_BACKGROUND_COLOR =
     0x111418;
 
 const OVERLAY_BACKGROUND_ALPHA =
-    0.78;
+    0.82;
 
 const OVERLAY_BORDER_COLOR =
     0xffffff;
@@ -39,19 +43,48 @@ const OVERLAY_TEXT_COLOR =
     0xffffff;
 
 const OVERLAY_TEXT_FONT_SIZE =
-    12;
+    11;
 
 const OVERLAY_TEXT_LINE_HEIGHT =
-    17;
+    15;
+
+export interface PerformanceDebugRuntimeState {
+    readonly benchmarkLabel:
+    string;
+
+    readonly windVfxEnabled:
+    boolean;
+
+    readonly fireVfxEnabled:
+    boolean;
+
+    readonly fanCount:
+    number;
+
+    readonly fireTubeCount:
+    number;
+
+    readonly windParticleCount:
+    number;
+
+    readonly windParticleCapacity:
+    number;
+
+    readonly fireParticleCount:
+    number;
+
+    readonly fireParticleCapacity:
+    number;
+
+    readonly fireCellCount:
+    number;
+}
 
 /**
- * Development-only FPS and average frame-time
- * monitor.
+ * Development-only performance presentation.
  *
- * The overlay samples every game update but refreshes
- * its rendered text only four times per second. This
- * prevents rapidly flickering numbers and avoids
- * rebuilding Text every frame.
+ * PerformanceMetrics owns timing accumulation. This class only rate-limits
+ * text refresh and renders the latest supplied snapshot/runtime counters.
  */
 export class PerformanceDebugOverlay {
 
@@ -64,17 +97,14 @@ export class PerformanceDebugOverlay {
     private readonly text:
         Text;
 
-    private viewportWidth = 0;
+    private viewportWidth =
+        0;
 
-    private accumulatedTime = 0;
+    private displayRefreshAccumulator =
+        PERFORMANCE_DISPLAY_REFRESH_SECONDS;
 
-    private accumulatedFrames = 0;
-
-    private displayedFps = 0;
-
-    private displayedFrameTimeMilliseconds = 0;
-
-    private destroyed = false;
+    private destroyed =
+        false;
 
     constructor() {
 
@@ -87,10 +117,7 @@ export class PerformanceDebugOverlay {
         this.text =
             new Text({
                 text:
-                    this.createDisplayText(
-                        0,
-                        0,
-                    ),
+                    "PERFORMANCE\nWaiting for samples...",
 
                 style:
                     new TextStyle({
@@ -136,6 +163,12 @@ export class PerformanceDebugOverlay {
     public update(
         deltaTime:
             number,
+
+        snapshot:
+            PerformanceSnapshot,
+
+        runtimeState:
+            PerformanceDebugRuntimeState,
     ): void {
 
         if (
@@ -146,51 +179,48 @@ export class PerformanceDebugOverlay {
         }
 
         if (
-            !Number.isFinite(
+            Number.isFinite(
                 deltaTime,
-            ) ||
-            deltaTime <= 0
+            ) &&
+            deltaTime >
+            0
         ) {
-            return;
+            this.displayRefreshAccumulator +=
+                deltaTime;
         }
-
-        this.accumulatedTime +=
-            deltaTime;
-
-        this.accumulatedFrames +=
-            1;
 
         if (
-            this.accumulatedTime <
-            PERFORMANCE_SAMPLE_INTERVAL_SECONDS
+            this.displayRefreshAccumulator <
+            PERFORMANCE_DISPLAY_REFRESH_SECONDS
         ) {
             return;
         }
 
-        this.displayedFps =
-            this.accumulatedFrames /
-            this.accumulatedTime;
-
-        this.displayedFrameTimeMilliseconds =
-            (
-                this.accumulatedTime /
-                this.accumulatedFrames
-            ) *
-            1000;
+        this.displayRefreshAccumulator =
+            0;
 
         this.text.text =
             this.createDisplayText(
-                this.displayedFps,
-                this.displayedFrameTimeMilliseconds,
+                snapshot,
+                runtimeState,
             );
 
         this.redrawBackground();
 
         this.reposition();
+    }
 
-        this.accumulatedTime = 0;
+    public resetDisplay():
+        void {
 
-        this.accumulatedFrames = 0;
+        if (
+            this.destroyed
+        ) {
+            return;
+        }
+
+        this.displayRefreshAccumulator =
+            PERFORMANCE_DISPLAY_REFRESH_SECONDS;
     }
 
     public destroy():
@@ -233,7 +263,8 @@ export class PerformanceDebugOverlay {
             !Number.isFinite(
                 viewportWidth,
             ) ||
-            viewportWidth < 0
+            viewportWidth <
+            0
         ) {
             return;
         }
@@ -255,16 +286,46 @@ export class PerformanceDebugOverlay {
     // -------------------------------------------------------------------------
 
     private createDisplayText(
-        fps:
-            number,
+        snapshot:
+            PerformanceSnapshot,
 
-        frameTimeMilliseconds:
-            number,
+        runtimeState:
+            PerformanceDebugRuntimeState,
     ): string {
 
+        const windVfxState =
+            runtimeState
+                .windVfxEnabled
+                ? "ON"
+                : "OFF";
+
+        const fireVfxState =
+            runtimeState
+                .fireVfxEnabled
+                ? "ON"
+                : "OFF";
+
         return (
-            `FPS   ${fps.toFixed(0)}\n` +
-            `FRAME ${frameTimeMilliseconds.toFixed(1)} ms`
+            `PERFORMANCE\n` +
+            `BENCH  ${runtimeState.benchmarkLabel}\n` +
+            `TIME   ${snapshot.elapsedSeconds.toFixed(1)} s  ` +
+            `FRAMES ${snapshot.totalFrames}\n` +
+            `FPS    ${snapshot.currentFps.toFixed(0)}  ` +
+            `AVG ${snapshot.averageFps.toFixed(0)}  ` +
+            `MIN ${snapshot.minimumFps.toFixed(0)}  ` +
+            `MAX ${snapshot.maximumFps.toFixed(0)}\n` +
+            `FRAME  ${snapshot.currentFrameTimeMilliseconds.toFixed(1)} ms  ` +
+            `AVG ${snapshot.averageFrameTimeMilliseconds.toFixed(1)}\n` +
+            `MINMS  ${snapshot.minimumFrameTimeMilliseconds.toFixed(1)}  ` +
+            `MAXMS ${snapshot.maximumFrameTimeMilliseconds.toFixed(1)}\n` +
+            `SPIKES ${snapshot.frameSpikeCount}  (>16.67 ms)\n` +
+            `FANS   ${runtimeState.fanCount}  ` +
+            `TUBES ${runtimeState.fireTubeCount}\n` +
+            `WIND   ${windVfxState}  ` +
+            `${runtimeState.windParticleCount}/${runtimeState.windParticleCapacity}\n` +
+            `FIRE   ${fireVfxState}  ` +
+            `${runtimeState.fireParticleCount}/${runtimeState.fireParticleCapacity}\n` +
+            `CELLS  ${runtimeState.fireCellCount}`
         );
     }
 

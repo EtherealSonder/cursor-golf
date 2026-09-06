@@ -54,6 +54,30 @@ export interface AimGuideDefinition {
 }
 
 /**
+ * Sprite-space configuration for the current club artwork.
+ *
+ * contactAnchorX/contactAnchorY identify the point on the source texture
+ * that should coincide with the gameplay cursor and Ball interaction point.
+ *
+ * Keeping these values in configuration prevents asset-specific geometry
+ * from being buried inside Club.ts.
+ */
+export interface ClubVisualDefinition {
+
+    readonly renderScale: number;
+
+    readonly contactAnchorX: number;
+
+    readonly contactAnchorY: number;
+
+    /**
+     * Visual spacing between the Ball edge and the club contact point
+     * while the shot is being prepared.
+     */
+    readonly headOffset: number;
+}
+
+/**
  * Defines all club-specific gameplay and aiming characteristics.
  */
 export interface ClubDefinition {
@@ -64,6 +88,13 @@ export interface ClubDefinition {
 
     readonly id: string;
     readonly name: string;
+
+    // -------------------------------------------------------------------------
+    // Visuals
+    // -------------------------------------------------------------------------
+
+    readonly visual:
+    ClubVisualDefinition;
 
     // -------------------------------------------------------------------------
     // Shot Power
@@ -130,6 +161,29 @@ export const BASIC_CLUB_DEFINITION:
 
     name:
         "Basic Club",
+
+    /*
+     * The current golf_club.png is an 800 x 800 upright source sprite.
+     *
+     * The contact anchor is positioned on the broad striking-face region
+     * of the club head rather than at the centre of the complete texture.
+     * This makes the visible head follow the gameplay cursor instead of
+     * inheriting the old diagonal-club anchor.
+     */
+    visual: {
+
+        renderScale:
+            0.10,
+
+        contactAnchorX:
+            0.33,
+
+        contactAnchorY:
+            0.86,
+
+        headOffset:
+            10,
+    },
 
     maximumDragDistance:
         150,

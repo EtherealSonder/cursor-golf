@@ -33,16 +33,13 @@ export class Club extends Entity {
 
     private readonly ballRadius = 10;
 
-    private readonly headOffset = 10;
-
-    private readonly minDistance =
-        this.ballRadius +
-        this.headOffset;
+    private readonly minDistance:
+        number;
 
     private currentAngle = 0;
 
-    private currentDistance =
-        this.minDistance;
+    private currentDistance:
+        number;
 
     // -------------------------------------------------------
     // Current Shot Visual Data
@@ -63,6 +60,15 @@ export class Club extends Entity {
         this.definition =
             definition;
 
+        this.minDistance =
+            this.ballRadius +
+            this.definition
+                .visual
+                .headOffset;
+
+        this.currentDistance =
+            this.minDistance;
+
         this.validateDefinition();
     }
 
@@ -79,13 +85,28 @@ export class Club extends Entity {
                 ),
             );
 
+        /*
+         * The Sprite anchor is the gameplay contact point.
+         *
+         * Club.setCursorPosition() places the Entity at the mouse world
+         * position. Anchoring the artwork at the club-head contact region
+         * therefore makes the visible club head coincide with the same
+         * point used by PlayerController for Ball hover interaction.
+         */
         this.clubSprite.anchor.set(
-            0.138,
-            0.769,
+            this.definition
+                .visual
+                .contactAnchorX,
+
+            this.definition
+                .visual
+                .contactAnchorY,
         );
 
         this.clubSprite.scale.set(
-            0.10,
+            this.definition
+                .visual
+                .renderScale,
         );
 
         this.clubSprite.rotation = 0;
@@ -148,6 +169,43 @@ export class Club extends Entity {
         ) {
             throw new Error(
                 "Club maximum drag distance must be greater than its minimum visual distance.",
+            );
+        }
+
+        const visual =
+            this.definition.visual;
+
+        if (
+            !Number.isFinite(
+                visual.renderScale,
+            ) ||
+            visual.renderScale <=
+            0
+        ) {
+            throw new Error(
+                "Club visual render scale must be a finite value greater than zero.",
+            );
+        }
+
+        this.validateNormalizedValue(
+            visual.contactAnchorX,
+            "Club visual contact anchor X",
+        );
+
+        this.validateNormalizedValue(
+            visual.contactAnchorY,
+            "Club visual contact anchor Y",
+        );
+
+        if (
+            !Number.isFinite(
+                visual.headOffset,
+            ) ||
+            visual.headOffset <
+            0
+        ) {
+            throw new Error(
+                "Club visual head offset must be a finite non-negative value.",
             );
         }
 
@@ -219,51 +277,45 @@ export class Club extends Entity {
             this.definition.aimGuide;
 
         if (
+            !Number.isFinite(
+                aimGuide.startDistance,
+            ) ||
             aimGuide.startDistance <
             0
         ) {
             throw new Error(
-                "Aim-guide start distance cannot be negative.",
+                "Aim-guide start distance must be a finite non-negative value.",
             );
         }
 
         if (
+            !Number.isFinite(
+                aimGuide.dotSpacing,
+            ) ||
             aimGuide.dotSpacing <=
             0
         ) {
             throw new Error(
-                "Aim-guide dot spacing must be greater than zero.",
+                "Aim-guide dot spacing must be a finite value greater than zero.",
             );
         }
 
         if (
-            aimGuide.maximumDotRadius <=
+            !Number.isFinite(
+                aimGuide.dotRadius,
+            ) ||
+            aimGuide.dotRadius <=
             0
         ) {
             throw new Error(
-                "Aim-guide maximum dot radius must be greater than zero.",
+                "Aim-guide dot radius must be a finite value greater than zero.",
             );
         }
 
         if (
-            aimGuide.minimumDotRadius <=
-            0
-        ) {
-            throw new Error(
-                "Aim-guide minimum dot radius must be greater than zero.",
-            );
-        }
-
-        if (
-            aimGuide.minimumDotRadius >
-            aimGuide.maximumDotRadius
-        ) {
-            throw new Error(
-                "Aim-guide minimum dot radius cannot exceed its maximum dot radius.",
-            );
-        }
-
-        if (
+            !Number.isInteger(
+                aimGuide.minimumDots,
+            ) ||
             aimGuide.minimumDots <
             1
         ) {
@@ -273,6 +325,9 @@ export class Club extends Entity {
         }
 
         if (
+            !Number.isInteger(
+                aimGuide.maximumDots,
+            ) ||
             aimGuide.maximumDots <
             aimGuide.minimumDots
         ) {
@@ -282,23 +337,9 @@ export class Club extends Entity {
         }
 
         this.validateNormalizedValue(
-            aimGuide.optimalAlpha,
-            "Aim-guide optimal alpha",
+            aimGuide.dotAlpha,
+            "Aim-guide dot alpha",
         );
-
-        this.validateNormalizedValue(
-            aimGuide.edgeAlpha,
-            "Aim-guide edge alpha",
-        );
-
-        if (
-            aimGuide.edgeAlpha >
-            aimGuide.optimalAlpha
-        ) {
-            throw new Error(
-                "Aim-guide edge alpha cannot exceed its optimal alpha.",
-            );
-        }
     }
 
     private validateNormalizedValue(
@@ -307,8 +348,13 @@ export class Club extends Entity {
     ): void {
 
         if (
-            value < 0 ||
-            value > 1
+            !Number.isFinite(
+                value,
+            ) ||
+            value <
+            0 ||
+            value >
+            1
         ) {
             throw new Error(
                 `${label} must remain between zero and one.`,

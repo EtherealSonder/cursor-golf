@@ -12,6 +12,15 @@ import type {
     FireWindTestConfigurationId,
 } from "../../core/game/config/FireWindTestDefinition";
 
+import {
+    PERFORMANCE_BENCHMARK_IDS,
+    getPerformanceBenchmarkDefinition,
+} from "../../core/game/config/PerformanceBenchmarkDefinition";
+
+import type {
+    PerformanceBenchmarkId,
+} from "../../core/game/config/PerformanceBenchmarkDefinition";
+
 import "./HomePage.css";
 
 function HomePage() {
@@ -33,6 +42,13 @@ function HomePage() {
     const [fireSourceDebugVisible, setFireSourceDebugVisible] = useState(false);
 
     const [localWindDebugVisible, setLocalWindDebugVisible] = useState(false);
+
+    const [
+        activePerformanceBenchmarkId,
+        setActivePerformanceBenchmarkId,
+    ] = useState<PerformanceBenchmarkId | null>(
+        null,
+    );
 
     // -------------------------------------------------------
     // Game Lifecycle
@@ -116,6 +132,10 @@ function HomePage() {
             gameRef.current?.applyFireWindTestConfiguration(
                 configurationId,
             );
+
+            setActivePerformanceBenchmarkId(
+                null,
+            );
         };
 
     const handleClearActiveFire = (): void => { gameRef.current?.clearActiveFire(); };
@@ -141,6 +161,45 @@ function HomePage() {
         game.setLocalWindDebugVisible(next);
         setLocalWindDebugVisible(next);
     };
+
+    const handlePerformanceBenchmark =
+        (
+            benchmarkId:
+                PerformanceBenchmarkId,
+        ): void => {
+
+            const game =
+                gameRef.current;
+
+            if (!game) {
+                return;
+            }
+
+            game.applyPerformanceBenchmark(
+                benchmarkId,
+            );
+
+            setActivePerformanceBenchmarkId(
+                benchmarkId,
+            );
+        };
+
+    const handleClearPerformanceBenchmark =
+        (): void => {
+
+            const game =
+                gameRef.current;
+
+            if (!game) {
+                return;
+            }
+
+            game.clearPerformanceBenchmark();
+
+            setActivePerformanceBenchmarkId(
+                null,
+            );
+        };
 
     // -------------------------------------------------------
     // Page Structure
@@ -306,6 +365,71 @@ function HomePage() {
 
                             <span className="hud-test-hint">
                                 Fire Tubes cycle automatically. Right-click course to ignite.
+                            </span>
+
+                            <div className="hud-test-divider" />
+
+                            <div className="hud-test-label">
+                                Performance Benchmark
+                            </div>
+
+                            <div className="performance-benchmark-grid">
+
+                                {PERFORMANCE_BENCHMARK_IDS.map(
+                                    (
+                                        benchmarkId,
+                                    ) => {
+
+                                        const definition =
+                                            getPerformanceBenchmarkDefinition(
+                                                benchmarkId,
+                                            );
+
+                                        const selected =
+                                            activePerformanceBenchmarkId ===
+                                            benchmarkId;
+
+                                        return (
+                                            <button
+                                                key={benchmarkId}
+                                                type="button"
+                                                className={
+                                                    selected
+                                                        ? "hud-action-button hud-action-button--selected performance-benchmark-button"
+                                                        : "hud-action-button performance-benchmark-button"
+                                                }
+                                                onClick={
+                                                    () =>
+                                                        handlePerformanceBenchmark(
+                                                            benchmarkId,
+                                                        )
+                                                }
+                                                title={
+                                                    definition.description
+                                                }
+                                            >
+                                                {definition.label}
+                                            </button>
+                                        );
+                                    },
+                                )}
+
+                            </div>
+
+                            <button
+                                type="button"
+                                className="hud-action-button"
+                                onClick={handleClearPerformanceBenchmark}
+                                disabled={
+                                    activePerformanceBenchmarkId ===
+                                    null
+                                }
+                            >
+                                Return to Normal Runtime
+                            </button>
+
+                            <span className="hud-test-hint">
+                                Selecting a benchmark resets Fire/environment state and restarts timing from zero.
                             </span>
 
                         </div>

@@ -121,6 +121,67 @@ export class WindVfxSystem {
         return this.container;
     }
 
+    public setEnabled(
+        enabled:
+            boolean,
+    ): void {
+
+        if (
+            this.destroyed
+        ) {
+            return;
+        }
+
+        if (
+            this.container.visible ===
+            enabled
+        ) {
+            return;
+        }
+
+        if (!enabled) {
+            this.reset();
+        }
+
+        this.container.visible =
+            enabled;
+    }
+
+    public isEnabled():
+        boolean {
+
+        return (
+            !this.destroyed &&
+            this.container.visible
+        );
+    }
+
+    public getActiveParticleCount():
+        number {
+
+        if (
+            this.destroyed
+        ) {
+            return 0;
+        }
+
+        return this.pool
+            .getActiveCount();
+    }
+
+    public getParticleCapacity():
+        number {
+
+        if (
+            this.destroyed
+        ) {
+            return 0;
+        }
+
+        return this.pool
+            .getCapacity();
+    }
+
     public update(
         deltaTime:
             number,
