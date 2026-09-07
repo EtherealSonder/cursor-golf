@@ -110,7 +110,11 @@ export class PlayerController {
         // Cursor Mode
         // ---------------------------------------------------
 
-        if (!this.dragging) {
+        if (
+            !this.dragging &&
+            !this.shotController
+                .isShotSequenceActive()
+        ) {
 
             /*
              * Club receives world coordinates.
@@ -123,6 +127,35 @@ export class PlayerController {
                 mouseWorldPosition.x,
                 mouseWorldPosition.y,
             );
+        }
+
+        // ---------------------------------------------------
+        // Club Swing / Recovery Input Lock
+        // ---------------------------------------------------
+
+        if (
+            this.shotController
+                .isSwinging() ||
+            this.shotController
+                .isRecovering()
+        ) {
+            if (
+                this.shotController
+                    .isRecovering()
+            ) {
+                club.setRecoveryCursorTarget(
+                    mouseWorldPosition.x,
+                    mouseWorldPosition.y,
+                );
+            }
+
+            ball.clearAimVector();
+
+            ball.setInteractionState(
+                BallInteractionState.Normal,
+            );
+
+            return;
         }
 
         // ---------------------------------------------------

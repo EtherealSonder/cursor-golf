@@ -1,10 +1,24 @@
 import { InputManager } from "../../input/InputManager";
+import { BallInteractionState } from "../entities/Ball";
 import { World } from "../world/World";
 import { ShotPreparation } from "./ShotPreparation";
 
 export enum ShotState {
     Idle,
     Preparing,
+    Swinging,
+    Recovering,
+}
+
+interface CommittedShot {
+    readonly power: number;
+    readonly direction: number;
+    readonly oscillationOffset: number;
+    readonly oscillationSpeed: number;
+    readonly accuracyQuality: number;
+    readonly insideOptimalRange: boolean;
+    readonly preparationTime: number;
+    readonly clubName: string;
 }
 
 export class ShotController {
@@ -28,6 +42,12 @@ export class ShotController {
      * Measured in seconds.
      */
     private preparationElapsedTime = 0;
+
+    private committedShot:
+        CommittedShot | null = null;
+
+    private contactLaunchProcessed =
+        false;
 
     constructor(
         world: World,
@@ -61,6 +81,22 @@ export class ShotController {
     public update(
         deltaTime: number,
     ): void {
+
+        if (
+            this.state ===
+            ShotState.Swinging
+        ) {
+            this.updateSwinging();
+            return;
+        }
+
+        if (
+            this.state ===
+            ShotState.Recovering
+        ) {
+            this.updateRecovering();
+            return;
+        }
 
         if (
             this.state !==
@@ -463,6 +499,9 @@ export class ShotController {
 
         this.preparationElapsedTime = 0;
 
+        this.committedShot = null;
+        this.contactLaunchProcessed = false;
+
         this.shotPreparation.reset();
 
         ball.setTensionPower(
@@ -618,55 +657,129 @@ export class ShotController {
         }
 
         // -----------------------------
-        // Accurate Release Feedback
+        // Commit Valid Shot
         // -----------------------------
 
+        this.committedShot = {
+            power: releasedPower,
+            direction: releasedDirection,
+            oscillationOffset: releasedOscillationOffset,
+            oscillationSpeed: releasedOscillationSpeed,
+            accuracyQuality: releasedAccuracyQuality,
+            insideOptimalRange: releasedInsideOptimalRange,
+            preparationTime: releasedPreparationTime,
+            clubName: club.getClubName(),
+        };
+
+        this.contactLaunchProcessed = false;
+
+        this.state =
+            ShotState.Swinging;
+
+        ball.setTensionPower(0);
+        ball.clearAimVector();
+
+        ball.setInteractionState(
+            BallInteractionState.Normal,
+        );
+
+        this.world
+            .getAimIndicator()
+            ?.hide();
+
+        club.beginSwing(
+            ball.getX(),
+            ball.getY(),
+            releasedDirection,
+            releasedPower,
+        );
+    }
+
+    private updateSwinging(): void {
+
+        const ball =
+            this.world.getBall();
+
+        const club =
+            this.world.getClub();
+
+        const shot =
+            this.committedShot;
+
+        if (!ball || !club || !shot) {
+            this.resetAfterShot();
+            return;
+        }
+
         if (
-            releasedInsideOptimalRange
+            !club.hasReachedContact() ||
+            this.contactLaunchProcessed
         ) {
+            return;
+        }
+
+        this.contactLaunchProcessed = true;
+
+        if (shot.insideOptimalRange) {
             this.world
                 .getShotFeedback()
                 ?.spawn(
                     ball.getX(),
                     ball.getY(),
-                    releasedPower,
+                    shot.power,
                 );
         }
 
-        // -----------------------------
-        // Ball Launch
-        // -----------------------------
-
         const launchSucceeded =
             ball.launch(
-                releasedPower,
-                releasedDirection,
+                shot.power,
+                shot.direction,
             );
 
         if (launchSucceeded) {
             this.world
                 .getCameraFeedbackController()
                 .triggerShotRelease(
-                    releasedPower,
-                    releasedAccuracyQuality,
-                    releasedInsideOptimalRange,
+                    shot.power,
+                    shot.accuracyQuality,
+                    shot.insideOptimalRange,
                 );
         }
 
         this.logReleasedShot(
-            releasedPower,
-            releasedDirection,
-            club.getClubName(),
-            releasedOscillationOffset,
-            releasedOscillationSpeed,
-            releasedAccuracyQuality,
-            releasedInsideOptimalRange,
-            releasedPreparationTime,
+            shot.power,
+            shot.direction,
+            shot.clubName,
+            shot.oscillationOffset,
+            shot.oscillationSpeed,
+            shot.accuracyQuality,
+            shot.insideOptimalRange,
+            shot.preparationTime,
             launchSucceeded,
             ball.getVelocityX(),
             ball.getVelocityY(),
             ball.getSpeed(),
         );
+
+        club.beginRecovery();
+
+        this.state =
+            ShotState.Recovering;
+    }
+
+    private updateRecovering(): void {
+
+        const club =
+            this.world.getClub();
+
+        if (!club) {
+            this.resetAfterShot();
+            return;
+        }
+
+        if (!club.hasCompletedRecovery()) {
+            return;
+        }
 
         this.resetAfterShot();
     }
@@ -677,6 +790,9 @@ export class ShotController {
             ShotState.Idle;
 
         this.preparationElapsedTime = 0;
+
+        this.committedShot = null;
+        this.contactLaunchProcessed = false;
 
         this.shotPreparation.reset();
 
@@ -878,6 +994,21 @@ export class ShotController {
             this.state ===
             ShotState.Preparing
         );
+    }
+
+    public isSwinging(): boolean {
+
+        return this.state === ShotState.Swinging;
+    }
+
+    public isRecovering(): boolean {
+
+        return this.state === ShotState.Recovering;
+    }
+
+    public isShotSequenceActive(): boolean {
+
+        return this.state !== ShotState.Idle;
     }
 
     public getPreparationElapsedTime():

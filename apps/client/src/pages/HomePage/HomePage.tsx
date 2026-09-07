@@ -8,9 +8,6 @@ import {
     Game,
 } from "../../core/game/Game";
 
-import type {
-    FireWindTestConfigurationId,
-} from "../../core/game/config/FireWindTestDefinition";
 
 import {
     PERFORMANCE_BENCHMARK_IDS,
@@ -39,9 +36,6 @@ function HomePage() {
             null,
         );
 
-    const [fireSourceDebugVisible, setFireSourceDebugVisible] = useState(false);
-
-    const [localWindDebugVisible, setLocalWindDebugVisible] = useState(false);
 
     const [
         activePerformanceBenchmarkId,
@@ -122,45 +116,6 @@ function HomePage() {
             gameRef.current
                 ?.resetBall();
         };
-
-    const handleFireWindConfiguration =
-        (
-            configurationId:
-                FireWindTestConfigurationId,
-        ): void => {
-
-            gameRef.current?.applyFireWindTestConfiguration(
-                configurationId,
-            );
-
-            setActivePerformanceBenchmarkId(
-                null,
-            );
-        };
-
-    const handleClearActiveFire = (): void => { gameRef.current?.clearActiveFire(); };
-
-    const handleResetFireSourceEnvironment = (): void => {
-        const game = gameRef.current;
-        if (!game) return;
-        game.resetFireSourceTestEnvironment();
-    };
-
-    const handleToggleFireSourceDebug = (): void => {
-        const game = gameRef.current;
-        if (!game) return;
-        const next = !fireSourceDebugVisible;
-        game.setFireSourceDebugVisible(next);
-        setFireSourceDebugVisible(next);
-    };
-
-    const handleToggleLocalWindDebug = (): void => {
-        const game = gameRef.current;
-        if (!game) return;
-        const next = !localWindDebugVisible;
-        game.setLocalWindDebugVisible(next);
-        setLocalWindDebugVisible(next);
-    };
 
     const handlePerformanceBenchmark =
         (
@@ -311,62 +266,6 @@ function HomePage() {
                                 Reset Ball
                             </button>
 
-                            <div className="hud-test-label">
-                                Fire / Wind Test
-                            </div>
-
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("no-wind")}>
-                                No Wind
-                            </button>
-
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("east-wind")}>
-                                East Wind →
-                            </button>
-
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("south-wind")}>
-                                South Wind ↓
-                            </button>
-
-                            <button type="button" className="hud-action-button"
-                                onClick={() => handleFireWindConfiguration("mixed-wind")}>
-                                Mixed Wind ↘
-                            </button>
-
-                            <button
-                                type="button"
-                                className={localWindDebugVisible ? "hud-action-button hud-action-button--selected" : "hud-action-button"}
-                                onClick={handleToggleLocalWindDebug}
-                            >
-                                {localWindDebugVisible ? "Hide Wind Debug" : "Show Wind Debug"}
-                            </button>
-
-                            <span className="hud-test-hint">
-                                Wind Debug shows each Fan's authoritative Local Wind volume.
-                            </span>
-
-                            <span className="hud-test-hint">
-                                Right-click course to ignite
-                            </span>
-
-                            <div className="hud-test-divider" />
-
-                            <div className="hud-test-label">
-                                Fire Controls
-                            </div>
-
-                            <button type="button" className="hud-action-button" onClick={handleClearActiveFire}>Clear Active Fire</button>
-                            <button type="button" className="hud-action-button" onClick={handleResetFireSourceEnvironment}>Reset Environment</button>
-                            <button type="button" className={fireSourceDebugVisible ? "hud-action-button hud-action-button--selected" : "hud-action-button"} onClick={handleToggleFireSourceDebug}>
-                                {fireSourceDebugVisible ? "Hide Source Debug" : "Show Source Debug"}
-                            </button>
-
-                            <span className="hud-test-hint">
-                                Fire Tubes cycle automatically. Right-click course to ignite.
-                            </span>
-
                             <div className="hud-test-divider" />
 
                             <div className="hud-test-label performance-benchmark-heading">
@@ -427,10 +326,6 @@ function HomePage() {
                             >
                                 Return to Normal Runtime
                             </button>
-
-                            <span className="hud-test-hint">
-                                Each benchmark runs a 5 s warm-up, then records 30 s. The final result freezes until another benchmark is selected.
-                            </span>
 
                         </div>
 

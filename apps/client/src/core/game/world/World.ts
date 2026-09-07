@@ -44,6 +44,10 @@ import {
 } from "../config/HoleDefinition";
 
 import {
+    DEFAULT_BALL_TRAIL_DEFINITION,
+} from "../config/BallTrailDefinition";
+
+import {
     FireDirectionalValidation,
 } from "../debug/FireDirectionalValidation";
 
@@ -172,6 +176,10 @@ import {
 import {
     WindVfxSystem,
 } from "../wind-vfx/WindVfxSystem";
+
+import {
+    BallTrail,
+} from "../vfx/BallTrail";
 
 import {
     EnvironmentField,
@@ -362,6 +370,14 @@ export class World {
 
     private ball:
         Ball | null = null;
+
+    /**
+     * H2 presentation-only motion trail.
+     *
+     * Ball remains the sole authority for position and velocity.
+     */
+    private ballTrail:
+        BallTrail | null = null;
 
     private hole:
         Hole | null = null;
@@ -608,6 +624,8 @@ export class World {
             this.ball,
         );
 
+        this.createBallTrail();
+
         this.unsubscribeFromBallImpacts =
             this.ball
                 .subscribeToImpacts(
@@ -844,6 +862,15 @@ export class World {
         }
 
         /*
+         * H2. Sample the Ball only after its authoritative physics update.
+         * The trail is presentation-only and never feeds state back into Ball.
+         */
+        this.ballTrail
+            ?.update(
+                deltaTime,
+            );
+
+        /*
          * G2/G3. Resolve physical mechanism pairs only after their rigid-body
          * integration for this frame. The shared response solver applies
          * penetration correction, normal impulse, friction and angular
@@ -957,6 +984,12 @@ export class World {
 
     public destroy():
         void {
+
+        this.ballTrail
+            ?.destroy();
+
+        this.ballTrail =
+            null;
 
         for (
             const entity
@@ -1149,6 +1182,9 @@ export class World {
 
         this.ball
             .resetToInitialPosition();
+
+        this.ballTrail
+            ?.reset();
 
         this.hole
             ?.resetEntryState();
@@ -2132,6 +2168,60 @@ export class World {
         ShotFeedback | null {
 
         return this.shotFeedback;
+    }
+
+    // -------------------------------------------------------
+    // Ball Trail
+    // -------------------------------------------------------
+
+    private createBallTrail():
+        void {
+
+        if (
+            this.ballTrail
+        ) {
+            throw new Error(
+                "World Ball trail has already been created.",
+            );
+        }
+
+        if (
+            !this.ball
+        ) {
+            throw new Error(
+                "World cannot create the Ball trail before the Ball exists.",
+            );
+        }
+
+        this.ballTrail =
+            new BallTrail(
+                this.ball,
+                DEFAULT_BALL_TRAIL_DEFINITION,
+            );
+
+        const ballContainer =
+            this.ball
+                .getContainer();
+
+        const ballDisplayIndex =
+            this.worldContainer
+                .getChildIndex(
+                    ballContainer,
+                );
+
+        /*
+         * Keep the trail immediately behind the Ball in world-space.
+         * Both retain the normal zIndex so terrain ordering remains intact.
+         */
+        this.worldContainer
+            .addChildAt(
+                this.ballTrail
+                    .getContainer(),
+                Math.max(
+                    0,
+                    ballDisplayIndex,
+                ),
+            );
     }
 
     // -------------------------------------------------------

@@ -117,7 +117,7 @@ export class PerformanceDebugOverlay {
         this.text =
             new Text({
                 text:
-                    "PERFORMANCE\nWaiting for samples...",
+                    "FPS    --\nFRAME  -- ms",
 
                 style:
                     new TextStyle({
@@ -293,49 +293,13 @@ export class PerformanceDebugOverlay {
             PerformanceDebugRuntimeState,
     ): string {
 
-        const phaseLabel =
-            snapshot.phase === "warmup"
-                ? `WARM-UP ${snapshot.phaseRemainingSeconds.toFixed(1)} s`
-                : snapshot.phase === "measuring"
-                    ? `MEASURE ${snapshot.phaseRemainingSeconds.toFixed(1)} s`
-                    : snapshot.phase === "complete"
-                        ? "COMPLETE / FROZEN"
-                        : "LIVE RUNTIME";
-
-        const windVfxState =
-            runtimeState
-                .windVfxEnabled
-                ? "ON"
-                : "OFF";
-
-        const fireVfxState =
-            runtimeState
-                .fireVfxEnabled
-                ? "ON"
-                : "OFF";
+        // H1 keeps the full benchmark/runtime instrumentation alive while
+        // intentionally reducing the normal on-screen presentation.
+        void runtimeState;
 
         return (
-            `PERFORMANCE\n` +
-            `BENCH  ${runtimeState.benchmarkLabel}\n` +
-            `PHASE  ${phaseLabel}\n` +
-            `TIME   ${snapshot.elapsedSeconds.toFixed(1)} s  ` +
-            `FRAMES ${snapshot.totalFrames}\n` +
-            `FPS    ${snapshot.currentFps.toFixed(0)}  ` +
-            `AVG ${snapshot.averageFps.toFixed(0)}  ` +
-            `MIN ${snapshot.minimumFps.toFixed(0)}  ` +
-            `MAX ${snapshot.maximumFps.toFixed(0)}\n` +
-            `FRAME  ${snapshot.currentFrameTimeMilliseconds.toFixed(1)} ms  ` +
-            `AVG ${snapshot.averageFrameTimeMilliseconds.toFixed(1)}\n` +
-            `MINMS  ${snapshot.minimumFrameTimeMilliseconds.toFixed(1)}  ` +
-            `MAXMS ${snapshot.maximumFrameTimeMilliseconds.toFixed(1)}\n` +
-            `SPIKES ${snapshot.frameSpikeCount}  (>16.67 ms)\n` +
-            `FANS   ${runtimeState.fanCount}  ` +
-            `TUBES ${runtimeState.fireTubeCount}\n` +
-            `WIND   ${windVfxState}  ` +
-            `${runtimeState.windParticleCount}/${runtimeState.windParticleCapacity}\n` +
-            `FIRE   ${fireVfxState}  ` +
-            `${runtimeState.fireParticleCount}/${runtimeState.fireParticleCapacity}\n` +
-            `CELLS  ${runtimeState.fireCellCount}`
+            `FPS    ${snapshot.currentFps.toFixed(0)}\n` +
+            `FRAME  ${snapshot.currentFrameTimeMilliseconds.toFixed(1)} ms`
         );
     }
 
