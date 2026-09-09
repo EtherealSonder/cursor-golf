@@ -106,6 +106,18 @@ import {
 } from "../debug/LocalWindDebugVisualizer";
 
 import {
+    WaterFieldValidation,
+} from "../debug/WaterFieldValidation";
+
+import {
+    WaterFieldVisualizer,
+} from "../debug/WaterFieldVisualizer";
+
+import {
+    DEFAULT_WATER_DEBUG_DEFINITION,
+} from "../config/WaterDebugDefinition";
+
+import {
     AimIndicator,
 } from "../entities/AimIndicator";
 
@@ -184,6 +196,10 @@ import {
 import {
     EnvironmentField,
 } from "../environment/EnvironmentField";
+
+import {
+    WaterField,
+} from "../environment/WaterField";
 
 import {
     WindManager,
@@ -299,6 +315,16 @@ export class World {
     private readonly environmentField:
         EnvironmentField;
 
+    /**
+     * Phase 8A authoritative standing-Water storage.
+     *
+     * WaterField is deliberately independent from EnvironmentField during
+     * 8A. Surface moisture, Fire response, Ball response, and Water VFX are
+     * connected in later Water phases.
+     */
+    private readonly waterField:
+        WaterField;
+
     private readonly fireManager:
         FireManager;
 
@@ -319,6 +345,14 @@ export class World {
 
     private fireFieldIgnitionValidation:
         FireFieldIgnitionValidation | null =
+        null;
+
+    private waterFieldValidation:
+        WaterFieldValidation | null =
+        null;
+
+    private waterFieldVisualizer:
+        WaterFieldVisualizer | null =
         null;
 
     private readonly windTuningController:
@@ -454,6 +488,9 @@ export class World {
                 this.surfaceSystem,
             );
 
+        this.waterField =
+            new WaterField();
+
         this.fireSourceSystem =
             new FireSourceSystem(
                 this.environmentField,
@@ -538,6 +575,8 @@ export class World {
         this.createFireDirectionalValidation();
 
         this.createFireFieldIgnitionValidation();
+
+        this.createWaterFieldValidation();
 
         this.createCameraActivationDebugGraphics();
 
@@ -625,6 +664,8 @@ export class World {
         );
 
         this.createBallTrail();
+
+        this.createWaterFieldVisualizer();
 
         this.unsubscribeFromBallImpacts =
             this.ball
@@ -819,6 +860,22 @@ export class World {
 
         this.surfaceSystem
             .update(
+                deltaTime,
+            );
+
+        /*
+         * Phase 8A-3 authoritative Water depth transport.
+         *
+         * Water remains independent from surfaces, Fire, Wind, Ball physics,
+         * and presentation at this stage.
+         */
+        this.waterField
+            .update(
+                deltaTime,
+            );
+
+        this.waterFieldVisualizer
+            ?.update(
                 deltaTime,
             );
 
@@ -1049,6 +1106,15 @@ export class World {
         this.fireFieldIgnitionValidation =
             null;
 
+        this.waterFieldValidation =
+            null;
+
+        this.waterFieldVisualizer
+            ?.destroy();
+
+        this.waterFieldVisualizer =
+            null;
+
         this.fireSourceVisualizer
             ?.destroy();
 
@@ -1076,6 +1142,9 @@ export class World {
             ?.reset();
 
         this.environmentField
+            .reset();
+
+        this.waterField
             .reset();
 
         this.localWindDebugVisualizer
@@ -1725,6 +1794,113 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Water Field Validation
+    // -------------------------------------------------------
+
+    private createWaterFieldValidation():
+        void {
+
+        if (
+            this.waterFieldValidation
+        ) {
+            throw new Error(
+                "World WaterField validation has already been created.",
+            );
+        }
+
+        this.waterFieldValidation =
+            new WaterFieldValidation(
+                this.waterField,
+            );
+
+        this.waterFieldValidation
+            .run();
+    }
+
+    public getWaterFieldValidationState() {
+
+        return this.waterFieldValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Water Field Debug Visualization
+    // -------------------------------------------------------
+
+    private createWaterFieldVisualizer():
+        void {
+
+        if (
+            this.waterFieldVisualizer
+        ) {
+            throw new Error(
+                "World WaterField visualizer has already been created.",
+            );
+        }
+
+        if (
+            !this.ball
+        ) {
+            throw new Error(
+                "World WaterField visualizer requires the Ball to be initialized first.",
+            );
+        }
+
+        this.waterFieldVisualizer =
+            new WaterFieldVisualizer(
+                this.waterField,
+            );
+
+        /*
+         * Phase 8A-6 temporary visible deposit.
+         *
+         * Position it relative to the initialized Ball so it always begins
+         * inside the initial gameplay viewport. Phase 8B replaces this with
+         * real Water sources such as the sprinkler.
+         */
+        if (
+            DEFAULT_WATER_DEBUG_DEFINITION
+                .enabled &&
+            DEFAULT_WATER_DEBUG_DEFINITION
+                .createValidationDeposit
+        ) {
+            const ballContainer =
+                this.ball
+                    .getContainer();
+
+            this.waterField
+                .injectWaterWithMomentum(
+                    ballContainer.x +
+                    DEFAULT_WATER_DEBUG_DEFINITION
+                        .validationDepositOffsetX,
+
+                    ballContainer.y +
+                    DEFAULT_WATER_DEBUG_DEFINITION
+                        .validationDepositOffsetY,
+
+                    DEFAULT_WATER_DEBUG_DEFINITION
+                        .validationDepositAmount,
+
+                    DEFAULT_WATER_DEBUG_DEFINITION
+                        .validationDepositVelocityX,
+
+                    DEFAULT_WATER_DEBUG_DEFINITION
+                        .validationDepositVelocityY,
+                );
+        }
+
+        this.worldContainer
+            .addChild(
+                this.waterFieldVisualizer
+                    .getGraphics(),
+            );
+
+        this.waterFieldVisualizer
+            .redrawImmediately();
+    }
+
+    // -------------------------------------------------------
     // Entity Management
     // -------------------------------------------------------
 
@@ -2088,6 +2264,12 @@ export class World {
         EnvironmentField {
 
         return this.environmentField;
+    }
+
+    public getWaterField():
+        WaterField {
+
+        return this.waterField;
     }
 
     public getFireManager():
