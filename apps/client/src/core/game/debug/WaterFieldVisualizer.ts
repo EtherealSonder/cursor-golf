@@ -208,7 +208,9 @@ export class WaterFieldVisualizer {
                 ): void => {
 
                     if (
-                        cell.depth <= 0
+                        cell.depth <
+                        this.definition
+                            .minimumVisibleDepth
                     ) {
                         return;
                     }
@@ -222,8 +224,17 @@ export class WaterFieldVisualizer {
                                 0,
                                 Math.min(
                                     1,
-                                    cell.depth /
-                                    maximumDepth,
+                                    (
+                                        cell.depth -
+                                        this.definition
+                                            .minimumVisibleDepth
+                                    ) /
+                                    Math.max(
+                                        1e-9,
+                                        maximumDepth -
+                                        this.definition
+                                            .minimumVisibleDepth,
+                                    ),
                                 ),
                             );
 

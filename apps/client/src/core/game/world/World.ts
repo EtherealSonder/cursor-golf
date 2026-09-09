@@ -110,8 +110,40 @@ import {
 } from "../debug/WaterFieldValidation";
 
 import {
+    WaterSourceValidation,
+} from "../debug/WaterSourceValidation";
+
+import {
+    AirborneWaterValidation,
+} from "../debug/AirborneWaterValidation";
+
+import {
+    SprinklerValidation,
+} from "../debug/SprinklerValidation";
+
+import {
+    SprinklerImpactValidation,
+} from "../debug/SprinklerImpactValidation";
+
+import {
+    ThinWaterValidation,
+} from "../debug/ThinWaterValidation";
+
+import {
+    SprinklerPhysicsValidation,
+} from "../debug/SprinklerPhysicsValidation";
+
+import {
+    AirborneWaterWindValidation,
+} from "../debug/AirborneWaterWindValidation";
+
+import {
     WaterFieldVisualizer,
 } from "../debug/WaterFieldVisualizer";
+
+import {
+    AirborneWaterVisualizer,
+} from "../debug/AirborneWaterVisualizer";
 
 import {
     DEFAULT_WATER_DEBUG_DEFINITION,
@@ -152,6 +184,10 @@ import {
 import {
     FireTube,
 } from "../entities/mechanisms/FireTube";
+
+import {
+    Sprinkler,
+} from "../entities/mechanisms/Sprinkler";
 
 import {
     DynamicObstacle,
@@ -200,6 +236,14 @@ import {
 import {
     WaterField,
 } from "../environment/WaterField";
+
+import {
+    WaterSourceSystem,
+} from "../environment/WaterSourceSystem";
+
+import {
+    AirborneWaterSystem,
+} from "../environment/AirborneWaterSystem";
 
 import {
     WindManager,
@@ -309,6 +353,10 @@ export class World {
     private readonly fireTubes:
         FireTube[] = [];
 
+    /** Phase 8B-3 Water mechanisms. Stationary until the later physics step. */
+    private readonly sprinklers:
+        Sprinkler[] = [];
+
     private readonly surfaceSystem:
         SurfaceSystem;
 
@@ -324,6 +372,14 @@ export class World {
      */
     private readonly waterField:
         WaterField;
+
+    /** Phase 8B registry/timing owner for Water-producing sources. */
+    private readonly waterSourceSystem:
+        WaterSourceSystem;
+
+    /** Phase 8B-2 authoritative transport for Water currently in flight. */
+    private readonly airborneWaterSystem:
+        AirborneWaterSystem;
 
     private readonly fireManager:
         FireManager;
@@ -351,8 +407,41 @@ export class World {
         WaterFieldValidation | null =
         null;
 
+    private waterSourceValidation:
+        WaterSourceValidation | null =
+        null;
+
+    private airborneWaterValidation:
+        AirborneWaterValidation | null =
+        null;
+
+    private sprinklerValidation:
+        SprinklerValidation | null =
+        null;
+
+    private sprinklerImpactValidation:
+        SprinklerImpactValidation | null =
+        null;
+
+    private thinWaterValidation:
+        ThinWaterValidation | null =
+        null;
+
+    private sprinklerPhysicsValidation:
+        SprinklerPhysicsValidation | null =
+        null;
+
+    private airborneWaterWindValidation:
+        AirborneWaterWindValidation | null =
+        null;
+
     private waterFieldVisualizer:
         WaterFieldVisualizer | null =
+        null;
+
+    /** Phase 8B-4 presentation-only airborne Water stream debug view. */
+    private airborneWaterVisualizer:
+        AirborneWaterVisualizer | null =
         null;
 
     private readonly windTuningController:
@@ -491,6 +580,17 @@ export class World {
         this.waterField =
             new WaterField();
 
+        this.waterSourceSystem =
+            new WaterSourceSystem();
+
+        this.airborneWaterSystem =
+            new AirborneWaterSystem(
+                this.waterField,
+                undefined,
+                this.windManager,
+                this.localWindSystem,
+            );
+
         this.fireSourceSystem =
             new FireSourceSystem(
                 this.environmentField,
@@ -577,6 +677,20 @@ export class World {
         this.createFireFieldIgnitionValidation();
 
         this.createWaterFieldValidation();
+
+        this.createWaterSourceValidation();
+
+        this.createAirborneWaterValidation();
+
+        this.createSprinklerValidation();
+
+        this.createSprinklerImpactValidation();
+
+        this.createThinWaterValidation();
+
+        this.createSprinklerPhysicsValidation();
+
+        this.createAirborneWaterWindValidation();
 
         this.createCameraActivationDebugGraphics();
 
@@ -666,6 +780,10 @@ export class World {
         this.createBallTrail();
 
         this.createWaterFieldVisualizer();
+
+        this.createAirborneWaterVisualizer();
+
+        this.createSprinklerEntities();
 
         this.unsubscribeFromBallImpacts =
             this.ball
@@ -864,11 +982,29 @@ export class World {
             );
 
         /*
-         * Phase 8A-3 authoritative Water depth transport.
-         *
-         * Water remains independent from surfaces, Fire, Wind, Ball physics,
-         * and presentation at this stage.
+         * Phase 8B-7 Water transport order:
+         * source timing -> immutable emission handoff -> Wind-responsive
+         * airborne flight -> ground impact -> standing-Water simulation.
          */
+        this.waterSourceSystem
+            .update(
+                deltaTime,
+            );
+
+        this.airborneWaterSystem
+            .consumeEmissionRequests(
+                this.waterSourceSystem
+                    .drainEmissionRequests(),
+            );
+
+        this.airborneWaterSystem
+            .update(
+                deltaTime,
+            );
+
+        this.airborneWaterVisualizer
+            ?.update();
+
         this.waterField
             .update(
                 deltaTime,
@@ -957,6 +1093,13 @@ export class World {
             fireTube.synchronizeAfterCollisionResolution();
         }
 
+        for (
+            const sprinkler
+            of this.sprinklers
+        ) {
+            sprinkler.synchronizeAfterCollisionResolution();
+        }
+
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
         this.localWindDebugVisualizer
@@ -1042,6 +1185,12 @@ export class World {
     public destroy():
         void {
 
+        this.airborneWaterVisualizer
+            ?.destroy();
+
+        this.airborneWaterVisualizer =
+            null;
+
         this.ballTrail
             ?.destroy();
 
@@ -1068,6 +1217,9 @@ export class World {
             0;
 
         this.fireTubes.length =
+            0;
+
+        this.sprinklers.length =
             0;
 
         this.staticObstacleDefinitions =
@@ -1109,6 +1261,18 @@ export class World {
         this.waterFieldValidation =
             null;
 
+        this.waterSourceValidation =
+            null;
+
+        this.airborneWaterValidation =
+            null;
+
+        this.airborneWaterWindValidation =
+            null;
+
+        this.sprinklerValidation =
+            null;
+
         this.waterFieldVisualizer
             ?.destroy();
 
@@ -1143,6 +1307,12 @@ export class World {
 
         this.environmentField
             .reset();
+
+        this.airborneWaterSystem
+            .reset();
+
+        this.waterSourceSystem
+            .clearSources();
 
         this.waterField
             .reset();
@@ -1825,6 +1995,92 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Water Source Validation
+    // -------------------------------------------------------
+
+    private createWaterSourceValidation():
+        void {
+
+        if (
+            this.waterSourceValidation
+        ) {
+            throw new Error(
+                "World WaterSource validation has already been created.",
+            );
+        }
+
+        this.waterSourceValidation =
+            new WaterSourceValidation();
+
+        this.waterSourceValidation
+            .run();
+    }
+
+    public getWaterSourceValidationState() {
+
+        return this.waterSourceValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Airborne Water Validation
+    // -------------------------------------------------------
+
+    private createAirborneWaterValidation():
+        void {
+
+        if (
+            this.airborneWaterValidation
+        ) {
+            throw new Error(
+                "World AirborneWater validation has already been created.",
+            );
+        }
+
+        this.airborneWaterValidation =
+            new AirborneWaterValidation();
+
+        this.airborneWaterValidation
+            .run();
+    }
+
+    public getAirborneWaterValidationState() {
+
+        return this.airborneWaterValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-7 Airborne Water + Wind Validation
+    // -------------------------------------------------------
+
+    private createAirborneWaterWindValidation():
+        void {
+
+        if (
+            this.airborneWaterWindValidation
+        ) {
+            throw new Error(
+                "World Airborne Water Wind validation has already been created.",
+            );
+        }
+
+        this.airborneWaterWindValidation =
+            new AirborneWaterWindValidation();
+
+        this.airborneWaterWindValidation
+            .run();
+    }
+
+    public getAirborneWaterWindValidationState() {
+        return this.airborneWaterWindValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
     // Water Field Debug Visualization
     // -------------------------------------------------------
 
@@ -1853,42 +2109,11 @@ export class World {
             );
 
         /*
-         * Phase 8A-6 temporary visible deposit.
-         *
-         * Position it relative to the initialized Ball so it always begins
-         * inside the initial gameplay viewport. Phase 8B replaces this with
-         * real Water sources such as the sprinkler.
+         * Phase 8B-4C:
+         * The old 8A-6 gameplay-world validation deposit has been removed.
+         * WaterFieldValidation remains isolated; visible gameplay Water now
+         * comes only from real Water sources such as the sprinkler.
          */
-        if (
-            DEFAULT_WATER_DEBUG_DEFINITION
-                .enabled &&
-            DEFAULT_WATER_DEBUG_DEFINITION
-                .createValidationDeposit
-        ) {
-            const ballContainer =
-                this.ball
-                    .getContainer();
-
-            this.waterField
-                .injectWaterWithMomentum(
-                    ballContainer.x +
-                    DEFAULT_WATER_DEBUG_DEFINITION
-                        .validationDepositOffsetX,
-
-                    ballContainer.y +
-                    DEFAULT_WATER_DEBUG_DEFINITION
-                        .validationDepositOffsetY,
-
-                    DEFAULT_WATER_DEBUG_DEFINITION
-                        .validationDepositAmount,
-
-                    DEFAULT_WATER_DEBUG_DEFINITION
-                        .validationDepositVelocityX,
-
-                    DEFAULT_WATER_DEBUG_DEFINITION
-                        .validationDepositVelocityY,
-                );
-        }
 
         this.worldContainer
             .addChild(
@@ -1898,6 +2123,156 @@ export class World {
 
         this.waterFieldVisualizer
             .redrawImmediately();
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-4B Sprinkler Impact Validation
+    // -------------------------------------------------------
+
+    private createSprinklerImpactValidation(): void {
+        if (
+            this.sprinklerImpactValidation
+        ) {
+            throw new Error(
+                "World Sprinkler impact validation has already been created.",
+            );
+        }
+
+        this.sprinklerImpactValidation =
+            new SprinklerImpactValidation();
+
+        this.sprinklerImpactValidation
+            .run();
+    }
+
+    public getSprinklerImpactValidationState() {
+        return this.sprinklerImpactValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-4C Thin Water Validation
+    // -------------------------------------------------------
+
+    private createThinWaterValidation(): void {
+        if (this.thinWaterValidation) {
+            throw new Error(
+                "World Thin Water validation has already been created.",
+            );
+        }
+
+        this.thinWaterValidation =
+            new ThinWaterValidation();
+
+        this.thinWaterValidation
+            .run();
+    }
+
+    public getThinWaterValidationState() {
+        return this.thinWaterValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-5 Sprinkler Physics Validation
+    // -------------------------------------------------------
+
+    private createSprinklerPhysicsValidation():
+        void {
+
+        if (
+            this.sprinklerPhysicsValidation
+        ) {
+            throw new Error(
+                "World Sprinkler physics validation has already been created.",
+            );
+        }
+
+        this.sprinklerPhysicsValidation =
+            new SprinklerPhysicsValidation();
+
+        this.sprinklerPhysicsValidation
+            .run();
+    }
+
+    public getSprinklerPhysicsValidationState() {
+        return this.sprinklerPhysicsValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-4 Airborne Water Debug Presentation
+    // -------------------------------------------------------
+
+    private createAirborneWaterVisualizer(): void {
+        if (this.airborneWaterVisualizer) {
+            throw new Error(
+                "World AirborneWater visualizer has already been created.",
+            );
+        }
+
+        this.airborneWaterVisualizer =
+            new AirborneWaterVisualizer(
+                this.airborneWaterSystem,
+            );
+
+        this.worldContainer.addChild(
+            this.airborneWaterVisualizer
+                .getGraphics(),
+        );
+    }
+
+    private createSprinklerValidation(): void {
+        this.sprinklerValidation =
+            new SprinklerValidation();
+
+        this.sprinklerValidation.run();
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-3 Sprinkler Mechanism
+    // -------------------------------------------------------
+
+    private createSprinklerEntities(): void {
+        if (this.sprinklers.length > 0) {
+            throw new Error(
+                "World Sprinkler entities have already been created.",
+            );
+        }
+
+        if (!this.ball) {
+            throw new Error(
+                "World requires Ball before creating the Phase 8B-3 Sprinkler.",
+            );
+        }
+
+        const sprinkler =
+            new Sprinkler(
+                "sprinkler-1",
+                this.ball.getX() + 280,
+                this.ball.getY(),
+                0,
+                this.waterSourceSystem,
+            );
+
+        this.sprinklers.push(
+            sprinkler,
+        );
+
+        this.dynamicCollidables.push(
+            sprinkler,
+        );
+
+        this.mechanismCollidables.push(
+            sprinkler,
+        );
+
+        this.addEntity(
+            sprinkler,
+        );
     }
 
     // -------------------------------------------------------
@@ -1969,7 +2344,8 @@ export class World {
         if (
             entity instanceof DynamicObstacle ||
             entity instanceof Fan ||
-            entity instanceof FireTube
+            entity instanceof FireTube ||
+            entity instanceof Sprinkler
         ) {
             const dynamicCollidableIndex =
                 this.dynamicCollidables
@@ -1990,7 +2366,8 @@ export class World {
 
         if (
             entity instanceof Fan ||
-            entity instanceof FireTube
+            entity instanceof FireTube ||
+            entity instanceof Sprinkler
         ) {
             const mechanismCollidableIndex =
                 this.mechanismCollidables
@@ -2004,6 +2381,25 @@ export class World {
             ) {
                 this.mechanismCollidables.splice(
                     mechanismCollidableIndex,
+                    1,
+                );
+            }
+        }
+
+        if (
+            entity instanceof Sprinkler
+        ) {
+            const sprinklerIndex =
+                this.sprinklers.indexOf(
+                    entity,
+                );
+
+            if (
+                sprinklerIndex !==
+                -1
+            ) {
+                this.sprinklers.splice(
+                    sprinklerIndex,
                     1,
                 );
             }
@@ -2270,6 +2666,18 @@ export class World {
         WaterField {
 
         return this.waterField;
+    }
+
+    public getWaterSourceSystem():
+        WaterSourceSystem {
+
+        return this.waterSourceSystem;
+    }
+
+    public getAirborneWaterSystem():
+        AirborneWaterSystem {
+
+        return this.airborneWaterSystem;
     }
 
     public getFireManager():

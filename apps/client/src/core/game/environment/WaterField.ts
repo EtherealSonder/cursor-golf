@@ -285,13 +285,26 @@ export class WaterField {
             this.simulationAccumulator + 1e-12 >= fixedStep &&
             this.lastSubstepCount < maximumSubsteps
         ) {
+            /*
+             * Phase 8B-4C:
+             * A tiny sprinkler impact should not behave like a miniature
+             * flood. Scale the solver response smoothly while the currently
+             * active Water is shallow. The accumulator still advances by the
+             * authoritative fixed step, so frame-rate determinism is kept.
+             *
+             * This changes transport speed only. Water amount remains
+             * conserved by WaterFlowSolver.
+             */
+            const mobility =
+                this.calculateCurrentShallowWaterMobility();
+
             const result =
                 this.flowSolver.step(
                     this.depth,
                     this.velocityX,
                     this.velocityY,
                     this.activeIndices,
-                    fixedStep,
+                    fixedStep * mobility,
                 );
 
             this.lastProcessedCellCount =
@@ -610,6 +623,70 @@ export class WaterField {
         }
 
         return true;
+    }
+
+    /**
+     * Current global shallow-Water transport multiplier.
+     *
+     * Exposed read-only for validation/diagnostics. It never mutates Water.
+     */
+    public getCurrentShallowWaterMobility(): number {
+        return this.calculateCurrentShallowWaterMobility();
+    }
+
+    private calculateCurrentShallowWaterMobility(): number {
+        let representativeDepth = 0;
+
+        for (const index of this.activeIndices) {
+            representativeDepth =
+                Math.max(
+                    representativeDepth,
+                    this.depth[index],
+                );
+        }
+
+        const thinDepth =
+            this.definition.thinWaterDepth;
+
+        const fullDepth =
+            this.definition.fullMobilityDepth;
+
+        if (representativeDepth <= thinDepth) {
+            return this.definition
+                .thinWaterMinimumMobility;
+        }
+
+        if (representativeDepth >= fullDepth) {
+            return 1;
+        }
+
+        const normalized =
+            (
+                representativeDepth -
+                thinDepth
+            ) /
+            (
+                fullDepth -
+                thinDepth
+            );
+
+        const curved =
+            Math.pow(
+                normalized,
+                this.definition
+                    .shallowMobilityExponent,
+            );
+
+        return (
+            this.definition
+                .thinWaterMinimumMobility +
+            (
+                1 -
+                this.definition
+                    .thinWaterMinimumMobility
+            ) *
+            curved
+        );
     }
 
     // ---------------------------------------------------------------------

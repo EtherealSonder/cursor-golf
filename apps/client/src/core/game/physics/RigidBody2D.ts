@@ -89,6 +89,16 @@ export class RigidBody2D {
             momentOfInertia;
     }
 
+    /**
+     * Read-only access to the body's immutable tuning. This is useful for
+     * mechanism diagnostics/validation without exposing mutable rigid state.
+     */
+    public getDefinition():
+        Readonly<RigidBodyDefinition> {
+
+        return this.definition;
+    }
+
     public isStatic(): boolean {
 
         return (

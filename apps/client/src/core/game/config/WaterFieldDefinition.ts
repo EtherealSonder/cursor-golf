@@ -28,6 +28,18 @@ export interface WaterFieldDefinition {
     readonly activeVelocityThreshold: number;
 
     /**
+     * Phase 8B-4C shallow-Water mobility curve.
+     *
+     * Water below thinWaterDepth moves at thinWaterMinimumMobility.
+     * Mobility then rises smoothly toward 1.0 at fullMobilityDepth.
+     * This controls transport only and never deletes Water.
+     */
+    readonly thinWaterDepth: number;
+    readonly fullMobilityDepth: number;
+    readonly thinWaterMinimumMobility: number;
+    readonly shallowMobilityExponent: number;
+
+    /**
      * Fixed internal Water simulation step.
      */
     readonly simulationStepSeconds: number;
@@ -58,6 +70,15 @@ export const DEFAULT_WATER_FIELD_DEFINITION: WaterFieldDefinition = {
     activeDepthThreshold: 0.0005,
     activeVelocityThreshold: 0.05,
 
+    /*
+     * Sprinkler-scale Water begins as a very shallow film. Keep that film
+     * mobile, but deliberately slow, until repeated impacts build depth.
+     */
+    thinWaterDepth: 0.012,
+    fullMobilityDepth: 0.12,
+    thinWaterMinimumMobility: 0.08,
+    shallowMobilityExponent: 1.6,
+
     simulationStepSeconds: 1 / 60,
     maximumSubstepsPerFrame: 4,
     maximumFrameDeltaSeconds: 0.1,
@@ -75,6 +96,9 @@ export function validateWaterFieldDefinition(
         definition.velocityDamping,
         definition.activeDepthThreshold,
         definition.activeVelocityThreshold,
+        definition.thinWaterDepth,
+        definition.fullMobilityDepth,
+        definition.shallowMobilityExponent,
         definition.simulationStepSeconds,
         definition.maximumFrameDeltaSeconds,
     ];
@@ -91,6 +115,7 @@ export function validateWaterFieldDefinition(
         definition.minimumDepthDifference,
         definition.momentumAdvectionStrength,
         definition.minimumVelocity,
+        definition.thinWaterMinimumMobility,
     ];
 
     if (!nonNegativeFiniteValues.every((value: number): boolean =>
@@ -98,6 +123,25 @@ export function validateWaterFieldDefinition(
     )) {
         throw new Error(
             "WaterField non-negative tuning values must be finite numbers greater than or equal to 0.",
+        );
+    }
+
+
+    if (
+        definition.fullMobilityDepth <=
+        definition.thinWaterDepth
+    ) {
+        throw new Error(
+            "WaterField fullMobilityDepth must be greater than thinWaterDepth.",
+        );
+    }
+
+    if (
+        definition.thinWaterMinimumMobility < 0 ||
+        definition.thinWaterMinimumMobility > 1
+    ) {
+        throw new Error(
+            "WaterField thinWaterMinimumMobility must be between 0 and 1.",
         );
     }
 

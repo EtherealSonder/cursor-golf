@@ -15,6 +15,12 @@ export interface WaterDebugDefinition {
      */
     readonly showActiveCells: boolean;
 
+    /**
+     * Standing Water below this depth remains authoritative but is not painted
+     * as an obvious blue puddle by the development visualizer.
+     */
+    readonly minimumVisibleDepth: number;
+
     readonly depthAlphaMinimum: number;
     readonly depthAlphaMaximum: number;
     readonly activeCellAlpha: number;
@@ -55,8 +61,10 @@ export const DEFAULT_WATER_DEBUG_DEFINITION: WaterDebugDefinition = {
 
     showActiveCells: false,
 
-    depthAlphaMinimum: 0.28,
-    depthAlphaMaximum: 0.82,
+    minimumVisibleDepth: 0.003,
+
+    depthAlphaMinimum: 0.45,
+    depthAlphaMaximum: 0.90,
     activeCellAlpha: 0.06,
 
     velocityVectorScale: 0.035,
@@ -70,7 +78,7 @@ export const DEFAULT_WATER_DEBUG_DEFINITION: WaterDebugDefinition = {
      */
     refreshIntervalSeconds: 1 / 12,
 
-    createValidationDeposit: true,
+    createValidationDeposit: false,
 
     /*
      * Put the temporary puddle just left of the Ball. This keeps it inside
