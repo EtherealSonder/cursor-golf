@@ -138,6 +138,10 @@ import {
 } from "../debug/AirborneWaterWindValidation";
 
 import {
+    HosePhysicsValidation,
+} from "../debug/HosePhysicsValidation";
+
+import {
     WaterFieldVisualizer,
 } from "../debug/WaterFieldVisualizer";
 
@@ -188,6 +192,10 @@ import {
 import {
     Sprinkler,
 } from "../entities/mechanisms/Sprinkler";
+
+import {
+    HydrantHose,
+} from "../entities/mechanisms/HydrantHose";
 
 import {
     DynamicObstacle,
@@ -357,6 +365,10 @@ export class World {
     private readonly sprinklers:
         Sprinkler[] = [];
 
+    /** Phase 8B-10A fixed Hydrant with physical segmented Hose. */
+    private hydrantHose:
+        HydrantHose | null = null;
+
     private readonly surfaceSystem:
         SurfaceSystem;
 
@@ -433,6 +445,10 @@ export class World {
 
     private airborneWaterWindValidation:
         AirborneWaterWindValidation | null =
+        null;
+
+    private hosePhysicsValidation:
+        HosePhysicsValidation | null =
         null;
 
     private waterFieldVisualizer:
@@ -692,6 +708,8 @@ export class World {
 
         this.createAirborneWaterWindValidation();
 
+        this.createHosePhysicsValidation();
+
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
@@ -784,6 +802,8 @@ export class World {
         this.createAirborneWaterVisualizer();
 
         this.createSprinklerEntities();
+
+        this.createHydrantHoseEntity();
 
         this.unsubscribeFromBallImpacts =
             this.ball
@@ -1270,6 +1290,9 @@ export class World {
         this.airborneWaterWindValidation =
             null;
 
+        this.hosePhysicsValidation =
+            null;
+
         this.sprinklerValidation =
             null;
 
@@ -1389,6 +1412,9 @@ export class World {
 
         this.camera
             .resetToInitialPosition();
+
+        this.hydrantHose =
+            null;
 
         this.ball =
             null;
@@ -2276,6 +2302,54 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Phase 8B-10A Hydrant + Hose Physics
+    // -------------------------------------------------------
+
+    private createHosePhysicsValidation(): void {
+        if (this.hosePhysicsValidation) {
+            throw new Error(
+                "World Hose physics validation has already been created.",
+            );
+        }
+
+        this.hosePhysicsValidation =
+            new HosePhysicsValidation();
+
+        this.hosePhysicsValidation.run();
+    }
+
+    public getHosePhysicsValidationState() {
+        return this.hosePhysicsValidation
+            ?.getState() ??
+            null;
+    }
+
+    private createHydrantHoseEntity(): void {
+        if (this.hydrantHose) {
+            throw new Error(
+                "World Hydrant Hose entity has already been created.",
+            );
+        }
+
+        if (!this.ball) {
+            throw new Error(
+                "World requires Ball before creating the Hydrant Hose.",
+            );
+        }
+
+        this.hydrantHose =
+            new HydrantHose(
+                this.ball.getX() + 430,
+                this.ball.getY() + 170,
+                this.ball,
+            );
+
+        this.addEntity(
+            this.hydrantHose,
+        );
+    }
+
+    // -------------------------------------------------------
     // Entity Management
     // -------------------------------------------------------
 
@@ -2438,6 +2512,14 @@ export class World {
                     1,
                 );
             }
+        }
+
+        if (
+            entity ===
+            this.hydrantHose
+        ) {
+            this.hydrantHose =
+                null;
         }
 
         if (
