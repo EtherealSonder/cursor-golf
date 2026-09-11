@@ -2,6 +2,7 @@ import type { CourseBoundaryDefinition } from "./CourseBoundaryDefinition";
 import { DEFAULT_COURSE_BOUNDARY_DEFINITION } from "./CourseBoundaryDefinition";
 
 export interface HydrantHoseDefinition {
+    readonly hydrantCollisionRadius: number;
     readonly segmentCount: number;
     readonly segmentLength: number;
     readonly pointRadius: number;
@@ -37,6 +38,7 @@ export interface HydrantHoseDefinition {
 }
 
 export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
+    hydrantCollisionRadius: 18,
     /*
      * Phase 8B-10A.8:
      *
@@ -52,7 +54,7 @@ export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
      * adjacent rope points instead of independent point circles.
      */
     pointRadius: 5,
-    nozzleRadius: 7,
+    nozzleRadius: 8,
 
     fixedTimeStep: 1 / 120,
     maximumSubSteps: 6,
@@ -96,13 +98,13 @@ export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
     courseBoundary: DEFAULT_COURSE_BOUNDARY_DEFINITION,
 
     visual: {
-        hoseWidth: 10,
+        hoseWidth: 13,
         hoseColor: 0x403442,
         hoseAlpha: 0.92,
         hydrantRadius: 18,
         hydrantColor: 0xd9574f,
         nozzleLength: 20,
-        nozzleWidth: 8,
+        nozzleWidth: 11,
         nozzleColor: 0xd8bea8,
         debugPointRadius: 2.5,
         debugPointColor: 0xfff4d6,

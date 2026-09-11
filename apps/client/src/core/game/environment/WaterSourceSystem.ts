@@ -215,9 +215,7 @@ export class WaterSourceSystem {
                         source.getWindResponse(),
 
                     impactMomentumRetention:
-                        getDefaultImpactMomentumRetention(
-                            source.getType(),
-                        ),
+                        source.getImpactMomentumRetention(),
                 });
             }
         }

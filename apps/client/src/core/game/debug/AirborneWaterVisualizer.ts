@@ -16,6 +16,10 @@ import type {
     AirborneWaterPacket,
 } from "../environment/AirborneWaterPacket";
 
+import {
+    WaterSourceType,
+} from "../config/WaterSourceDefinition";
+
 /**
  * Phase 8B-4 presentation-only view of authoritative airborne Water packets.
  *
@@ -128,13 +132,32 @@ export class AirborneWaterVisualizer {
             ) *
             normalizedHeight;
 
+        const isDirectionalJet =
+            packet.getSourceType() ===
+            WaterSourceType.DirectionalJet;
+
+        const radiusMultiplier =
+            isDirectionalJet
+                ? this.definition
+                    .directionalJetRadiusMultiplier
+                : 1;
+
+        const streakWidthMultiplier =
+            isDirectionalJet
+                ? this.definition
+                    .directionalJetStreakWidthMultiplier
+                : 1;
+
         const radius =
-            this.definition.minimumRadius +
             (
-                this.definition.maximumRadius -
-                this.definition.minimumRadius
+                this.definition.minimumRadius +
+                (
+                    this.definition.maximumRadius -
+                    this.definition.minimumRadius
+                ) *
+                normalizedHeight
             ) *
-            normalizedHeight;
+            radiusMultiplier;
 
         /*
          * Draw the streak backwards from the authoritative ground-plane
@@ -166,7 +189,8 @@ export class AirborneWaterVisualizer {
             .stroke({
                 width:
                     this.definition
-                        .streakWidth,
+                        .streakWidth *
+                    streakWidthMultiplier,
                 color:
                     this.definition
                         .waterColor,

@@ -14,6 +14,13 @@ export interface AirborneWaterDebugDefinition {
     readonly streakLength: number;
     readonly streakWidth: number;
 
+    /**
+     * Presentation-only multipliers for high-volume DirectionalJet packets.
+     * Sprinkler packets continue using the baseline radius/streak width.
+     */
+    readonly directionalJetRadiusMultiplier: number;
+    readonly directionalJetStreakWidthMultiplier: number;
+
     /** Packet marker radius at ground level and at the visual height cap. */
     readonly minimumRadius: number;
     readonly maximumRadius: number;
@@ -43,6 +50,9 @@ export const DEFAULT_AIRBORNE_WATER_DEBUG_DEFINITION:
 
     streakLength: 15,
     streakWidth: 4,
+
+    directionalJetRadiusMultiplier: 1.6,
+    directionalJetStreakWidthMultiplier: 1.7,
 
     minimumRadius: 3.5,
     maximumRadius: 5.5,

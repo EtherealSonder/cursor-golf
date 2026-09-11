@@ -142,6 +142,46 @@ import {
 } from "../debug/HosePhysicsValidation";
 
 import {
+    HoseWaterSourceValidation,
+} from "../debug/HoseWaterSourceValidation";
+
+import {
+    HoseNozzleCouplingValidation,
+} from "../debug/HoseNozzleCouplingValidation";
+
+import {
+    HoseStreamValidation,
+} from "../debug/HoseStreamValidation";
+
+import {
+    HoseImpactMomentumValidation,
+} from "../debug/HoseImpactMomentumValidation";
+
+import {
+    HoseCombinedAcceptanceValidation,
+} from "../debug/HoseCombinedAcceptanceValidation";
+
+import {
+    HydrantPressureCycleValidation,
+} from "../debug/HydrantPressureCycleValidation";
+
+import {
+    HydrantDamageValidation,
+} from "../debug/HydrantDamageValidation";
+
+import {
+    HydrantHoseRuntimeValidation,
+} from "../debug/HydrantHoseRuntimeValidation";
+
+import {
+    HoseJetBallForceValidation,
+} from "../debug/HoseJetBallForceValidation";
+
+import {
+    HoseJetBallForceSystem,
+} from "../physics/water/HoseJetBallForceSystem";
+
+import {
     WaterFieldVisualizer,
 } from "../debug/WaterFieldVisualizer";
 
@@ -369,6 +409,15 @@ export class World {
     private hydrantHose:
         HydrantHose | null = null;
 
+    /** Phase 8B-12 continuous Hose jet -> Ball gameplay response. */
+    private hoseJetBallForceSystem:
+        HoseJetBallForceSystem | null =
+        null;
+
+    private hoseJetBallForceValidation:
+        HoseJetBallForceValidation | null =
+        null;
+
     private readonly surfaceSystem:
         SurfaceSystem;
 
@@ -449,6 +498,38 @@ export class World {
 
     private hosePhysicsValidation:
         HosePhysicsValidation | null =
+        null;
+
+    private hoseWaterSourceValidation:
+        HoseWaterSourceValidation | null =
+        null;
+
+    private hoseNozzleCouplingValidation:
+        HoseNozzleCouplingValidation | null =
+        null;
+
+    private hoseStreamValidation:
+        HoseStreamValidation | null =
+        null;
+
+    private hoseImpactMomentumValidation:
+        HoseImpactMomentumValidation | null =
+        null;
+
+    private hoseCombinedAcceptanceValidation:
+        HoseCombinedAcceptanceValidation | null =
+        null;
+
+    private hydrantPressureCycleValidation:
+        HydrantPressureCycleValidation | null =
+        null;
+
+    private hydrantDamageValidation:
+        HydrantDamageValidation | null =
+        null;
+
+    private hydrantHoseRuntimeValidation:
+        HydrantHoseRuntimeValidation | null =
         null;
 
     private waterFieldVisualizer:
@@ -710,6 +791,12 @@ export class World {
 
         this.createHosePhysicsValidation();
 
+        this.createHoseWaterSourceValidation();
+
+        this.createHoseStreamValidation();
+
+        this.createHoseImpactMomentumValidation();
+
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
@@ -804,6 +891,24 @@ export class World {
         this.createSprinklerEntities();
 
         this.createHydrantHoseEntity();
+
+        this.createHoseJetBallForceSystem();
+
+        this.createHoseJetBallForceValidation();
+
+        this.createHoseNozzleCouplingValidation();
+
+        /*
+         * Phase 8B-10B.6 acceptance was completed against the intentionally
+         * always-on 10B stream. 10C now owns source activation, so that old
+         * live acceptance is no longer run because its "always enabled"
+         * assertion is intentionally obsolete.
+         */
+        this.createHydrantPressureCycleValidation();
+
+        this.createHydrantDamageValidation();
+
+        this.createHydrantHoseRuntimeValidation();
 
         this.unsubscribeFromBallImpacts =
             this.ball
@@ -1075,6 +1180,31 @@ export class World {
         }
 
         /*
+         * Phase 8B-12:
+         * HydrantHose has now advanced rope/nozzle physics and synchronized
+         * its current pressure/source state. Apply the continuous jet impulse
+         * to Ball from that authoritative current-frame mechanism state.
+         *
+         * Ball itself appears earlier in the entity list, so position
+         * integration occurs on the following Ball physics frame. Velocity is
+         * updated immediately through Ball.applyImpulseAtWorldPoint().
+         */
+        this.hoseJetBallForceSystem
+            ?.update(
+                deltaTime,
+            );
+
+        /*
+         * Phase 8B-10D observes the production Hydrant/Hose only after the
+         * HydrantHose has advanced rope physics, pressure state, nozzle
+         * coupling and WaterSource enablement for this frame.
+         */
+        this.hydrantHoseRuntimeValidation
+            ?.update(
+                deltaTime,
+            );
+
+        /*
          * H2. Sample the Ball only after its authoritative physics update.
          * The trail is presentation-only and never feeds state back into Ball.
          */
@@ -1291,6 +1421,36 @@ export class World {
             null;
 
         this.hosePhysicsValidation =
+            null;
+
+        this.hoseWaterSourceValidation =
+            null;
+
+        this.hoseNozzleCouplingValidation =
+            null;
+
+        this.hoseStreamValidation =
+            null;
+
+        this.hoseImpactMomentumValidation =
+            null;
+
+        this.hoseCombinedAcceptanceValidation =
+            null;
+
+        this.hydrantPressureCycleValidation =
+            null;
+
+        this.hydrantDamageValidation =
+            null;
+
+        this.hoseJetBallForceSystem =
+            null;
+
+        this.hoseJetBallForceValidation =
+            null;
+
+        this.hydrantHoseRuntimeValidation =
             null;
 
         this.sprinklerValidation =
@@ -2324,6 +2484,313 @@ export class World {
             null;
     }
 
+    // -------------------------------------------------------
+    // Phase 8B-10B.2 Hose DirectionalJet Source Registration
+    // -------------------------------------------------------
+
+    private createHoseWaterSourceValidation():
+        void {
+
+        if (
+            this.hoseWaterSourceValidation
+        ) {
+            throw new Error(
+                "World Hose Water source validation has already been created.",
+            );
+        }
+
+        this.hoseWaterSourceValidation =
+            new HoseWaterSourceValidation();
+
+        this.hoseWaterSourceValidation
+            .run();
+    }
+
+    public getHoseWaterSourceValidationState() {
+        return this.hoseWaterSourceValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-10B.3 Dynamic Hose Nozzle Coupling Validation
+    // -------------------------------------------------------
+
+    private createHoseNozzleCouplingValidation():
+        void {
+
+        if (
+            this.hoseNozzleCouplingValidation
+        ) {
+            throw new Error(
+                "World Hose nozzle coupling validation has already been created.",
+            );
+        }
+
+        if (
+            !this.hydrantHose
+        ) {
+            throw new Error(
+                "World requires the Hydrant Hose before creating nozzle coupling validation.",
+            );
+        }
+
+        this.hoseNozzleCouplingValidation =
+            new HoseNozzleCouplingValidation(
+                this.hydrantHose,
+            );
+
+        this.hoseNozzleCouplingValidation
+            .run();
+    }
+
+    public getHoseNozzleCouplingValidationState() {
+        return this.hoseNozzleCouplingValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-10B.4 Coherent Hose Stream Validation
+    // -------------------------------------------------------
+
+    private createHoseStreamValidation():
+        void {
+
+        if (
+            this.hoseStreamValidation
+        ) {
+            throw new Error(
+                "World Hose stream validation has already been created.",
+            );
+        }
+
+        this.hoseStreamValidation =
+            new HoseStreamValidation();
+
+        this.hoseStreamValidation
+            .run();
+    }
+
+    public getHoseStreamValidationState() {
+        return this.hoseStreamValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-10B.5 Hose Impact Momentum Validation
+    // -------------------------------------------------------
+
+    private createHoseImpactMomentumValidation():
+        void {
+
+        if (
+            this.hoseImpactMomentumValidation
+        ) {
+            throw new Error(
+                "World Hose impact momentum validation has already been created.",
+            );
+        }
+
+        this.hoseImpactMomentumValidation =
+            new HoseImpactMomentumValidation();
+
+        this.hoseImpactMomentumValidation
+            .run();
+    }
+
+    public getHoseImpactMomentumValidationState() {
+        return this.hoseImpactMomentumValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-10B.6 Combined Hose Stream Acceptance
+    // -------------------------------------------------------
+
+    private createHoseCombinedAcceptanceValidation():
+        void {
+
+        if (
+            this.hoseCombinedAcceptanceValidation
+        ) {
+            throw new Error(
+                "World Hose combined acceptance validation has already been created.",
+            );
+        }
+
+        if (
+            !this.hydrantHose
+        ) {
+            throw new Error(
+                "World requires the Hydrant Hose before creating combined Hose acceptance validation.",
+            );
+        }
+
+        this.hoseCombinedAcceptanceValidation =
+            new HoseCombinedAcceptanceValidation(
+                this.hydrantHose,
+                this.airborneWaterSystem,
+                this.waterField,
+            );
+    }
+
+    public getHoseCombinedAcceptanceValidationState() {
+        return this.hoseCombinedAcceptanceValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-10C Hydrant Pressure Cycle Validation
+    // -------------------------------------------------------
+
+    private createHydrantPressureCycleValidation():
+        void {
+
+        if (
+            this.hydrantPressureCycleValidation
+        ) {
+            throw new Error(
+                "World Hydrant pressure cycle validation has already been created.",
+            );
+        }
+
+        this.hydrantPressureCycleValidation =
+            new HydrantPressureCycleValidation();
+
+        this.hydrantPressureCycleValidation
+            .run();
+    }
+
+    public getHydrantPressureCycleValidationState() {
+        return this.hydrantPressureCycleValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-11 Hydrant Damage Validation
+    // -------------------------------------------------------
+
+    private createHydrantDamageValidation():
+        void {
+
+        if (
+            this.hydrantDamageValidation
+        ) {
+            throw new Error(
+                "World Hydrant damage validation has already been created.",
+            );
+        }
+
+        this.hydrantDamageValidation =
+            new HydrantDamageValidation();
+    }
+
+    public getHydrantDamageValidationState() {
+        return this.hydrantDamageValidation
+            ?.getState() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-12 Hose Jet -> Ball Force
+    // -------------------------------------------------------
+
+    private createHoseJetBallForceSystem():
+        void {
+
+        if (
+            this.hoseJetBallForceSystem
+        ) {
+            throw new Error(
+                "World Hose jet Ball-force system has already been created.",
+            );
+        }
+
+        if (
+            !this.hydrantHose ||
+            !this.ball
+        ) {
+            throw new Error(
+                "World requires HydrantHose and Ball before creating Hose jet Ball-force response.",
+            );
+        }
+
+        this.hoseJetBallForceSystem =
+            new HoseJetBallForceSystem(
+                this.hydrantHose,
+                this.ball,
+            );
+    }
+
+    private createHoseJetBallForceValidation():
+        void {
+
+        if (
+            this.hoseJetBallForceValidation
+        ) {
+            throw new Error(
+                "World Hose jet Ball-force validation has already been created.",
+            );
+        }
+
+        this.hoseJetBallForceValidation =
+            new HoseJetBallForceValidation();
+    }
+
+    public getHoseJetBallForceValidationState() {
+        return this.hoseJetBallForceValidation
+            ?.getState() ??
+            null;
+    }
+
+    public getHoseJetBallForceSample() {
+        return this.hoseJetBallForceSystem
+            ?.getLastSample() ??
+            null;
+    }
+
+    // -------------------------------------------------------
+    // Phase 8B-10D Combined Hydrant + Hose Runtime Validation
+    // -------------------------------------------------------
+
+    private createHydrantHoseRuntimeValidation():
+        void {
+
+        if (
+            this.hydrantHoseRuntimeValidation
+        ) {
+            throw new Error(
+                "World Hydrant/Hose runtime validation has already been created.",
+            );
+        }
+
+        if (
+            !this.hydrantHose
+        ) {
+            throw new Error(
+                "World requires HydrantHose before creating runtime validation.",
+            );
+        }
+
+        this.hydrantHoseRuntimeValidation =
+            new HydrantHoseRuntimeValidation(
+                this.hydrantHose,
+                this.airborneWaterSystem,
+                this.waterField,
+            );
+    }
+
+    public getHydrantHoseRuntimeValidationState() {
+        return this.hydrantHoseRuntimeValidation
+            ?.getState() ??
+            null;
+    }
+
     private createHydrantHoseEntity(): void {
         if (this.hydrantHose) {
             throw new Error(
@@ -2339,9 +2806,11 @@ export class World {
 
         this.hydrantHose =
             new HydrantHose(
+                "hydrant-hose-1",
                 this.ball.getX() + 430,
                 this.ball.getY() + 170,
                 this.ball,
+                this.waterSourceSystem,
             );
 
         this.addEntity(

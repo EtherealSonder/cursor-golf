@@ -4,6 +4,7 @@ import type {
 } from "../config/WaterSourceDefinition";
 
 import {
+    getDefaultImpactMomentumRetention,
     validateWaterSourceDefinition,
 } from "../config/WaterSourceDefinition";
 
@@ -124,6 +125,23 @@ export class WaterSource {
 
     public getWindResponse(): number {
         return this.definition.windResponse;
+    }
+
+    /**
+     * Source-specific horizontal momentum retained when airborne Water
+     * deposits into WaterField.
+     *
+     * Definitions may override the generic source-type default. Hose uses
+     * this to retain 0.90 rather than the DirectionalJet default of 0.85.
+     */
+    public getImpactMomentumRetention(): number {
+        return (
+            this.definition
+                .impactMomentumRetention ??
+            getDefaultImpactMomentumRetention(
+                this.definition.type,
+            )
+        );
     }
 
     /**
