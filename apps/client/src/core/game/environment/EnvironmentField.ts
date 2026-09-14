@@ -72,9 +72,6 @@ export class EnvironmentField {
     private readonly moisture:
         Float32Array;
 
-    private readonly waterAmount:
-        Float32Array;
-
     private readonly trackedBurnIndices:
         number[] = [];
 
@@ -172,11 +169,6 @@ export class EnvironmentField {
                 this.cellCount,
             );
 
-        this.waterAmount =
-            new Float32Array(
-                this.cellCount,
-            );
-
         this.burnIndexTracked =
             new Uint8Array(
                 this.cellCount,
@@ -211,10 +203,6 @@ export class EnvironmentField {
         );
 
         this.moisture.fill(
-            0,
-        );
-
-        this.waterAmount.fill(
             0,
         );
 
@@ -624,9 +612,6 @@ export class EnvironmentField {
 
             moisture:
                 this.moisture[index],
-
-            waterAmount:
-                this.waterAmount[index],
         };
     }
 
@@ -764,6 +749,117 @@ export class EnvironmentField {
         return cell
             ? cell.moisture
             : 0;
+    }
+
+    /**
+     * Returns continuous ground moisture for a field index.
+     *
+     * The field remains lazily initialized from SurfaceSystem, so callers do
+     * not need to know whether a cell has been touched previously.
+     */
+    public getMoistureByIndex(
+        index: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount
+        ) {
+            return 0;
+        }
+
+        this.ensureInitialized(
+            index,
+        );
+
+        return this.moisture[
+            index
+        ];
+    }
+
+    /**
+     * Adds absorbed ground moisture to the cell containing a world point.
+     *
+     * Returns the amount actually accepted after maximum-moisture clamping.
+     * Phase 8C-1 exposes this as a controlled mutation primitive only. Actual
+     * standing-Water infiltration is introduced in Phase 8C-2.
+     */
+    public addMoistureAt(
+        worldX: number,
+        worldY: number,
+        amount: number,
+    ): number {
+        if (
+            !Number.isFinite(worldX) ||
+            !Number.isFinite(worldY) ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+        ) {
+            return 0;
+        }
+
+        const grid =
+            this.worldToGrid(
+                worldX,
+                worldY,
+            );
+
+        if (!grid) {
+            return 0;
+        }
+
+        return this.addMoistureByIndex(
+            this.gridToIndex(
+                grid.gridX,
+                grid.gridY,
+            ),
+            amount,
+        );
+    }
+
+    /**
+     * Index-based moisture mutation for sparse environmental interaction
+     * systems. No typed-array storage is exposed to consumers.
+     */
+    public addMoistureByIndex(
+        index: number,
+        amount: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+        ) {
+            return 0;
+        }
+
+        this.ensureInitialized(
+            index,
+        );
+
+        const previousMoisture =
+            this.moisture[index];
+
+        const nextMoisture =
+            Math.min(
+                this.definition.maximumMoisture,
+                previousMoisture + amount,
+            );
+
+        const acceptedAmount =
+            nextMoisture -
+            previousMoisture;
+
+        if (acceptedAmount <= 0) {
+            return 0;
+        }
+
+        this.moisture[index] =
+            nextMoisture;
+
+        return acceptedAmount;
     }
 
     public getAverageMoistureInRadius(

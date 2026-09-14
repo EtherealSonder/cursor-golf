@@ -135,34 +135,6 @@ export class FireVfxTextureFactory {
             );
         }
 
-        console.log(
-            "FIRE-VFX-2B no-gradient materials ready.",
-            {
-                mainHot:
-                    "fireGlowRound",
-
-                mainBody:
-                    "fireGlowSoft",
-
-                mainCool:
-                    "fireGlowSoft",
-
-                detailHot:
-                    detail.hot.length,
-
-                detailBody:
-                    detail.body.length,
-
-                detailCool:
-                    detail.cool.length,
-
-                detailChance:
-                    material.detailParticleChance,
-
-                generatedOutputSize:
-                    material.outputSize,
-            },
-        );
 
         return {
             main,

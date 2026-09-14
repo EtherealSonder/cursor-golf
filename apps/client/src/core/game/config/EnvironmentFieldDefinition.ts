@@ -20,7 +20,6 @@ export interface EnvironmentFieldDefinition {
     readonly maximumHeat: number;
     readonly maximumBurnAmount: number;
     readonly maximumMoisture: number;
-    readonly maximumWaterAmount: number;
 
     readonly minimumTrackedBurnAmount: number;
 
@@ -90,7 +89,6 @@ export const DEFAULT_ENVIRONMENT_FIELD_DEFINITION:
     maximumHeat: 1,
     maximumBurnAmount: 1,
     maximumMoisture: 1,
-    maximumWaterAmount: 1,
 
     minimumTrackedBurnAmount: 0.025,
 
@@ -161,7 +159,6 @@ export function validateEnvironmentFieldDefinition(
         ["maximumHeat", definition.maximumHeat],
         ["maximumBurnAmount", definition.maximumBurnAmount],
         ["maximumMoisture", definition.maximumMoisture],
-        ["maximumWaterAmount", definition.maximumWaterAmount],
     ];
 
     for (const [name, value] of positiveMaximums) {

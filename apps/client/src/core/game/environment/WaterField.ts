@@ -69,6 +69,7 @@ export class WaterField {
 
     /** Sparse registry of cells that currently contain any Water. */
     private readonly trackedWaterFlags: Uint8Array;
+    private readonly trackedWaterPositions: Int32Array;
     private trackedWaterIndices: number[] = [];
 
     /** Number of cells actually offered to the solver on the last fixed step. */
@@ -174,6 +175,15 @@ export class WaterField {
                 this.cellCount,
             );
 
+        this.trackedWaterPositions =
+            new Int32Array(
+                this.cellCount,
+            );
+
+        this.trackedWaterPositions.fill(
+            -1,
+        );
+
         this.flowSolver =
             new WaterFlowSolver(
                 this.columnCount,
@@ -216,6 +226,10 @@ export class WaterField {
 
         this.trackedWaterFlags.fill(
             0,
+        );
+
+        this.trackedWaterPositions.fill(
+            -1,
         );
 
         this.activeIndices.length =
@@ -536,6 +550,121 @@ export class WaterField {
         );
 
         return acceptedAmount;
+    }
+
+    /**
+     * Removes standing Water from the cell containing the supplied world
+     * point. Returns the amount actually removed.
+     *
+     * This is the authoritative Water sink introduced for Phase 8C. External
+     * systems never mutate the WaterField storage arrays directly.
+     */
+    public removeWater(
+        worldX: number,
+        worldY: number,
+        amount: number,
+    ): number {
+        if (
+            !Number.isFinite(worldX) ||
+            !Number.isFinite(worldY) ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+        ) {
+            return 0;
+        }
+
+        const gridPosition =
+            this.worldToGrid(
+                worldX,
+                worldY,
+            );
+
+        if (!gridPosition) {
+            return 0;
+        }
+
+        return this.removeWaterByIndex(
+            this.gridToIndex(
+                gridPosition.gridX,
+                gridPosition.gridY,
+            ),
+            amount,
+        );
+    }
+
+    /**
+     * Index-based standing-Water sink for sparse interaction systems.
+     *
+     * Removal preserves WaterField accounting, clears meaningless velocity
+     * when a cell becomes dry, maintains sparse Water membership, and wakes
+     * the local flow neighbourhood so the solver can respond to the changed
+     * depth on the next Water step.
+     */
+    public removeWaterByIndex(
+        index: number,
+        amount: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+        ) {
+            return 0;
+        }
+
+        const previousDepth =
+            this.depth[index];
+
+        if (previousDepth <= 0) {
+            return 0;
+        }
+
+        const removedAmount =
+            Math.min(
+                previousDepth,
+                amount,
+            );
+
+        const nextDepth =
+            Math.max(
+                0,
+                previousDepth - removedAmount,
+            );
+
+        this.depth[index] =
+            nextDepth;
+
+        this.totalWaterAmount =
+            Math.max(
+                0,
+                this.totalWaterAmount - removedAmount,
+            );
+
+        if (nextDepth <= 0) {
+            this.depth[index] = 0;
+            this.velocityX[index] = 0;
+            this.velocityY[index] = 0;
+
+            this.nonEmptyCellCount =
+                Math.max(
+                    0,
+                    this.nonEmptyCellCount - 1,
+                );
+
+            this.untrackWaterIndex(
+                index,
+            );
+        }
+
+        this.activateIndexAndCardinalNeighbors(
+            index,
+            this.activeFlags,
+            this.activeIndices,
+        );
+
+        return removedAmount;
     }
 
     /**
@@ -1349,9 +1478,54 @@ export class WaterField {
         ] =
             1;
 
+        this.trackedWaterPositions[
+            index
+        ] =
+            this.trackedWaterIndices.length;
+
         this.trackedWaterIndices.push(
             index,
         );
+    }
+
+    private untrackWaterIndex(
+        index: number,
+    ): void {
+        if (
+            this.trackedWaterFlags[index] === 0
+        ) {
+            return;
+        }
+
+        const position =
+            this.trackedWaterPositions[index];
+
+        const lastPosition =
+            this.trackedWaterIndices.length - 1;
+
+        const lastIndex =
+            this.trackedWaterIndices[lastPosition];
+
+        if (
+            position >= 0 &&
+            position <= lastPosition
+        ) {
+            if (position !== lastPosition) {
+                this.trackedWaterIndices[position] =
+                    lastIndex;
+
+                this.trackedWaterPositions[lastIndex] =
+                    position;
+            }
+
+            this.trackedWaterIndices.pop();
+        }
+
+        this.trackedWaterFlags[index] =
+            0;
+
+        this.trackedWaterPositions[index] =
+            -1;
     }
 
     private rebuildTrackedWaterCells():
@@ -1389,6 +1563,11 @@ export class WaterField {
                 ] =
                     0;
 
+                this.trackedWaterPositions[
+                    index
+                ] =
+                    -1;
+
                 continue;
             }
 
@@ -1396,6 +1575,11 @@ export class WaterField {
                 writeIndex
             ] =
                 index;
+
+            this.trackedWaterPositions[
+                index
+            ] =
+                writeIndex;
 
             writeIndex +=
                 1;

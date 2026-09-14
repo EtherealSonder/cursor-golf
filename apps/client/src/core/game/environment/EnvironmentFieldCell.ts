@@ -16,5 +16,4 @@ export interface EnvironmentFieldCell {
     readonly heat: number;
     readonly burnAmount: number;
     readonly moisture: number;
-    readonly waterAmount: number;
 }
