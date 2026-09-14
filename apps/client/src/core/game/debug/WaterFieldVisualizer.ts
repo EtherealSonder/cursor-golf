@@ -47,12 +47,6 @@ export class WaterFieldVisualizer {
         this.graphics.visible =
             definition.enabled;
 
-        /*
-         * Keep the debug field over the course surface while normal gameplay
-         * entities remain free to render above it.
-         */
-        this.graphics.zIndex =
-            2;
     }
 
     public getGraphics():

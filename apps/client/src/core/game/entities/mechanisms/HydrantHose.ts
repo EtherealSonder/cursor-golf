@@ -39,8 +39,16 @@ import {
 } from "../../physics/rope/HoseBallCollision";
 
 import {
+    HydrantBallCollision,
+} from "../../physics/HydrantBallCollision";
+
+import {
     HoseGraphicsRenderer,
 } from "./HoseGraphicsRenderer";
+
+import {
+    HydrantSpriteRenderer,
+} from "./HydrantSpriteRenderer";
 
 import {
     HosePressurePulseRenderer,
@@ -61,6 +69,10 @@ import {
 import type {
     HydrantDamageDefinition,
 } from "../../config/HydrantDamageDefinition";
+
+import {
+    HydrantDamageState,
+} from "../../config/HydrantDamageState";
 
 import {
     HydrantDamageController,
@@ -98,8 +110,14 @@ export class HydrantHose extends Entity {
     private readonly collision:
         HoseBallCollision;
 
+    private readonly hydrantBallCollision:
+        HydrantBallCollision;
+
     private readonly renderer:
         HoseGraphicsRenderer;
+
+    private readonly hydrantSpriteRenderer:
+        HydrantSpriteRenderer;
 
     private readonly pressurePulseRenderer:
         HosePressurePulseRenderer;
@@ -119,9 +137,6 @@ export class HydrantHose extends Entity {
 
     private readonly burstWaterEmitter:
         HydrantBurstWaterEmitter;
-
-    private hydrantBallContact =
-        false;
 
     constructor(
         private readonly waterSourceId:
@@ -193,8 +208,18 @@ export class HydrantHose extends Entity {
                 definition,
             );
 
+        this.hydrantBallCollision =
+            new HydrantBallCollision(
+                definition,
+            );
+
         this.renderer =
             new HoseGraphicsRenderer(
+                definition,
+            );
+
+        this.hydrantSpriteRenderer =
+            new HydrantSpriteRenderer(
                 definition,
             );
 
@@ -203,6 +228,16 @@ export class HydrantHose extends Entity {
 
         this.nozzlePreSprayRenderer =
             new HoseNozzlePreSprayRenderer();
+    }
+
+
+    /**
+     * Airborne presentation is exposed separately so World can reparent it
+     * above gameplay actors without moving the physical Hydrant/Hose body.
+     */
+    public getNozzlePreSprayGraphics() {
+        return this.nozzlePreSprayRenderer
+            .getGraphics();
     }
 
     protected onInitialize():
@@ -219,6 +254,11 @@ export class HydrantHose extends Entity {
         );
 
         this.container.addChild(
+            this.hydrantSpriteRenderer
+                .getSprite(),
+        );
+
+        this.container.addChild(
             this.nozzlePreSprayRenderer
                 .getGraphics(),
         );
@@ -226,6 +266,8 @@ export class HydrantHose extends Entity {
         this.renderer.redraw(
             this.rope,
         );
+
+        this.synchronizeHydrantSprite();
 
         this.pressurePulseRenderer
             .reset();
@@ -261,7 +303,34 @@ export class HydrantHose extends Entity {
                 deltaTime,
             );
 
-        this.evaluateHydrantBallImpact();
+        const hydrantAnchor =
+            this.getAnchorPosition();
+
+        const hydrantCollision =
+            this.hydrantBallCollision
+                .resolve(
+                    this.ball,
+                    hydrantAnchor.x,
+                    hydrantAnchor.y,
+                );
+
+        /*
+         * One physical contact can advance at most one damage state.
+         * Weak contacts are still resolved physically but do not accumulate
+         * hidden damage.
+         */
+        if (
+            hydrantCollision
+                .enteredContact &&
+            hydrantCollision
+                .impactNormalSpeed >
+            0
+        ) {
+            this.applyBallImpact(
+                hydrantCollision
+                    .impactNormalSpeed,
+            );
+        }
 
         /*
          * Phase 8B-10C:
@@ -278,6 +347,8 @@ export class HydrantHose extends Entity {
         this.renderer.redraw(
             this.rope,
         );
+
+        this.synchronizeHydrantSprite();
 
         this.pressurePulseRenderer
             .redraw(
@@ -315,6 +386,9 @@ export class HydrantHose extends Entity {
         this.pressurePulseRenderer
             .destroy();
 
+        this.hydrantSpriteRenderer
+            .destroy();
+
         this.renderer.destroy();
 
         this.container.destroy({
@@ -347,14 +421,19 @@ export class HydrantHose extends Entity {
         this.burstWaterEmitter
             .reset();
 
-        this.hydrantBallContact =
-            false;
+        this.hydrantBallCollision
+            .reset();
+
+        this.hydrantSpriteRenderer
+            .reset();
 
         this.synchronizeWaterEnabledState();
 
         this.renderer.redraw(
             this.rope,
         );
+
+        this.synchronizeHydrantSprite();
 
         this.pressurePulseRenderer
             .reset();
@@ -498,18 +577,26 @@ export class HydrantHose extends Entity {
     }
 
     public applyBallImpact(
-        impactSpeed:
+        impactNormalSpeed:
             number,
 
-        ballMass:
+        _legacyBallMass?:
             number,
     ): HydrantImpactResult {
         const result =
             this.damageController
                 .applyImpact(
-                    impactSpeed,
-                    ballMass,
+                    impactNormalSpeed,
                 );
+
+        if (
+            result.stateChanged
+        ) {
+            this.hydrantSpriteRenderer
+                .setDamageState(
+                    result.state,
+                );
+        }
 
         if (
             result.destroyed
@@ -525,10 +612,10 @@ export class HydrantHose extends Entity {
         return this.damageController;
     }
 
-    public getDurability():
-        number {
+    public getDamageState():
+        HydrantDamageState {
         return this.damageController
-            .getDurability();
+            .getState();
     }
 
     public getDurabilityRatio():
@@ -549,6 +636,11 @@ export class HydrantHose extends Entity {
         this.pressureController
             .break();
 
+        this.hydrantSpriteRenderer
+            .setDamageState(
+                HydrantDamageState.Broken,
+            );
+
         this.synchronizeWaterEnabledState();
 
         const anchor =
@@ -560,70 +652,6 @@ export class HydrantHose extends Entity {
                 anchor.y,
                 `${this.waterSourceId}-burst`,
             );
-    }
-
-    private evaluateHydrantBallImpact():
-        void {
-        if (
-            this.pressureController
-                .isBroken()
-        ) {
-            this.hydrantBallContact =
-                false;
-
-            return;
-        }
-
-        const anchor =
-            this.getAnchorPosition();
-
-        const deltaX =
-            this.ball.getX() -
-            anchor.x;
-
-        const deltaY =
-            this.ball.getY() -
-            anchor.y;
-
-        const combinedRadius =
-            this.definition
-                .hydrantCollisionRadius +
-            this.ball.getRadius();
-
-        const distanceSquared =
-            deltaX * deltaX +
-            deltaY * deltaY;
-
-        const overlapping =
-            distanceSquared <=
-            combinedRadius *
-            combinedRadius;
-
-        /*
-         * Damage is evaluated only when the Ball enters the Hydrant body.
-         * This prevents one physical contact from becoming many frame-based
-         * damage events.
-         */
-        if (
-            overlapping &&
-            !this.hydrantBallContact
-        ) {
-            const speed =
-                Math.hypot(
-                    this.ball
-                        .getVelocityX(),
-                    this.ball
-                        .getVelocityY(),
-                );
-
-            this.applyBallImpact(
-                speed,
-                this.ball.getMass(),
-            );
-        }
-
-        this.hydrantBallContact =
-            overlapping;
     }
 
     private registerWaterSource():
@@ -706,6 +734,25 @@ export class HydrantHose extends Entity {
             this.pressureController
                 .isWaterEmissionActive(),
         );
+    }
+
+    private synchronizeHydrantSprite():
+        void {
+
+        const anchor =
+            this.getAnchorPosition();
+
+        this.hydrantSpriteRenderer
+            .setPosition(
+                anchor.x,
+                anchor.y,
+            );
+
+        this.hydrantSpriteRenderer
+            .setDamageState(
+                this.damageController
+                    .getState(),
+            );
     }
 
     private unregisterWaterSource():

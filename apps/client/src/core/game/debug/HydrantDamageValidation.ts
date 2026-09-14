@@ -3,18 +3,24 @@ import {
 } from "../config/HydrantDamageDefinition";
 
 import {
+    HydrantDamageState,
+} from "../config/HydrantDamageState";
+
+import {
     HydrantDamageController,
 } from "../entities/mechanisms/HydrantDamageController";
 
 export interface HydrantDamageValidationState {
-    readonly weakImpactIgnoredPassed: boolean;
-    readonly moderateImpactDamagesPassed: boolean;
-    readonly strongImpactDamagesMorePassed: boolean;
+    readonly initialStateNormalPassed: boolean;
+    readonly weakNormalImpactIgnoredPassed: boolean;
+    readonly repeatedWeakHitsDoNotAccumulatePassed: boolean;
+    readonly qualifyingNormalImpactDamagesPassed: boolean;
+    readonly normalCannotSkipDirectlyToBrokenPassed: boolean;
     readonly cooldownPassed: boolean;
-    readonly repeatedStrongImpactsDestroyPassed: boolean;
-    readonly durabilityBoundPassed: boolean;
-    readonly brokenTerminalPassed: boolean;
-    readonly resetPassed: boolean;
+    readonly weakDamagedImpactIgnoredPassed: boolean;
+    readonly qualifyingDamagedImpactBreaksPassed: boolean;
+    readonly brokenStateTerminalPassed: boolean;
+    readonly resetRestoresNormalPassed: boolean;
     readonly passed: boolean;
 }
 
@@ -42,161 +48,193 @@ export class HydrantDamageValidation {
                 definition,
             );
 
+        const initialStateNormalPassed =
+            controller.getState() ===
+            HydrantDamageState.Normal &&
+            controller.getCooldownRemaining() ===
+            0;
+
+        const weakNormalSpeed =
+            definition
+                .normalToDamagedImpactSpeed *
+            0.75;
+
         const weak =
             controller.applyImpact(
-                definition.minimumImpactSpeed *
-                    0.5,
-                1,
+                weakNormalSpeed,
             );
 
-        const weakImpactIgnoredPassed =
+        const weakNormalImpactIgnoredPassed =
             !weak.accepted &&
-            weak.damage === 0 &&
-            controller.getDurability() ===
-                definition.maxDurability;
-
-        /*
-         * These speeds deliberately sit above both the speed and energy
-         * thresholds for a unit-mass validation body.
-         */
-        const moderateSpeed =
-            Math.max(
-                definition.minimumImpactSpeed +
-                    40,
-                Math.sqrt(
-                    definition.minimumImpactEnergy *
-                    3,
-                ),
-            );
-
-        const moderate =
-            controller.applyImpact(
-                moderateSpeed,
-                1,
-            );
-
-        const moderateImpactDamagesPassed =
-            moderate.accepted &&
-            moderate.damage > 0 &&
-            moderate.remainingDurability <
-                definition.maxDurability;
-
-        controller.update(
-            definition.impactCooldown,
-        );
-
-        const strong =
-            controller.applyImpact(
-                moderateSpeed * 1.75,
-                1,
-            );
-
-        const strongImpactDamagesMorePassed =
-            strong.accepted &&
-            strong.damage >
-                moderate.damage;
-
-        const immediateRepeat =
-            controller.applyImpact(
-                moderateSpeed * 1.75,
-                1,
-            );
-
-        const cooldownPassed =
-            !immediateRepeat.accepted &&
-            immediateRepeat.damage === 0;
-
-        controller.reset();
-
-        let destroyed =
-            false;
+            !weak.stateChanged &&
+            controller.getState() ===
+            HydrantDamageState.Normal;
 
         for (
             let index = 0;
-            index < 4 &&
-            !destroyed;
+            index < 100;
             index += 1
         ) {
-            const result =
-                controller.applyImpact(
-                    moderateSpeed * 2,
-                    1,
-                );
-
-            destroyed =
-                result.destroyed;
-
-            controller.update(
-                definition.impactCooldown,
+            controller.applyImpact(
+                weakNormalSpeed,
             );
         }
 
-        const repeatedStrongImpactsDestroyPassed =
-            destroyed &&
-            controller.isBroken();
+        const repeatedWeakHitsDoNotAccumulatePassed =
+            controller.getState() ===
+            HydrantDamageState.Normal &&
+            controller.getCooldownRemaining() ===
+            0;
 
-        const durabilityBoundPassed =
-            controller.getDurability() >= 0;
+        const extremelyStrongFirstImpact =
+            controller.applyImpact(
+                definition
+                    .damagedToBrokenImpactSpeed *
+                3,
+            );
 
-        const durabilityBefore =
-            controller.getDurability();
+        const qualifyingNormalImpactDamagesPassed =
+            extremelyStrongFirstImpact
+                .accepted &&
+            extremelyStrongFirstImpact
+                .stateChanged &&
+            controller.getState() ===
+            HydrantDamageState.Damaged;
+
+        const normalCannotSkipDirectlyToBrokenPassed =
+            controller.getState() !==
+            HydrantDamageState.Broken;
+
+        const immediateSecondImpact =
+            controller.applyImpact(
+                definition
+                    .damagedToBrokenImpactSpeed *
+                2,
+            );
+
+        const cooldownPassed =
+            !immediateSecondImpact
+                .accepted &&
+            controller.getState() ===
+            HydrantDamageState.Damaged;
+
+        controller.update(
+            definition
+                .impactCooldown,
+        );
+
+        const weakDamaged =
+            controller.applyImpact(
+                definition
+                    .damagedToBrokenImpactSpeed *
+                0.75,
+            );
+
+        const weakDamagedImpactIgnoredPassed =
+            !weakDamaged.accepted &&
+            controller.getState() ===
+            HydrantDamageState.Damaged;
+
+        for (
+            let index = 0;
+            index < 50;
+            index += 1
+        ) {
+            controller.applyImpact(
+                definition
+                    .damagedToBrokenImpactSpeed *
+                0.75,
+            );
+        }
+
+        const qualifyingBreak =
+            controller.applyImpact(
+                definition
+                    .damagedToBrokenImpactSpeed,
+            );
+
+        const qualifyingDamagedImpactBreaksPassed =
+            qualifyingBreak.accepted &&
+            qualifyingBreak.destroyed &&
+            controller.getState() ===
+            HydrantDamageState.Broken;
+
+        controller.update(
+            definition
+                .impactCooldown,
+        );
 
         const postBreak =
             controller.applyImpact(
-                moderateSpeed * 3,
-                1,
+                definition
+                    .damagedToBrokenImpactSpeed *
+                4,
             );
 
-        const brokenTerminalPassed =
+        const brokenStateTerminalPassed =
             !postBreak.accepted &&
-            controller.getDurability() ===
-                durabilityBefore;
+            !postBreak.stateChanged &&
+            controller.getState() ===
+            HydrantDamageState.Broken;
 
         controller.reset();
 
-        const resetPassed =
-            !controller.isBroken() &&
-            controller.getDurability() ===
-                definition.maxDurability &&
+        const resetRestoresNormalPassed =
+            controller.getState() ===
+            HydrantDamageState.Normal &&
             controller.getCooldownRemaining() ===
-                0;
+            0;
 
         const passed =
-            weakImpactIgnoredPassed &&
-            moderateImpactDamagesPassed &&
-            strongImpactDamagesMorePassed &&
+            initialStateNormalPassed &&
+            weakNormalImpactIgnoredPassed &&
+            repeatedWeakHitsDoNotAccumulatePassed &&
+            qualifyingNormalImpactDamagesPassed &&
+            normalCannotSkipDirectlyToBrokenPassed &&
             cooldownPassed &&
-            repeatedStrongImpactsDestroyPassed &&
-            durabilityBoundPassed &&
-            brokenTerminalPassed &&
-            resetPassed;
+            weakDamagedImpactIgnoredPassed &&
+            qualifyingDamagedImpactBreaksPassed &&
+            brokenStateTerminalPassed &&
+            resetRestoresNormalPassed;
 
         const state = {
-            weakImpactIgnoredPassed,
-            moderateImpactDamagesPassed,
-            strongImpactDamagesMorePassed,
+            initialStateNormalPassed,
+            weakNormalImpactIgnoredPassed,
+            repeatedWeakHitsDoNotAccumulatePassed,
+            qualifyingNormalImpactDamagesPassed,
+            normalCannotSkipDirectlyToBrokenPassed,
             cooldownPassed,
-            repeatedStrongImpactsDestroyPassed,
-            durabilityBoundPassed,
-            brokenTerminalPassed,
-            resetPassed,
+            weakDamagedImpactIgnoredPassed,
+            qualifyingDamagedImpactBreaksPassed,
+            brokenStateTerminalPassed,
+            resetRestoresNormalPassed,
             passed,
         };
 
         console.group(
-            "Phase 8B-11 Hydrant Damage Validation",
+            "Phase 8B-14A Hydrant Discrete Damage Validation",
         );
 
         console.log(
-            "Weak Impact",
-            { weakImpactIgnoredPassed },
+            "Initial State",
+            { initialStateNormalPassed },
         );
 
         console.log(
-            "Damage Scaling",
+            "Weak Impacts",
             {
-                moderateImpactDamagesPassed,
-                strongImpactDamagesMorePassed,
+                weakNormalImpactIgnoredPassed,
+                repeatedWeakHitsDoNotAccumulatePassed,
+                weakDamagedImpactIgnoredPassed,
+            },
+        );
+
+        console.log(
+            "State Progression",
+            {
+                qualifyingNormalImpactDamagesPassed,
+                normalCannotSkipDirectlyToBrokenPassed,
+                qualifyingDamagedImpactBreaksPassed,
             },
         );
 
@@ -206,21 +244,11 @@ export class HydrantDamageValidation {
         );
 
         console.log(
-            "Destruction",
+            "Terminal / Reset",
             {
-                repeatedStrongImpactsDestroyPassed,
-                durabilityBoundPassed,
+                brokenStateTerminalPassed,
+                resetRestoresNormalPassed,
             },
-        );
-
-        console.log(
-            "Broken State",
-            { brokenTerminalPassed },
-        );
-
-        console.log(
-            "Reset",
-            { resetPassed },
         );
 
         console.log(

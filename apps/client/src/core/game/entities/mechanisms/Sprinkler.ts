@@ -1,5 +1,3 @@
-import { Graphics } from "pixi.js";
-
 import {
     DEFAULT_SPRINKLER_DEFINITION,
     validateSprinklerDefinition,
@@ -30,6 +28,7 @@ import {
 } from "../../physics/RigidBody2D";
 
 import { Entity } from "../Entity";
+import { SprinklerSpriteRenderer } from "./SprinklerSpriteRenderer";
 
 export interface SprinklerNozzleWorldState {
     readonly nozzleIndex: number;
@@ -46,7 +45,7 @@ export interface SprinklerNozzleWorldState {
  * so Ball impacts immediately affect subsequent Water emissions.
  */
 export class Sprinkler extends Entity {
-    private graphics: Graphics | null = null;
+    private spriteRenderer: SprinklerSpriteRenderer | null = null;
     private emissionAccumulator = 0;
     private emissionSequence = 0;
     private enabled = true;
@@ -257,11 +256,15 @@ export class Sprinkler extends Entity {
     }
 
     protected onInitialize(): void {
-        this.graphics = new Graphics();
-        this.drawTemporaryGraphics();
+        this.spriteRenderer =
+            new SprinklerSpriteRenderer(
+                this.definition,
+            );
+
         this.container.rotation = this.rotationRadians;
-        this.container.zIndex = 6;
-        this.container.addChild(this.graphics);
+        this.container.addChild(
+            this.spriteRenderer.getSprite(),
+        );
 
         this.resolveCourseBoundaryCollision();
     }
@@ -316,9 +319,9 @@ export class Sprinkler extends Entity {
     }
 
     protected onDestroy(): void {
-        this.graphics?.destroy();
-        this.graphics = null;
-        this.container.destroy({ children: true });
+        this.spriteRenderer?.destroy();
+        this.spriteRenderer = null;
+        this.container.destroy({ children: false });
     }
 
     private resolveCourseBoundaryCollision():
@@ -454,53 +457,4 @@ export class Sprinkler extends Entity {
         return normalized;
     }
 
-    private drawTemporaryGraphics(): void {
-        if (!this.graphics) {
-            return;
-        }
-
-        this.graphics.clear();
-        this.graphics.circle(0, 0, this.definition.bodyRadius);
-        this.graphics.fill(this.definition.bodyFillColor);
-        this.graphics.stroke({
-            width: this.definition.bodyOutlineWidth,
-            color: this.definition.bodyOutlineColor,
-        });
-
-        for (let nozzleIndex = 0; nozzleIndex < this.definition.nozzleCount; nozzleIndex += 1) {
-            const angle = nozzleIndex * Math.PI / 2;
-            const x = Math.cos(angle) * this.definition.nozzleOffset;
-            const y = Math.sin(angle) * this.definition.nozzleOffset;
-
-            this.graphics.circle(x, y, this.definition.nozzleRadius);
-            this.graphics.fill(this.definition.nozzleFillColor);
-
-            // Phase 8B-4 temporary nozzle stem makes each stream origin clear.
-            const stemEndX =
-                Math.cos(angle) *
-                (this.definition.nozzleOffset + 7);
-
-            const stemEndY =
-                Math.sin(angle) *
-                (this.definition.nozzleOffset + 7);
-
-            this.graphics.moveTo(x, y);
-            this.graphics.lineTo(
-                stemEndX,
-                stemEndY,
-            );
-            this.graphics.stroke({
-                width: 3,
-                color: this.definition.nozzleFillColor,
-            });
-        }
-
-        // Small orientation tick for the local +X / nozzle-0 direction.
-        this.graphics.moveTo(this.definition.bodyRadius * 0.45, 0);
-        this.graphics.lineTo(this.definition.bodyRadius * 0.9, 0);
-        this.graphics.stroke({
-            width: 2,
-            color: this.definition.bodyOutlineColor,
-        });
-    }
 }

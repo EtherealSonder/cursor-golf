@@ -317,6 +317,14 @@ import {
     AssetLoader,
 } from "../../rendering/AssetLoader";
 
+import {
+    WorldRenderLayer,
+} from "../../rendering/WorldRenderLayer";
+
+import {
+    WorldPresentationLayers,
+} from "../../rendering/WorldPresentationLayers";
+
 export class World {
 
     private readonly app:
@@ -324,6 +332,9 @@ export class World {
 
     private readonly worldContainer:
         Container;
+
+    private readonly presentationLayers:
+        WorldPresentationLayers;
 
     private readonly screenOverlayContainer:
         Container;
@@ -636,6 +647,11 @@ export class World {
         this.worldContainer =
             new Container();
 
+        this.presentationLayers =
+            new WorldPresentationLayers(
+                this.worldContainer,
+            );
+
         this.screenOverlayContainer =
             new Container();
 
@@ -717,14 +733,10 @@ export class World {
         void {
 
         /*
-         * G1 render-order invariant.
-         *
-         * Explicit zIndex values are used for interaction-critical entities so
-         * later-created Fans or Fire Tubes can never cover the Golf Club.
+         * Phase 8B-14B: WorldPresentationLayers now owns deterministic
+         * world-space ordering. Entity creation order is no longer global
+         * presentation order.
          */
-        this.worldContainer.sortableChildren =
-            true;
-
         this.app.stage.addChild(
             this.worldContainer,
         );
@@ -880,6 +892,7 @@ export class World {
 
         this.addEntity(
             this.ball,
+            WorldRenderLayer.GameplayActors,
         );
 
         this.createBallTrail();
@@ -938,21 +951,8 @@ export class World {
 
         this.addEntity(
             this.hole,
+            WorldRenderLayer.GroundState,
         );
-
-        const ballDisplayIndex =
-            this.worldContainer
-                .getChildIndex(
-                    this.ball
-                        .getContainer(),
-                );
-
-        this.worldContainer
-            .setChildIndex(
-                this.hole
-                    .getContainer(),
-                ballDisplayIndex,
-            );
 
         this.createFireTubeEntities();
 
@@ -985,18 +985,44 @@ export class World {
             );
         }
 
-        const ballWorldIndex =
-            this.worldContainer
-                .getChildIndex(
-                    this.ball
-                        .getContainer(),
+        if (
+            !this.ball
+        ) {
+            throw new Error(
+                "World requires Ball before attaching Connector presentation.",
+            );
+        }
+
+        const gameplayActors =
+            this.presentationLayers
+                .getLayer(
+                    WorldRenderLayer.GameplayActors,
                 );
 
-        this.worldContainer
-            .addChildAt(
-                connectorGraphics,
-                ballWorldIndex,
-            );
+        const ballContainer =
+            this.ball
+                .getContainer();
+
+        const ballDisplayIndex =
+            gameplayActors
+                .getChildIndex(
+                    ballContainer,
+                );
+
+        /*
+         * Connector is a relationship visual between Club and Ball, but it
+         * must remain physically beneath the Ball as in the original
+         * presentation. Keeping both in GameplayActors and inserting the
+         * Connector immediately before the Ball preserves that local order
+         * without weakening the global semantic layer hierarchy.
+         */
+        gameplayActors.addChildAt(
+            connectorGraphics,
+            Math.max(
+                0,
+                ballDisplayIndex,
+            ),
+        );
 
         // ---------------------------------------------------
         // Create Club
@@ -1007,16 +1033,9 @@ export class World {
 
         this.addEntity(
             this.club,
+            WorldRenderLayer.GameplayActors,
         );
 
-        /*
-         * The Club is the player's world-space interaction tool and must
-         * remain readable above mechanisms regardless of creation order.
-         */
-        this.club
-            .getContainer()
-            .zIndex =
-            1000;
 
         // ---------------------------------------------------
         // Create Aim Indicator
@@ -1031,6 +1050,7 @@ export class World {
 
         this.addEntity(
             this.aimIndicator,
+            WorldRenderLayer.GameplayIndicators,
         );
 
         // ---------------------------------------------------
@@ -1042,6 +1062,7 @@ export class World {
 
         this.addEntity(
             this.shotFeedback,
+            WorldRenderLayer.GameplayIndicators,
         );
 
         this.club.show();
@@ -1560,6 +1581,9 @@ export class World {
         this.courseBackground =
             null;
 
+        this.presentationLayers
+            .destroy();
+
         this.worldContainer.destroy({
             children:
                 false,
@@ -1862,7 +1886,12 @@ export class World {
         }
 
         this.fireVfxSystem
-            .getContainer()
+            .getGroundContainer()
+            .visible =
+            enabled;
+
+        this.fireVfxSystem
+            .getAirborneContainer()
             .visible =
             enabled;
     }
@@ -2086,7 +2115,10 @@ export class World {
                     .debugArrowHeadLength,
             );
 
-        this.worldContainer
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.Debug,
+            )
             .addChild(
                 this.fireDirectionalValidation
                     .getGraphics(),
@@ -2301,7 +2333,10 @@ export class World {
          * comes only from real Water sources such as the sprinkler.
          */
 
-        this.worldContainer
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.StandingWater,
+            )
             .addChild(
                 this.waterFieldVisualizer
                     .getGraphics(),
@@ -2405,10 +2440,14 @@ export class World {
                 this.airborneWaterSystem,
             );
 
-        this.worldContainer.addChild(
-            this.airborneWaterVisualizer
-                .getGraphics(),
-        );
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.WaterEffects,
+            )
+            .addChild(
+                this.airborneWaterVisualizer
+                    .getGraphics(),
+            );
     }
 
     private createSprinklerValidation(): void {
@@ -2816,6 +2855,15 @@ export class World {
         this.addEntity(
             this.hydrantHose,
         );
+
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.AirborneEffects,
+            )
+            .addChild(
+                this.hydrantHose
+                    .getNozzlePreSprayGraphics(),
+            );
     }
 
     // -------------------------------------------------------
@@ -2825,6 +2873,10 @@ export class World {
     public addEntity(
         entity:
             Entity,
+
+        layer:
+            WorldRenderLayer =
+            WorldRenderLayer.PhysicalObjects,
     ): void {
 
         entity.initialize();
@@ -2833,10 +2885,14 @@ export class World {
             entity,
         );
 
-        this.worldContainer.addChild(
-            entity
-                .getContainer(),
-        );
+        this.presentationLayers
+            .getLayer(
+                layer,
+            )
+            .addChild(
+                entity
+                    .getContainer(),
+            );
     }
 
     public removeEntity(
@@ -3340,29 +3396,30 @@ export class World {
                 DEFAULT_BALL_TRAIL_DEFINITION,
             );
 
+        const gameplayActors =
+            this.presentationLayers
+                .getLayer(
+                    WorldRenderLayer.GameplayActors,
+                );
+
         const ballContainer =
             this.ball
                 .getContainer();
 
         const ballDisplayIndex =
-            this.worldContainer
+            gameplayActors
                 .getChildIndex(
                     ballContainer,
                 );
 
-        /*
-         * Keep the trail immediately behind the Ball in world-space.
-         * Both retain the normal zIndex so terrain ordering remains intact.
-         */
-        this.worldContainer
-            .addChildAt(
-                this.ballTrail
-                    .getContainer(),
-                Math.max(
-                    0,
-                    ballDisplayIndex,
-                ),
-            );
+        gameplayActors.addChildAt(
+            this.ballTrail
+                .getContainer(),
+            Math.max(
+                0,
+                ballDisplayIndex,
+            ),
+        );
     }
 
     // -------------------------------------------------------
@@ -3385,7 +3442,10 @@ export class World {
                 this.fireSourceSystem,
             );
 
-        this.worldContainer
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.Debug,
+            )
             .addChild(
                 this.fireSourceVisualizer
                     .getContainer(),
@@ -3430,10 +3490,22 @@ export class World {
          *
          * The container is world-space and presentation-only.
          */
-        this.worldContainer
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.GroundState,
+            )
             .addChild(
                 this.fireVfxSystem
-                    .getContainer(),
+                    .getGroundContainer(),
+            );
+
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.AirborneEffects,
+            )
+            .addChild(
+                this.fireVfxSystem
+                    .getAirborneContainer(),
             );
     }
 
@@ -3840,7 +3912,10 @@ export class World {
          * simulation volume remains readable while diagnosing particle
          * placement. It remains presentation-only.
          */
-        this.worldContainer
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.Debug,
+            )
             .addChild(
                 this.localWindDebugVisualizer
                     .getGraphics(),
@@ -3867,16 +3942,13 @@ export class World {
                 this.camera,
             );
 
-        this.worldContainer
-            .addChildAt(
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.AirborneEffects,
+            )
+            .addChild(
                 this.windVfxSystem
                     .getContainer(),
-                Math.min(
-                    1,
-                    this.worldContainer
-                        .children
-                        .length,
-                ),
             );
     }
 
@@ -3896,13 +3968,13 @@ export class World {
         this.surfaceGraphics =
             new Graphics();
 
-        this.worldContainer.addChildAt(
-            this.surfaceGraphics,
-            Math.min(
-                2,
-                this.worldContainer.children.length,
-            ),
-        );
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.Debug,
+            )
+            .addChild(
+                this.surfaceGraphics,
+            );
     }
 
     private drawSurfaceGraphics():
@@ -4103,10 +4175,13 @@ export class World {
             this.courseVisualDefinition
                 .terrainAlpha;
 
-        this.worldContainer.addChildAt(
-            this.courseBackground,
-            0,
-        );
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.BaseTerrain,
+            )
+            .addChild(
+                this.courseBackground,
+            );
 
         this.createSandTexture();
     }
@@ -4145,13 +4220,13 @@ export class World {
             this.courseVisualDefinition
                 .terrainAlpha;
 
-        this.worldContainer.addChildAt(
-            sand,
-            Math.min(
-                1,
-                this.worldContainer.children.length,
-            ),
-        );
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.BaseTerrain,
+            )
+            .addChild(
+                sand,
+            );
     }
 
     // -------------------------------------------------------

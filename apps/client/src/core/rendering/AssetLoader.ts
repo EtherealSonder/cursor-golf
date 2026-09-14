@@ -9,6 +9,10 @@ import golfBallDimplesTexture from "../../assets/textures/golf/golf_ball_dimples
 import fanBodyTexture from "../../assets/sprites/mechanisms/fan_body.png";
 import fanRotorTexture from "../../assets/sprites/mechanisms/fan_rotator.png";
 import fireTubeTexture from "../../assets/sprites/mechanisms/fire_tube.png";
+import fireHydrantTexture from "../../assets/sprites/mechanisms/fire_hydrant.png";
+import fireHydrantDamagedTexture from "../../assets/sprites/mechanisms/fire_hydrant_damaged.png";
+import fireHydrantBrokenTexture from "../../assets/sprites/mechanisms/fire_hydrant_broken.png";
+import waterSprinklerTexture from "../../assets/sprites/mechanisms/water_sprinkler.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
 
@@ -76,6 +80,26 @@ export class AssetLoader {
         await this.loadTexture(
             "fireTube",
             fireTubeTexture,
+        );
+
+        await this.loadTexture(
+            "fireHydrant",
+            fireHydrantTexture,
+        );
+
+        await this.loadTexture(
+            "fireHydrantDamaged",
+            fireHydrantDamagedTexture,
+        );
+
+        await this.loadTexture(
+            "fireHydrantBroken",
+            fireHydrantBrokenTexture,
+        );
+
+        await this.loadTexture(
+            "waterSprinkler",
+            waterSprinklerTexture,
         );
 
         await this.loadTexture(

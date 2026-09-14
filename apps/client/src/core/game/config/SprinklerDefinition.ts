@@ -26,30 +26,27 @@ export interface SprinklerDefinition {
     readonly launchElevationRadians: number;
     readonly windResponse: number;
 
-    /**
-     * Fraction of airborne horizontal velocity retained by standing Water
-     * when a sprinkler packet lands.
-     */
+    /** Fraction of airborne horizontal velocity retained on impact. */
     readonly impactMomentumRetention: number;
 
-    readonly bodyFillColor: number;
-    readonly bodyOutlineColor: number;
-    readonly bodyOutlineWidth: number;
-    readonly nozzleFillColor: number;
-
-    /** Circular gameplay collider, deliberately matching the small body. */
+    /** Circular gameplay collider, independent from sprite dimensions. */
     readonly collisionRadius: number;
 
     readonly material: PhysicsMaterial;
     readonly rigidBody: RigidBodyDefinition;
+
+    /** Phase 8B-14A presentation-only sprite tuning. */
+    readonly visual: {
+        readonly spriteWidth: number;
+        readonly spriteHeight: number;
+        readonly spriteAnchorX: number;
+        readonly spriteAnchorY: number;
+        readonly spriteOffsetX: number;
+        readonly spriteOffsetY: number;
+    };
 }
 
 export const DEFAULT_SPRINKLER_DEFINITION: SprinklerDefinition = {
-    /*
-     * Ball physics radius is 10 world px, so the temporary Sprinkler body now
-     * occupies approximately the same gameplay footprint as the Ball.
-     * Nozzle and airborne Water particle sizes are intentionally unchanged.
-     */
     bodyRadius: 10,
     nozzleOffset: 7,
     nozzleRadius: 3.5,
@@ -65,11 +62,6 @@ export const DEFAULT_SPRINKLER_DEFINITION: SprinklerDefinition = {
             WaterSourceType.Sprinkler,
         ),
 
-    bodyFillColor: 0x6f8f8b,
-    bodyOutlineColor: 0x403442,
-    bodyOutlineWidth: 3,
-    nozzleFillColor: 0x55c9df,
-
     collisionRadius: 10,
 
     material: {
@@ -77,24 +69,25 @@ export const DEFAULT_SPRINKLER_DEFINITION: SprinklerDefinition = {
         friction: 0.16,
     },
 
-    /*
-     * Fan mass = 6 and FireTube mass = 8 in the current project.
-     * The small Sprinkler is deliberately much lighter and therefore responds
-     * more strongly to the same Ball impulse.
-     */
     rigidBody: {
         bodyType: "dynamic",
         mass: 2,
-
         linearDamping: 1.75,
         angularDamping: 2.15,
-
         sleepLinearSpeedThreshold: 3,
         sleepAngularSpeedThreshold: 0.06,
         sleepDelay: 0.42,
-
         maximumLinearSpeed: 720,
         maximumAngularSpeed: 11,
+    },
+
+    visual: {
+        spriteWidth: 30,
+        spriteHeight: 30,
+        spriteAnchorX: 0.5,
+        spriteAnchorY: 0.5,
+        spriteOffsetX: 0,
+        spriteOffsetY: 0,
     },
 };
 
@@ -107,11 +100,12 @@ export function validateSprinklerDefinition(
         definition.nozzleRadius,
         definition.emissionInterval,
         definition.launchSpeed,
-        definition.bodyOutlineWidth,
         definition.collisionRadius,
         definition.rigidBody.mass,
         definition.rigidBody.maximumLinearSpeed,
         definition.rigidBody.maximumAngularSpeed,
+        definition.visual.spriteWidth,
+        definition.visual.spriteHeight,
     ];
 
     if (positive.some((value): boolean => !Number.isFinite(value) || value <= 0)) {
@@ -139,19 +133,11 @@ export function validateSprinklerDefinition(
         definition.impactMomentumRetention < 0 ||
         definition.impactMomentumRetention > 1
     ) {
-        throw new Error(
-            "SprinklerDefinition impactMomentumRetention must be finite and between 0 and 1.",
-        );
+        throw new Error("SprinklerDefinition impactMomentumRetention must be finite and between 0 and 1.");
     }
 
-
-    if (
-        definition.rigidBody.bodyType !==
-        "dynamic"
-    ) {
-        throw new Error(
-            "Phase 8B-5 Sprinkler rigidBody must be dynamic.",
-        );
+    if (definition.rigidBody.bodyType !== "dynamic") {
+        throw new Error("Phase 8B-5 Sprinkler rigidBody must be dynamic.");
     }
 
     const nonNegativePhysicsValues = [
@@ -164,16 +150,19 @@ export function validateSprinklerDefinition(
         definition.rigidBody.sleepDelay,
     ];
 
-    if (
-        nonNegativePhysicsValues.some(
-            (value): boolean =>
-                !Number.isFinite(value) ||
-                value < 0,
-        )
-    ) {
-        throw new Error(
-            "Sprinkler physics values must be finite and non-negative.",
-        );
+    if (nonNegativePhysicsValues.some((value): boolean => !Number.isFinite(value) || value < 0)) {
+        throw new Error("Sprinkler physics values must be finite and non-negative.");
+    }
+
+    const visualFinite = [
+        definition.visual.spriteAnchorX,
+        definition.visual.spriteAnchorY,
+        definition.visual.spriteOffsetX,
+        definition.visual.spriteOffsetY,
+    ];
+
+    if (visualFinite.some((value): boolean => !Number.isFinite(value))) {
+        throw new Error("Sprinkler visual values must be finite.");
     }
 
     if (definition.nozzleCount !== 4) {

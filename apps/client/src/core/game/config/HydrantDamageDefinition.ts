@@ -1,9 +1,10 @@
 export interface HydrantDamageDefinition {
-    readonly maxDurability: number;
-    readonly minimumImpactSpeed: number;
-    readonly minimumImpactEnergy: number;
-    readonly damageEnergyScale: number;
-    readonly maximumDamagePerImpact: number;
+    /**
+     * Weak contacts do not accumulate any hidden damage.
+     * Each qualifying impact advances exactly one discrete state.
+     */
+    readonly normalToDamagedImpactSpeed: number;
+    readonly damagedToBrokenImpactSpeed: number;
     readonly impactCooldown: number;
 
     readonly burstWaterAmount: number;
@@ -16,41 +17,34 @@ export interface HydrantDamageDefinition {
 
 export const DEFAULT_HYDRANT_DAMAGE_DEFINITION:
     HydrantDamageDefinition = {
-        maxDurability: 100,
+    /*
+     * Ball maximum speed is currently 1200 px/s. These values make a
+     * committed shot necessary while allowing later tuning from playtests.
+     */
+    normalToDamagedImpactSpeed: 450,
+    damagedToBrokenImpactSpeed: 550,
+    impactCooldown: 0.20,
 
-        /*
-         * Ordinary low-speed nudges should not damage the Hydrant. Strong
-         * golf shots should remove a meaningful fraction of durability.
-         */
-        minimumImpactSpeed: 280,
-        minimumImpactEnergy: 39000,
-        damageEnergyScale: 0.00125,
-        maximumDamagePerImpact: 55,
-        impactCooldown: 0.20,
-
-        /*
-         * Destruction emits one finite radial batch through the existing
-         * WaterSourceSystem -> AirborneWaterSystem pipeline.
-         */
-        burstWaterAmount: 5.0,
-        burstLaunchSpeed: 360,
-        burstPacketCount: 16,
-        burstLaunchElevationRadians:
-            Math.PI / 5,
-        burstWindResponse: 0.18,
-        burstImpactMomentumRetention: 0.55,
-    };
+    /*
+     * Destruction still emits one finite radial batch through the existing
+     * WaterSourceSystem -> AirborneWaterSystem pipeline.
+     */
+    burstWaterAmount: 5.0,
+    burstLaunchSpeed: 360,
+    burstPacketCount: 16,
+    burstLaunchElevationRadians:
+        Math.PI / 5,
+    burstWindResponse: 0.18,
+    burstImpactMomentumRetention: 0.55,
+};
 
 export function validateHydrantDamageDefinition(
     definition:
         HydrantDamageDefinition,
 ): void {
     const positiveValues = [
-        definition.maxDurability,
-        definition.minimumImpactSpeed,
-        definition.minimumImpactEnergy,
-        definition.damageEnergyScale,
-        definition.maximumDamagePerImpact,
+        definition.normalToDamagedImpactSpeed,
+        definition.damagedToBrokenImpactSpeed,
         definition.impactCooldown,
         definition.burstWaterAmount,
         definition.burstLaunchSpeed,
@@ -85,7 +79,7 @@ export function validateHydrantDamageDefinition(
         ) ||
         definition.burstLaunchElevationRadians < 0 ||
         definition.burstLaunchElevationRadians >
-            Math.PI / 2
+        Math.PI / 2
     ) {
         throw new Error(
             "Hydrant burst launch elevation must be between 0 and PI/2.",

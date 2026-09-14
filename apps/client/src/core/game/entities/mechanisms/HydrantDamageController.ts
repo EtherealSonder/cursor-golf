@@ -4,22 +4,25 @@ import {
     validateHydrantDamageDefinition,
 } from "../../config/HydrantDamageDefinition";
 
+import {
+    HydrantDamageState,
+} from "../../config/HydrantDamageState";
+
 export interface HydrantImpactResult {
     readonly accepted: boolean;
-    readonly damage: number;
-    readonly remainingDurability: number;
+    readonly stateChanged: boolean;
+    readonly previousState: HydrantDamageState;
+    readonly state: HydrantDamageState;
     readonly destroyed: boolean;
+    readonly impactNormalSpeed: number;
 }
 
 export class HydrantDamageController {
-    private durability:
-        number;
+    private state =
+        HydrantDamageState.Normal;
 
     private cooldownRemaining =
         0;
-
-    private broken =
-        false;
 
     public constructor(
         private readonly definition:
@@ -29,9 +32,6 @@ export class HydrantDamageController {
         validateHydrantDamageDefinition(
             definition,
         );
-
-        this.durability =
-            definition.maxDurability;
     }
 
     public update(
@@ -51,86 +51,68 @@ export class HydrantDamageController {
             Math.max(
                 0,
                 this.cooldownRemaining -
-                    deltaTime,
+                deltaTime,
             );
     }
 
+    /**
+     * Applies one collision event.
+     *
+     * There is no accumulated durability. An impact either qualifies for one
+     * discrete transition or changes nothing.
+     *
+     * The optional second argument is retained only for compatibility with
+     * older callers that previously supplied Ball mass.
+     */
     public applyImpact(
-        impactSpeed:
+        impactNormalSpeed:
             number,
 
-        ballMass:
+        _legacyBallMass?:
             number,
     ): HydrantImpactResult {
+        const previousState =
+            this.state;
+
         if (
-            this.broken ||
+            this.state ===
+            HydrantDamageState.Broken ||
             this.cooldownRemaining > 0 ||
             !Number.isFinite(
-                impactSpeed,
+                impactNormalSpeed,
             ) ||
-            !Number.isFinite(
-                ballMass,
-            ) ||
-            impactSpeed <= 0 ||
-            ballMass <= 0
+            impactNormalSpeed <= 0
         ) {
             return this.makeResult(
                 false,
-                0,
                 false,
+                previousState,
+                impactNormalSpeed,
             );
         }
 
-        const speed =
-            Math.abs(
-                impactSpeed,
-            );
-
-        const impactEnergy =
-            0.5 *
-            ballMass *
-            speed *
-            speed;
+        const threshold =
+            this.state ===
+                HydrantDamageState.Normal
+                ? this.definition
+                    .normalToDamagedImpactSpeed
+                : this.definition
+                    .damagedToBrokenImpactSpeed;
 
         if (
-            speed <
-                this.definition
-                    .minimumImpactSpeed ||
-            impactEnergy <
-                this.definition
-                    .minimumImpactEnergy
+            impactNormalSpeed <
+            threshold
         ) {
+            /*
+             * Weak impacts do not start cooldown and do not accumulate hidden
+             * progress. Any number of sub-threshold hits leaves the state
+             * unchanged.
+             */
             return this.makeResult(
                 false,
-                0,
                 false,
-            );
-        }
-
-        const effectiveEnergy =
-            Math.max(
-                0,
-                impactEnergy -
-                    this.definition
-                        .minimumImpactEnergy,
-            );
-
-        const damage =
-            Math.min(
-                this.definition
-                    .maximumDamagePerImpact,
-                effectiveEnergy *
-                    this.definition
-                        .damageEnergyScale,
-            );
-
-        if (
-            damage <= 0
-        ) {
-            return this.makeResult(
-                false,
-                0,
-                false,
+                previousState,
+                impactNormalSpeed,
             );
         }
 
@@ -138,54 +120,64 @@ export class HydrantDamageController {
             this.definition
                 .impactCooldown;
 
-        this.durability =
-            Math.max(
-                0,
-                this.durability -
-                    damage,
-            );
-
-        const destroyed =
-            this.durability <= 0;
-
         if (
-            destroyed
+            this.state ===
+            HydrantDamageState.Normal
         ) {
-            this.broken =
-                true;
+            this.state =
+                HydrantDamageState.Damaged;
+        } else if (
+            this.state ===
+            HydrantDamageState.Damaged
+        ) {
+            this.state =
+                HydrantDamageState.Broken;
         }
 
         return this.makeResult(
             true,
-            damage,
-            destroyed,
+            this.state !==
+            previousState,
+            previousState,
+            impactNormalSpeed,
         );
     }
 
     public reset():
         void {
-        this.durability =
-            this.definition
-                .maxDurability;
+        this.state =
+            HydrantDamageState.Normal;
 
         this.cooldownRemaining =
             0;
-
-        this.broken =
-            false;
     }
 
-    public getDurability():
-        number {
-        return this.durability;
+    public getState():
+        HydrantDamageState {
+        return this.state;
     }
 
-    public getDurabilityRatio():
-        number {
+    public isNormal():
+        boolean {
         return (
-            this.durability /
-            this.definition
-                .maxDurability
+            this.state ===
+            HydrantDamageState.Normal
+        );
+    }
+
+    public isDamaged():
+        boolean {
+        return (
+            this.state ===
+            HydrantDamageState.Damaged
+        );
+    }
+
+    public isBroken():
+        boolean {
+        return (
+            this.state ===
+            HydrantDamageState.Broken
         );
     }
 
@@ -194,32 +186,64 @@ export class HydrantDamageController {
         return this.cooldownRemaining;
     }
 
-    public isBroken():
-        boolean {
-        return this.broken;
-    }
-
     public getDefinition():
         HydrantDamageDefinition {
         return this.definition;
+    }
+
+    /**
+     * Compatibility diagnostic only. This is NOT hidden durability.
+     * It maps the three discrete states to 1.0, 0.5 and 0.0.
+     */
+    public getDurabilityRatio():
+        number {
+        switch (
+        this.state
+        ) {
+            case HydrantDamageState.Normal:
+                return 1;
+
+            case HydrantDamageState.Damaged:
+                return 0.5;
+
+            case HydrantDamageState.Broken:
+                return 0;
+        }
     }
 
     private makeResult(
         accepted:
             boolean,
 
-        damage:
-            number,
-
-        destroyed:
+        stateChanged:
             boolean,
+
+        previousState:
+            HydrantDamageState,
+
+        impactNormalSpeed:
+            number,
     ): HydrantImpactResult {
         return {
             accepted,
-            damage,
-            remainingDurability:
-                this.durability,
-            destroyed,
+            stateChanged,
+            previousState,
+            state:
+                this.state,
+            destroyed:
+                this.state ===
+                HydrantDamageState.Broken &&
+                previousState !==
+                HydrantDamageState.Broken,
+            impactNormalSpeed:
+                Number.isFinite(
+                    impactNormalSpeed,
+                )
+                    ? Math.max(
+                        0,
+                        impactNormalSpeed,
+                    )
+                    : 0,
         };
     }
 }

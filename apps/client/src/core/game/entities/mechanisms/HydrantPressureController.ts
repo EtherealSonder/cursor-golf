@@ -57,36 +57,89 @@ export class HydrantPressureController {
             return;
         }
 
+        const transitionEpsilon =
+            1e-9;
+
         this.timeInState +=
             deltaTime;
 
         /*
-         * Carry overshoot into the next state. This makes the cycle stable
-         * across different frame rates and large-but-valid frame deltas.
+         * A browser tab suspension, debugger pause, or runtime hitch can hand
+         * this controller a delta large enough to span many complete Hydrant
+         * cycles. Skip whole cycles mathematically before processing the
+         * remaining state transitions. This preserves elapsed-time semantics
+         * without relying on an arbitrary transition guard.
          */
-        let transitionGuard =
-            0;
-
-        const transitionEpsilon =
-            1e-9;
-
-        while (
-            this.state !==
-            HydrantPressureState.Broken &&
-            this.timeInState +
-            transitionEpsilon >=
-            this.getCurrentStateDuration()
+        if (
+            this.state ===
+            HydrantPressureState.Inactive
         ) {
+            const cycleDuration =
+                this.getCycleDuration();
+
+            if (
+                this.timeInState +
+                transitionEpsilon >=
+                cycleDuration
+            ) {
+                const completeCycles =
+                    Math.floor(
+                        (
+                            this.timeInState +
+                            transitionEpsilon
+                        ) /
+                        cycleDuration,
+                    );
+
+                if (
+                    completeCycles >
+                    0
+                ) {
+                    this.completedCycleCount +=
+                        completeCycles;
+
+                    this.timeInState -=
+                        completeCycles *
+                        cycleDuration;
+
+                    if (
+                        this.timeInState < 0 &&
+                        this.timeInState >
+                        -transitionEpsilon
+                    ) {
+                        this.timeInState =
+                            0;
+                    }
+                }
+            }
+        }
+
+        while (true) {
             const duration =
                 this.getCurrentStateDuration();
+
+            if (
+                !Number.isFinite(
+                    duration,
+                ) ||
+                duration <= 0
+            ) {
+                throw new Error(
+                    "HydrantPressureController requires every non-Broken state duration to be finite and greater than zero.",
+                );
+            }
+
+            if (
+                this.timeInState +
+                transitionEpsilon <
+                duration
+            ) {
+                break;
+            }
 
             this.timeInState -=
                 duration;
 
-            /*
-             * Floating-point accumulation can leave a tiny negative remainder
-             * when a frame sequence lands exactly on a state boundary.
-             */
             if (
                 this.timeInState < 0 &&
                 this.timeInState >
@@ -98,16 +151,53 @@ export class HydrantPressureController {
 
             this.advanceState();
 
-            transitionGuard +=
-                1;
-
+            /*
+             * Once a carried delta reaches Inactive again, it may still contain
+             * several complete cycles. Skip those cycles directly instead of
+             * walking four state transitions for every elapsed cycle.
+             */
             if (
-                transitionGuard >
-                16
+                this.state ===
+                HydrantPressureState.Inactive
             ) {
-                throw new Error(
-                    "HydrantPressureController exceeded its transition guard.",
-                );
+                const cycleDuration =
+                    this.getCycleDuration();
+
+                if (
+                    this.timeInState +
+                    transitionEpsilon >=
+                    cycleDuration
+                ) {
+                    const completeCycles =
+                        Math.floor(
+                            (
+                                this.timeInState +
+                                transitionEpsilon
+                            ) /
+                            cycleDuration,
+                        );
+
+                    if (
+                        completeCycles >
+                        0
+                    ) {
+                        this.completedCycleCount +=
+                            completeCycles;
+
+                        this.timeInState -=
+                            completeCycles *
+                            cycleDuration;
+
+                        if (
+                            this.timeInState < 0 &&
+                            this.timeInState >
+                            -transitionEpsilon
+                        ) {
+                            this.timeInState =
+                                0;
+                        }
+                    }
+                }
             }
         }
     }
@@ -201,6 +291,33 @@ export class HydrantPressureController {
         HydrantPressureDefinition {
 
         return this.definition;
+    }
+
+    private getCycleDuration():
+        number {
+
+        const cycleDuration =
+            this.definition
+                .inactiveDuration +
+            this.definition
+                .pressureBuildDuration +
+            this.definition
+                .activeDuration +
+            this.definition
+                .pressureReleaseDuration;
+
+        if (
+            !Number.isFinite(
+                cycleDuration,
+            ) ||
+            cycleDuration <= 0
+        ) {
+            throw new Error(
+                "HydrantPressureController requires a finite positive total cycle duration.",
+            );
+        }
+
+        return cycleDuration;
     }
 
     private getCurrentStateDuration():

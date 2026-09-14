@@ -37,7 +37,6 @@ export class AirborneWaterVisualizer {
             AirborneWaterDebugDefinition =
             DEFAULT_AIRBORNE_WATER_DEBUG_DEFINITION,
     ) {
-        this.graphics.zIndex = 7;
         this.graphics.visible =
             this.definition.enabled;
     }

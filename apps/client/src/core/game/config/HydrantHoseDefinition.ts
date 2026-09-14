@@ -2,7 +2,16 @@ import type { CourseBoundaryDefinition } from "./CourseBoundaryDefinition";
 import { DEFAULT_COURSE_BOUNDARY_DEFINITION } from "./CourseBoundaryDefinition";
 
 export interface HydrantHoseDefinition {
+    /**
+     * Main circular Hydrant body collider. This deliberately follows the body
+     * rather than the small decorative fittings extending outside the circle.
+     */
     readonly hydrantCollisionRadius: number;
+    readonly hydrantCollisionRestitution: number;
+    readonly hydrantCollisionFriction: number;
+    readonly hydrantCollisionPositionSlop: number;
+    readonly hydrantCollisionRestingNormalSpeed: number;
+
     readonly segmentCount: number;
     readonly segmentLength: number;
     readonly pointRadius: number;
@@ -26,8 +35,12 @@ export interface HydrantHoseDefinition {
         readonly hoseWidth: number;
         readonly hoseColor: number;
         readonly hoseAlpha: number;
-        readonly hydrantRadius: number;
-        readonly hydrantColor: number;
+        readonly hydrantSpriteWidth: number;
+        readonly hydrantSpriteHeight: number;
+        readonly hydrantSpriteAnchorX: number;
+        readonly hydrantSpriteAnchorY: number;
+        readonly hydrantSpriteOffsetX: number;
+        readonly hydrantSpriteOffsetY: number;
         readonly nozzleLength: number;
         readonly nozzleWidth: number;
         readonly nozzleColor: number;
@@ -38,21 +51,20 @@ export interface HydrantHoseDefinition {
 }
 
 export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
-    hydrantCollisionRadius: 18,
     /*
-     * Phase 8B-10A.8:
-     *
-     * Keep the tested 28 px physical resolution while tripling the Hose
-     * length from 8 to 24 constrained segments.
+     * Phase 8B-14A damage-state revision:
+     * The Hydrant art is now visually larger and the collider follows the
+     * main circular body instead of the previous small temporary Graphics.
      */
+    hydrantCollisionRadius: 28,
+    hydrantCollisionRestitution: 0.34,
+    hydrantCollisionFriction: 0.12,
+    hydrantCollisionPositionSlop: 0.10,
+    hydrantCollisionRestingNormalSpeed: 8,
+
     segmentCount: 24,
     segmentLength: 28,
 
-    /*
-     * pointRadius remains useful for course containment and debug purposes.
-     * Ball collision now treats the Hose body as continuous capsules between
-     * adjacent rope points instead of independent point circles.
-     */
     pointRadius: 5,
     nozzleRadius: 8,
 
@@ -60,27 +72,11 @@ export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
     maximumSubSteps: 6,
     dampingPerSecond: 3.2,
 
-    /*
-     * The existing PBD solver remains unchanged in character. Eight passes
-     * provide enough stiffness for the longer 24-segment Hose while keeping
-     * the system inexpensive.
-     */
     constraintIterations: 8,
 
-    /*
-     * Capsule collision is resolved in a small bounded number of passes.
-     * Each pass resolves only the single deepest Hose contact, preventing
-     * neighbouring segments from fighting over the Ball.
-     */
     collisionIterations: 3,
     collisionRestitution: 0.24,
     collisionFriction: 0.12,
-
-    /*
-     * Tiny positional overlap is tolerated and low-speed normal contact does
-     * not generate a bounce impulse. This lets a Ball resting against the
-     * Hose settle back to an interactable state.
-     */
     collisionPositionSlop: 0.05,
     collisionRestingNormalSpeed: 8,
 
@@ -89,9 +85,6 @@ export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
     randomAngleMinimumRadians: -Math.PI,
     randomAngleMaximumRadians: Math.PI,
 
-    /*
-     * Used to create a gentle initial curve rather than a visible zig-zag.
-     */
     initialBendRadians: 0.18,
 
     boundaryPadding: 1,
@@ -101,8 +94,19 @@ export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
         hoseWidth: 13,
         hoseColor: 0x403442,
         hoseAlpha: 0.92,
-        hydrantRadius: 18,
-        hydrantColor: 0xd9574f,
+
+        /*
+         * fire_hydrant.png source aspect ratio is approximately 1.216.
+         * These values are presentation-only. The solid collider above is
+         * tuned separately to the main circular body.
+         */
+        hydrantSpriteWidth: 72,
+        hydrantSpriteHeight: 59.22,
+        hydrantSpriteAnchorX: 0.5,
+        hydrantSpriteAnchorY: 0.41,
+        hydrantSpriteOffsetX: 0,
+        hydrantSpriteOffsetY: 0,
+
         nozzleLength: 20,
         nozzleWidth: 11,
         nozzleColor: 0xd8bea8,

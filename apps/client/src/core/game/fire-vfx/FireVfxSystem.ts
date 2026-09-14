@@ -90,7 +90,10 @@ export type FireVfxTextureVariant =
  */
 export class FireVfxSystem {
 
-    private readonly container =
+    private readonly groundContainer =
+        new Container();
+
+    private readonly airborneContainer =
         new Container();
 
     private readonly textures:
@@ -215,20 +218,26 @@ export class FireVfxSystem {
         /*
          * Scorch sits below active flame particles.
          */
-        this.container.addChild(
+        this.groundContainer.addChild(
             this.scorchRenderer
                 .getContainer(),
         );
 
-        this.container.addChild(
+        this.airborneContainer.addChild(
             this.pool.getContainer(),
         );
     }
 
-    public getContainer():
+    public getGroundContainer():
         Container {
 
-        return this.container;
+        return this.groundContainer;
+    }
+
+    public getAirborneContainer():
+        Container {
+
+        return this.airborneContainer;
     }
 
     public emitParticle(
@@ -364,7 +373,12 @@ export class FireVfxSystem {
             this.textures,
         );
 
-        this.container.destroy({
+        this.groundContainer.destroy({
+            children:
+                false,
+        });
+
+        this.airborneContainer.destroy({
             children:
                 false,
         });
