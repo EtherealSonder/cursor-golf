@@ -102,6 +102,14 @@ import {
 } from "../debug/PerformanceMetrics";
 
 import {
+    RuntimePerformanceProfiler,
+} from "../debug/RuntimePerformanceProfiler";
+
+import {
+    RuntimePerformanceProfilerOverlay,
+} from "../debug/RuntimePerformanceProfilerOverlay";
+
+import {
     LocalWindDebugVisualizer,
 } from "../debug/LocalWindDebugVisualizer";
 
@@ -369,6 +377,14 @@ export class World {
     private readonly performanceMetrics:
         PerformanceMetrics =
         new PerformanceMetrics();
+
+    private readonly runtimePerformanceProfiler:
+        RuntimePerformanceProfiler =
+        new RuntimePerformanceProfiler();
+
+    private runtimePerformanceProfilerOverlay:
+        RuntimePerformanceProfilerOverlay | null =
+        null;
 
     private activePerformanceBenchmark:
         PerformanceBenchmarkDefinition | null =
@@ -825,6 +841,8 @@ export class World {
 
         this.createPerformanceDebugOverlay();
 
+        this.createRuntimePerformanceProfilerOverlay();
+
         // ---------------------------------------------------
         // Procedural Obstacle Field
         // ---------------------------------------------------
@@ -1140,6 +1158,12 @@ export class World {
                 viewportWidth,
                 viewportHeight,
             );
+
+        this.runtimePerformanceProfilerOverlay
+            ?.setViewportSize(
+                viewportWidth,
+                viewportHeight,
+            );
     }
 
     public updateCamera(
@@ -1163,9 +1187,27 @@ export class World {
             number,
     ): void {
 
+        this.runtimePerformanceProfiler
+            .beginFrame();
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Surface",
+            );
+
         this.surfaceSystem
             .update(
                 deltaTime,
+            );
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Surface",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Water Source + Airborne",
             );
 
         /*
@@ -1192,9 +1234,29 @@ export class World {
         this.airborneWaterVisualizer
             ?.update();
 
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Water Source + Airborne",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "WaterField",
+            );
+
         this.waterField
             .update(
                 deltaTime,
+            );
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "WaterField",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Ground Interaction",
             );
 
         this.waterGroundInteractionSystem
@@ -1202,8 +1264,29 @@ export class World {
                 deltaTime,
             );
 
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Ground Interaction",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Moisture Bridge",
+            );
+
         this.moistureSurfaceBridge
             .update();
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Moisture Bridge",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Water Presentation",
+            );
+
         /*
                  * Phase 8C-6F:
                  * presentation uploads small grid-resolution textures at controlled
@@ -1223,6 +1306,16 @@ export class World {
         this.waterFieldVisualizer
             ?.update(
                 deltaTime,
+            );
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Water Presentation",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Fire",
             );
 
         this.fireSourceSystem
@@ -1249,6 +1342,16 @@ export class World {
                     deltaTime,
                 );
         }
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Fire",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Entities + Hose Force",
+            );
 
         for (
             const entity
@@ -1283,6 +1386,16 @@ export class World {
                 deltaTime,
             );
 
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Entities + Hose Force",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Rigid Collision",
+            );
+
         /*
          * G2/G3. Resolve physical mechanism pairs only after their rigid-body
          * integration for this frame. The shared response solver applies
@@ -1305,6 +1418,16 @@ export class World {
                 this.physicsWorld,
             );
 
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Rigid Collision",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Hose Collision",
+            );
+
         /*
          * 8D-7C: the flexible Hose participates in the same world collider
          * population without being converted into a rigid DynamicCollidable.
@@ -1318,6 +1441,16 @@ export class World {
             );
             this.hydrantHose.synchronizeAfterExternalCollision();
         }
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Hose Collision",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Object Synchronization",
+            );
 
         /*
          * Collision correction can change mechanism positions after their
@@ -1345,8 +1478,28 @@ export class World {
             sprinkler.synchronizeAfterCollisionResolution();
         }
 
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Object Synchronization",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Water Obstacle Sync",
+            );
+
         this.waterObstacleRegistrationSystem
             .synchronize();
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Water Obstacle Sync",
+            );
+
+        this.runtimePerformanceProfiler
+            .beginSection(
+                "Wind + Presentation",
+            );
 
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
@@ -1372,6 +1525,63 @@ export class World {
 
         this.windValidationMetrics
             ?.update();
+
+        this.runtimePerformanceProfiler
+            .endSection(
+                "Wind + Presentation",
+            );
+
+        this.runtimePerformanceProfiler
+            .setCounter(
+                "Water tracked cells",
+                this.waterField
+                    .getTrackedWaterCellCount(),
+            );
+
+        this.runtimePerformanceProfiler
+            .setCounter(
+                "Water active cells",
+                this.waterField
+                    .getActiveCellCount(),
+            );
+
+        this.runtimePerformanceProfiler
+            .setCounter(
+                "Water processed cells",
+                this.waterField
+                    .getLastProcessedCellCount(),
+            );
+
+        this.runtimePerformanceProfiler
+            .setCounter(
+                "Moisture tracked cells",
+                this.environmentField
+                    .getTrackedMoistureCellCount(),
+            );
+
+        this.runtimePerformanceProfiler
+            .setCounter(
+                "Airborne packets",
+                this.airborneWaterSystem
+                    .getActivePacketCount(),
+            );
+
+        this.runtimePerformanceProfiler
+            .setCounter(
+                "Physics colliders",
+                this.physicsWorld
+                    .getRegistrationCount(),
+            );
+
+        this.runtimePerformanceProfiler
+            .endFrame();
+
+        this.runtimePerformanceProfilerOverlay
+            ?.update(
+                deltaTime,
+                this.runtimePerformanceProfiler
+                    .getSnapshot(),
+            );
 
         this.performanceMetrics
             .update(
@@ -1598,6 +1808,12 @@ export class World {
             ?.destroy();
 
         this.performanceDebugOverlay =
+            null;
+
+        this.runtimePerformanceProfilerOverlay
+            ?.destroy();
+
+        this.runtimePerformanceProfilerOverlay =
             null;
 
         this.performanceMetrics
@@ -3855,6 +4071,38 @@ export class World {
         this.screenOverlayContainer
             .addChild(
                 this.performanceDebugOverlay
+                    .getContainer(),
+            );
+    }
+
+    private createRuntimePerformanceProfilerOverlay():
+        void {
+
+        if (
+            !this.runtimePerformanceProfiler
+                .isEnabled()
+        ) {
+            return;
+        }
+
+        this.runtimePerformanceProfilerOverlay =
+            new RuntimePerformanceProfilerOverlay(
+                this.runtimePerformanceProfiler
+                    .getDefinition(),
+            );
+
+        this.runtimePerformanceProfilerOverlay
+            .setViewportSize(
+                this.camera
+                    .getViewportWidth(),
+
+                this.camera
+                    .getViewportHeight(),
+            );
+
+        this.screenOverlayContainer
+            .addChild(
+                this.runtimePerformanceProfilerOverlay
                     .getContainer(),
             );
     }
