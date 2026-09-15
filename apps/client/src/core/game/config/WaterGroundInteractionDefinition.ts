@@ -106,6 +106,20 @@ export interface WaterGroundInteractionDefinition {
     readonly minimumDiffusionDifference: number;
 
     /**
+     * Moisture diffusion and drying are slow substrate processes and do not
+     * require a 60 Hz update. They accumulate elapsed fixed-step time and run
+     * at this cadence while preserving the same per-second rates.
+     */
+    readonly moistureMaintenanceInterval: number;
+
+    /**
+     * Thin-film cleanup cadence. This remains faster than substrate moisture
+     * maintenance but does not need to execute on every 60 Hz interaction
+     * substep.
+     */
+    readonly shallowWaterMaintenanceInterval: number;
+
+    /**
      * Standing-Water films at or below this depth can use the cleanup
      * dissipation sink. Visible puddles above this threshold are unaffected.
      */
@@ -200,6 +214,13 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
 
     moistureDiffusionRate: 0.16,
     minimumDiffusionDifference: 0.001,
+
+    /*
+     * Slow environmental state is intentionally decoupled from the 60 Hz
+     * standing-Water interaction loop.
+     */
+    moistureMaintenanceInterval: 0.1,
+    shallowWaterMaintenanceInterval: 1 / 30,
 
     /*
      * This is deliberately far below the depth of a visible puddle. It only
@@ -400,6 +421,28 @@ export function validateWaterGroundInteractionDefinition(
     ) {
         throw new Error(
             "Water ground interaction minimumDiffusionDifference must be finite and greater than or equal to zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.moistureMaintenanceInterval,
+        ) ||
+        definition.moistureMaintenanceInterval <= 0
+    ) {
+        throw new Error(
+            "Water ground interaction moistureMaintenanceInterval must be finite and greater than zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.shallowWaterMaintenanceInterval,
+        ) ||
+        definition.shallowWaterMaintenanceInterval <= 0
+    ) {
+        throw new Error(
+            "Water ground interaction shallowWaterMaintenanceInterval must be finite and greater than zero.",
         );
     }
 

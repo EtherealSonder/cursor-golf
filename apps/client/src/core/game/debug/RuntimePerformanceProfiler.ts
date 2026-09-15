@@ -61,12 +61,12 @@ export class RuntimePerformanceProfiler {
 
     private latestSnapshot:
         RuntimePerformanceSnapshot = {
-        frameCount: 0,
-        averageMeasuredFrameMilliseconds: 0,
-        maximumMeasuredFrameMilliseconds: 0,
-        sections: [],
-        counters: {},
-    };
+            frameCount: 0,
+            averageMeasuredFrameMilliseconds: 0,
+            maximumMeasuredFrameMilliseconds: 0,
+            sections: [],
+            counters: {},
+        };
 
     public constructor(
         definition:
@@ -168,6 +168,45 @@ export class RuntimePerformanceProfiler {
         );
     }
 
+    public recordExternalSection(
+        name: string,
+        elapsedMilliseconds: number,
+    ): void {
+        if (
+            !this.definition.enabled ||
+            !Number.isFinite(
+                elapsedMilliseconds,
+            ) ||
+            elapsedMilliseconds < 0
+        ) {
+            return;
+        }
+
+        const accumulator =
+            this.sections.get(name) ?? {
+                totalMilliseconds: 0,
+                maximumMilliseconds: 0,
+                sampleCount: 0,
+            };
+
+        accumulator.totalMilliseconds +=
+            elapsedMilliseconds;
+
+        accumulator.maximumMilliseconds =
+            Math.max(
+                accumulator.maximumMilliseconds,
+                elapsedMilliseconds,
+            );
+
+        accumulator.sampleCount +=
+            1;
+
+        this.sections.set(
+            name,
+            accumulator,
+        );
+    }
+
     public setCounter(
         name: string,
         value: number,
@@ -240,7 +279,7 @@ export class RuntimePerformanceProfiler {
                 averageMilliseconds:
                     accumulator.sampleCount > 0
                         ? accumulator.totalMilliseconds /
-                            accumulator.sampleCount
+                        accumulator.sampleCount
                         : 0,
                 maximumMilliseconds:
                     accumulator.maximumMilliseconds,
@@ -263,7 +302,7 @@ export class RuntimePerformanceProfiler {
             averageMeasuredFrameMilliseconds:
                 this.frameCount > 0
                     ? this.totalFrameMilliseconds /
-                        this.frameCount
+                    this.frameCount
                     : 0,
 
             maximumMeasuredFrameMilliseconds:

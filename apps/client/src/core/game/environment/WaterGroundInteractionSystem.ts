@@ -46,6 +46,15 @@ export interface WaterGroundInteractionTransferAccounting {
     readonly accumulatorSeconds: number;
 }
 
+
+export interface WaterGroundInteractionPerformanceBreakdown {
+    readonly contactWettingMilliseconds: number;
+    readonly infiltrationMilliseconds: number;
+    readonly moistureDiffusionMilliseconds: number;
+    readonly groundDryingMilliseconds: number;
+    readonly shallowWaterDissipationMilliseconds: number;
+}
+
 /**
  * Dedicated bridge between standing Water and the environmental substrate.
  *
@@ -117,6 +126,34 @@ export class WaterGroundInteractionSystem {
     private contactWettingEnabled =
         true;
 
+    private moistureMaintenanceAccumulator =
+        0;
+
+    private shallowWaterMaintenanceAccumulator =
+        0;
+
+    /*
+     * Reusable diffusion scratch storage. This replaces the former per-step
+     * Map, Set, neighbour arrays and "a:b" pair strings.
+     */
+    private moistureDiffusionDeltas:
+        Float64Array;
+
+    private readonly moistureDiffusionTouchedIndices:
+        number[] = [];
+
+    private readonly moistureDiffusionTouchedFlags:
+        Uint8Array;
+
+    private performanceBreakdown:
+        WaterGroundInteractionPerformanceBreakdown = {
+            contactWettingMilliseconds: 0,
+            infiltrationMilliseconds: 0,
+            moistureDiffusionMilliseconds: 0,
+            groundDryingMilliseconds: 0,
+            shallowWaterDissipationMilliseconds: 0,
+        };
+
     public constructor(
         private readonly waterField: WaterField,
         private readonly environmentField: EnvironmentField,
@@ -131,6 +168,18 @@ export class WaterGroundInteractionSystem {
 
         this.definition =
             definition;
+
+        this.moistureDiffusionDeltas =
+            new Float64Array(
+                this.environmentField
+                    .getCellCount(),
+            );
+
+        this.moistureDiffusionTouchedFlags =
+            new Uint8Array(
+                this.environmentField
+                    .getCellCount(),
+            );
 
         this.validateFieldCompatibility();
     }
@@ -158,6 +207,14 @@ export class WaterGroundInteractionSystem {
 
         this.lastSubstepCount =
             0;
+
+        this.performanceBreakdown = {
+            contactWettingMilliseconds: 0,
+            infiltrationMilliseconds: 0,
+            moistureDiffusionMilliseconds: 0,
+            groundDryingMilliseconds: 0,
+            shallowWaterDissipationMilliseconds: 0,
+        };
 
         if (
             !this.definition.enabled ||
@@ -200,23 +257,125 @@ export class WaterGroundInteractionSystem {
                     0;
             }
 
+            let stepStart =
+                performance.now();
+
             this.runContactWettingStep();
+
+            this.performanceBreakdown = {
+                ...this.performanceBreakdown,
+                contactWettingMilliseconds:
+                    this.performanceBreakdown
+                        .contactWettingMilliseconds +
+                    (
+                        performance.now() -
+                        stepStart
+                    ),
+            };
+
+            stepStart =
+                performance.now();
 
             this.runInfiltrationStep(
                 fixedTimeStep,
             );
 
-            this.runMoistureDiffusionStep(
-                fixedTimeStep,
-            );
+            this.performanceBreakdown = {
+                ...this.performanceBreakdown,
+                infiltrationMilliseconds:
+                    this.performanceBreakdown
+                        .infiltrationMilliseconds +
+                    (
+                        performance.now() -
+                        stepStart
+                    ),
+            };
 
-            this.runGroundDryingStep(
-                fixedTimeStep,
-            );
+            this.moistureMaintenanceAccumulator +=
+                fixedTimeStep;
 
-            this.runShallowWaterDissipationStep(
-                fixedTimeStep,
-            );
+            if (
+                this.moistureMaintenanceAccumulator +
+                stepEpsilon >=
+                this.definition
+                    .moistureMaintenanceInterval
+            ) {
+                const elapsedMaintenanceTime =
+                    this.moistureMaintenanceAccumulator;
+
+                this.moistureMaintenanceAccumulator =
+                    0;
+
+                stepStart =
+                    performance.now();
+
+                this.runMoistureDiffusionStep(
+                    elapsedMaintenanceTime,
+                );
+
+                this.performanceBreakdown = {
+                    ...this.performanceBreakdown,
+                    moistureDiffusionMilliseconds:
+                        this.performanceBreakdown
+                            .moistureDiffusionMilliseconds +
+                        (
+                            performance.now() -
+                            stepStart
+                        ),
+                };
+
+                stepStart =
+                    performance.now();
+
+                this.runGroundDryingStep(
+                    elapsedMaintenanceTime,
+                );
+
+                this.performanceBreakdown = {
+                    ...this.performanceBreakdown,
+                    groundDryingMilliseconds:
+                        this.performanceBreakdown
+                            .groundDryingMilliseconds +
+                        (
+                            performance.now() -
+                            stepStart
+                        ),
+                };
+            }
+
+            this.shallowWaterMaintenanceAccumulator +=
+                fixedTimeStep;
+
+            if (
+                this.shallowWaterMaintenanceAccumulator +
+                stepEpsilon >=
+                this.definition
+                    .shallowWaterMaintenanceInterval
+            ) {
+                const elapsedShallowTime =
+                    this.shallowWaterMaintenanceAccumulator;
+
+                this.shallowWaterMaintenanceAccumulator =
+                    0;
+
+                stepStart =
+                    performance.now();
+
+                this.runShallowWaterDissipationStep(
+                    elapsedShallowTime,
+                );
+
+                this.performanceBreakdown = {
+                    ...this.performanceBreakdown,
+                    shallowWaterDissipationMilliseconds:
+                        this.performanceBreakdown
+                            .shallowWaterDissipationMilliseconds +
+                        (
+                            performance.now() -
+                            stepStart
+                        ),
+                };
+            }
 
             this.lastSubstepCount +=
                 1;
@@ -271,6 +430,27 @@ export class WaterGroundInteractionSystem {
 
         this.lastSubstepCount =
             0;
+
+        this.moistureMaintenanceAccumulator =
+            0;
+
+        this.shallowWaterMaintenanceAccumulator =
+            0;
+
+        this.clearMoistureDiffusionScratch();
+
+        this.performanceBreakdown = {
+            contactWettingMilliseconds: 0,
+            infiltrationMilliseconds: 0,
+            moistureDiffusionMilliseconds: 0,
+            groundDryingMilliseconds: 0,
+            shallowWaterDissipationMilliseconds: 0,
+        };
+    }
+
+    public getPerformanceBreakdown():
+        WaterGroundInteractionPerformanceBreakdown {
+        return this.performanceBreakdown;
     }
 
     public getDefinition():
@@ -626,10 +806,8 @@ export class WaterGroundInteractionSystem {
         deltaTime: number,
     ): void {
         const trackedIndices =
-            [
-                ...this.environmentField
-                    .getTrackedMoistureIndices(),
-            ];
+            this.environmentField
+                .getTrackedMoistureIndices();
 
         if (
             trackedIndices.length === 0 ||
@@ -646,41 +824,15 @@ export class WaterGroundInteractionSystem {
             this.environmentField
                 .getRowCount();
 
-        const deltas =
-            new Map<number, number>();
-
-        const scheduleDelta =
-            (
-                index: number,
-                delta: number,
-            ): void => {
-                deltas.set(
-                    index,
-                    (
-                        deltas.get(index) ??
-                        0
-                    ) +
-                    delta,
-                );
-            };
-
         /*
-         * A pair is evaluated once. This matters when both cells are already
-         * tracked, otherwise the same edge would exchange moisture twice.
+         * Each grid edge is visited exactly once by considering only RIGHT
+         * and DOWN neighbours. This removes the old visited-pair Set and its
+         * per-edge string allocations.
          */
-        const visitedPairs =
-            new Set<string>();
-
         for (
             const sourceIndex
             of trackedIndices
         ) {
-            const sourceMoisture =
-                this.environmentField
-                    .getMoistureByIndex(
-                        sourceIndex,
-                    );
-
             const sourceColumn =
                 sourceIndex %
                 columnCount;
@@ -691,32 +843,14 @@ export class WaterGroundInteractionSystem {
                     columnCount,
                 );
 
-            const neighbours:
-                number[] = [];
-
-            if (
-                sourceColumn > 0
-            ) {
-                neighbours.push(
-                    sourceIndex - 1,
-                );
-            }
-
             if (
                 sourceColumn <
                 columnCount - 1
             ) {
-                neighbours.push(
+                this.scheduleMoistureDiffusionPair(
+                    sourceIndex,
                     sourceIndex + 1,
-                );
-            }
-
-            if (
-                sourceRow > 0
-            ) {
-                neighbours.push(
-                    sourceIndex -
-                    columnCount,
+                    deltaTime,
                 );
             }
 
@@ -724,150 +858,29 @@ export class WaterGroundInteractionSystem {
                 sourceRow <
                 rowCount - 1
             ) {
-                neighbours.push(
+                this.scheduleMoistureDiffusionPair(
+                    sourceIndex,
                     sourceIndex +
                     columnCount,
-                );
-            }
-
-            for (
-                const neighbourIndex
-                of neighbours
-            ) {
-                const pairMinimum =
-                    Math.min(
-                        sourceIndex,
-                        neighbourIndex,
-                    );
-
-                const pairMaximum =
-                    Math.max(
-                        sourceIndex,
-                        neighbourIndex,
-                    );
-
-                const pairKey =
-                    `${pairMinimum}:${pairMaximum}`;
-
-                if (
-                    visitedPairs.has(
-                        pairKey,
-                    )
-                ) {
-                    continue;
-                }
-
-                visitedPairs.add(
-                    pairKey,
-                );
-
-                const neighbourMoisture =
-                    this.environmentField
-                        .getMoistureByIndex(
-                            neighbourIndex,
-                        );
-
-                const signedDifference =
-                    sourceMoisture -
-                    neighbourMoisture;
-
-                if (
-                    Math.abs(
-                        signedDifference,
-                    ) <=
-                    this.definition
-                        .minimumDiffusionDifference
-                ) {
-                    continue;
-                }
-
-                const wetterIndex =
-                    signedDifference > 0
-                        ? sourceIndex
-                        : neighbourIndex;
-
-                const drierIndex =
-                    signedDifference > 0
-                        ? neighbourIndex
-                        : sourceIndex;
-
-                const moistureDifference =
-                    Math.abs(
-                        signedDifference,
-                    );
-
-                const availableExcess =
-                    this.environmentField
-                        .getExcessMoistureByIndex(
-                            wetterIndex,
-                        );
-
-                if (
-                    availableExcess <= 0
-                ) {
-                    continue;
-                }
-
-                const drierMoisture =
-                    this.environmentField
-                        .getMoistureByIndex(
-                            drierIndex,
-                        );
-
-                const remainingCapacity =
-                    Math.max(
-                        0,
-                        this.environmentField
-                            .getDefinition()
-                            .maximumMoisture -
-                        drierMoisture,
-                    );
-
-                const requestedTransfer =
-                    moistureDifference *
-                    this.definition
-                        .moistureDiffusionRate *
-                    deltaTime;
-
-                const transfer =
-                    Math.min(
-                        availableExcess,
-                        remainingCapacity,
-                        requestedTransfer,
-                    );
-
-                if (
-                    transfer <= 0
-                ) {
-                    continue;
-                }
-
-                scheduleDelta(
-                    wetterIndex,
-                    -transfer,
-                );
-
-                scheduleDelta(
-                    drierIndex,
-                    transfer,
+                    deltaTime,
                 );
             }
         }
 
         /*
-         * Apply losses first, then gains. Because all amounts came from the
-         * pre-step snapshot, the second pass remains deterministic.
+         * Apply losses first, then gains. All deltas were calculated from the
+         * pre-apply field state, preserving deterministic two-pass behavior.
          */
         for (
-            const [
-                index,
-                delta,
-            ]
-            of deltas
+            const index
+            of this.moistureDiffusionTouchedIndices
         ) {
-            if (
-                delta < 0
-            ) {
+            const delta =
+                this.moistureDiffusionDeltas[
+                index
+                ];
+
+            if (delta < 0) {
                 this.environmentField
                     .removeMoistureByIndex(
                         index,
@@ -877,15 +890,15 @@ export class WaterGroundInteractionSystem {
         }
 
         for (
-            const [
-                index,
-                delta,
-            ]
-            of deltas
+            const index
+            of this.moistureDiffusionTouchedIndices
         ) {
-            if (
-                delta > 0
-            ) {
+            const delta =
+                this.moistureDiffusionDeltas[
+                index
+                ];
+
+            if (delta > 0) {
                 this.environmentField
                     .addMoistureByIndex(
                         index,
@@ -893,6 +906,149 @@ export class WaterGroundInteractionSystem {
                     );
             }
         }
+
+        this.clearMoistureDiffusionScratch();
+    }
+
+    private scheduleMoistureDiffusionPair(
+        firstIndex: number,
+        secondIndex: number,
+        deltaTime: number,
+    ): void {
+        const firstMoisture =
+            this.environmentField
+                .getMoistureByIndex(
+                    firstIndex,
+                );
+
+        const secondMoisture =
+            this.environmentField
+                .getMoistureByIndex(
+                    secondIndex,
+                );
+
+        const signedDifference =
+            firstMoisture -
+            secondMoisture;
+
+        if (
+            Math.abs(
+                signedDifference,
+            ) <=
+            this.definition
+                .minimumDiffusionDifference
+        ) {
+            return;
+        }
+
+        const wetterIndex =
+            signedDifference > 0
+                ? firstIndex
+                : secondIndex;
+
+        const drierIndex =
+            signedDifference > 0
+                ? secondIndex
+                : firstIndex;
+
+        const availableExcess =
+            this.environmentField
+                .getExcessMoistureByIndex(
+                    wetterIndex,
+                );
+
+        if (availableExcess <= 0) {
+            return;
+        }
+
+        const drierMoisture =
+            this.environmentField
+                .getMoistureByIndex(
+                    drierIndex,
+                );
+
+        const remainingCapacity =
+            Math.max(
+                0,
+                this.environmentField
+                    .getDefinition()
+                    .maximumMoisture -
+                drierMoisture,
+            );
+
+        const requestedTransfer =
+            Math.abs(
+                signedDifference,
+            ) *
+            this.definition
+                .moistureDiffusionRate *
+            deltaTime;
+
+        const transfer =
+            Math.min(
+                availableExcess,
+                remainingCapacity,
+                requestedTransfer,
+            );
+
+        if (transfer <= 0) {
+            return;
+        }
+
+        this.addMoistureDiffusionDelta(
+            wetterIndex,
+            -transfer,
+        );
+
+        this.addMoistureDiffusionDelta(
+            drierIndex,
+            transfer,
+        );
+    }
+
+    private addMoistureDiffusionDelta(
+        index: number,
+        delta: number,
+    ): void {
+        if (
+            this.moistureDiffusionTouchedFlags[
+            index
+            ] === 0
+        ) {
+            this.moistureDiffusionTouchedFlags[
+                index
+            ] = 1;
+
+            this.moistureDiffusionTouchedIndices
+                .push(
+                    index,
+                );
+        }
+
+        this.moistureDiffusionDeltas[
+            index
+        ] +=
+            delta;
+    }
+
+    private clearMoistureDiffusionScratch():
+        void {
+        for (
+            const index
+            of this.moistureDiffusionTouchedIndices
+        ) {
+            this.moistureDiffusionDeltas[
+                index
+            ] = 0;
+
+            this.moistureDiffusionTouchedFlags[
+                index
+            ] = 0;
+        }
+
+        this.moistureDiffusionTouchedIndices
+            .length =
+            0;
     }
 
     /**

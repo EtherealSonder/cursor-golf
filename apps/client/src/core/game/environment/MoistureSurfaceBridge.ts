@@ -74,6 +74,20 @@ export class MoistureSurfaceBridge {
     private revision =
         0;
 
+    private updateAccumulator =
+        0;
+
+    /*
+     * Reusable sparse candidate storage. This replaces the per-update
+     * Set<number> allocation previously used to union tracked moisture cells
+     * with bridge-owned Wet cells.
+     */
+    private readonly candidateIndices:
+        number[] = [];
+
+    private readonly candidateTracked:
+        Uint8Array;
+
     public constructor(
         private readonly environmentField:
             EnvironmentField,
@@ -106,6 +120,12 @@ export class MoistureSurfaceBridge {
 
         this.wetCellPositions =
             new Int32Array(
+                environmentField
+                    .getCellCount(),
+            );
+
+        this.candidateTracked =
+            new Uint8Array(
                 environmentField
                     .getCellCount(),
             );
@@ -144,42 +164,45 @@ export class MoistureSurfaceBridge {
                 );
     }
 
-    public update():
-        void {
+    public update(
+        deltaTime:
+            number,
+    ): void {
         if (
-            !this.definition.enabled
+            !this.definition.enabled ||
+            !Number.isFinite(
+                deltaTime,
+            ) ||
+            deltaTime <= 0
+        ) {
+            return;
+        }
+
+        this.updateAccumulator +=
+            deltaTime;
+
+        if (
+            this.updateAccumulator <
+            this.definition
+                .updateIntervalSeconds
         ) {
             return;
         }
 
         /*
-         * Process the union of:
-         * 1. EnvironmentField cells that currently have meaningful excess
-         *    moisture.
-         * 2. Cells already classified Wet by this bridge.
-         *
-         * The second group is essential. EnvironmentField can stop tracking a
-         * nearly dry cell before it crosses the bridge's dry hysteresis
-         * threshold, so Wet cells must remain self-tracked until they return
-         * to their dry categorical state.
+         * Surface classification depends on the latest moisture state, not on
+         * integrating a rate. One classification pass is therefore enough
+         * even when a long render frame spans more than one bridge interval.
          */
-        const candidates =
-            new Set<number>(
-                this.environmentField
-                    .getTrackedMoistureIndices(),
-            );
+        this.updateAccumulator =
+            this.updateAccumulator %
+            this.definition
+                .updateIntervalSeconds;
 
-        for (
-            const index
-            of this.wetCellIndices
-        ) {
-            candidates.add(
-                index,
-            );
-        }
+        this.collectCandidateIndices();
 
         if (
-            candidates.size ===
+            this.candidateIndices.length ===
             0
         ) {
             return;
@@ -190,7 +213,7 @@ export class MoistureSurfaceBridge {
 
         for (
             const index
-            of candidates
+            of this.candidateIndices
         ) {
             const center =
                 this.environmentField
@@ -228,7 +251,7 @@ export class MoistureSurfaceBridge {
 
             const wasWet =
                 this.classification[
-                    index
+                index
                 ] ===
                 MOISTURE_DERIVED_WET;
 
@@ -266,6 +289,8 @@ export class MoistureSurfaceBridge {
                 true;
         }
 
+        this.clearCandidateIndices();
+
         if (
             changed
         ) {
@@ -277,8 +302,77 @@ export class MoistureSurfaceBridge {
         }
     }
 
+    private collectCandidateIndices():
+        void {
+        const trackedMoistureIndices =
+            this.environmentField
+                .getTrackedMoistureIndices();
+
+        for (
+            const index
+            of trackedMoistureIndices
+        ) {
+            this.addCandidateIndex(
+                index,
+            );
+        }
+
+        for (
+            const index
+            of this.wetCellIndices
+        ) {
+            this.addCandidateIndex(
+                index,
+            );
+        }
+    }
+
+    private addCandidateIndex(
+        index:
+            number,
+    ): void {
+        if (
+            this.candidateTracked[
+            index
+            ] !==
+            0
+        ) {
+            return;
+        }
+
+        this.candidateTracked[
+            index
+        ] =
+            1;
+
+        this.candidateIndices.push(
+            index,
+        );
+    }
+
+    private clearCandidateIndices():
+        void {
+        for (
+            const index
+            of this.candidateIndices
+        ) {
+            this.candidateTracked[
+                index
+            ] =
+                0;
+        }
+
+        this.candidateIndices.length =
+            0;
+    }
+
     public reset():
         void {
+        this.updateAccumulator =
+            0;
+
+        this.clearCandidateIndices();
+
         if (
             this.wetCellIndices.length ===
             0
@@ -350,8 +444,8 @@ export class MoistureSurfaceBridge {
             ) ||
             index < 0 ||
             index >=
-                this.classification
-                    .length
+            this.classification
+                .length
         ) {
             return false;
         }
@@ -415,7 +509,7 @@ export class MoistureSurfaceBridge {
 
         if (
             this.classification[
-                index
+            index
             ] ===
             MOISTURE_DERIVED_WET
         ) {
@@ -485,11 +579,11 @@ export class MoistureSurfaceBridge {
             gridX < 0 ||
             gridY < 0 ||
             gridX >=
-                this.environmentField
-                    .getColumnCount() ||
+            this.environmentField
+                .getColumnCount() ||
             gridY >=
-                this.environmentField
-                    .getRowCount()
+            this.environmentField
+                .getRowCount()
         ) {
             return null;
         }
@@ -514,7 +608,7 @@ export class MoistureSurfaceBridge {
         ) {
             if (
                 this.wetCellTracked[
-                    index
+                index
                 ] !==
                 0
             ) {
@@ -556,7 +650,7 @@ export class MoistureSurfaceBridge {
 
         if (
             this.wetCellTracked[
-                index
+            index
             ] ===
             0
         ) {
@@ -565,7 +659,7 @@ export class MoistureSurfaceBridge {
 
         const position =
             this.wetCellPositions[
-                index
+            index
             ];
 
         const lastPosition =
@@ -575,15 +669,15 @@ export class MoistureSurfaceBridge {
 
         const lastIndex =
             this.wetCellIndices[
-                lastPosition
+            lastPosition
             ];
 
         if (
             position >= 0 &&
             position !==
-                lastPosition &&
+            lastPosition &&
             lastIndex !==
-                undefined
+            undefined
         ) {
             this.wetCellIndices[
                 position

@@ -41,6 +41,14 @@ export interface MoistureSurfaceBridgeDefinition {
     readonly enabled:
     boolean;
 
+    /**
+     * Wet/dry categorical surface transitions are slow environmental state.
+     * The bridge therefore evaluates them at a controlled cadence rather than
+     * once per rendered frame.
+     */
+    readonly updateIntervalSeconds:
+    number;
+
     readonly surfaceProfiles:
     readonly MoistureSurfaceProfile[];
 }
@@ -49,6 +57,13 @@ export const DEFAULT_MOISTURE_SURFACE_BRIDGE_DEFINITION:
     MoistureSurfaceBridgeDefinition = {
     enabled:
         true,
+
+    /*
+     * 15 Hz is responsive enough for Wet/Dry terrain transitions while
+     * avoiding a full sparse classification pass every rendered frame.
+     */
+    updateIntervalSeconds:
+        1 / 15,
 
     surfaceProfiles: [
         {
@@ -96,6 +111,17 @@ export function validateMoistureSurfaceBridgeDefinition(
     ) {
         throw new Error(
             "Moisture surface bridge enabled must be a boolean.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.updateIntervalSeconds,
+        ) ||
+        definition.updateIntervalSeconds <= 0
+    ) {
+        throw new Error(
+            "Moisture surface bridge updateIntervalSeconds must be finite and greater than zero.",
         );
     }
 
