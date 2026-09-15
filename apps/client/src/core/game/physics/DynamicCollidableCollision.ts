@@ -1,4 +1,6 @@
 import type {
+    DynamicCircleObstacleDefinition,
+    DynamicObstacleDefinition,
     DynamicRectangleObstacleDefinition,
 } from "../config/ObstacleDefinition";
 
@@ -9,6 +11,10 @@ import type {
 import type {
     DynamicCollisionManifold,
 } from "./DynamicCollisionManifold";
+
+import type {
+    PhysicsMaterial,
+} from "./PhysicsMaterial";
 
 import {
     combineFriction,
@@ -30,6 +36,8 @@ interface OrientedRectangle {
     readonly centerY: number;
     readonly axisX: Axis2D;
     readonly axisY: Axis2D;
+    readonly halfWidth: number;
+    readonly halfHeight: number;
     readonly vertices: readonly Point2D[];
 }
 
@@ -38,51 +46,295 @@ interface Projection {
     readonly maximum: number;
 }
 
+export interface FixedRectangleCollisionShape {
+    readonly id: string;
+    readonly shape: "rectangle";
+    readonly positionX: number;
+    readonly positionY: number;
+    readonly rotationRadians: number;
+    readonly width: number;
+    readonly height: number;
+    readonly material: PhysicsMaterial;
+}
+
+export interface FixedCircleCollisionShape {
+    readonly id: string;
+    readonly shape: "circle";
+    readonly positionX: number;
+    readonly positionY: number;
+    readonly radius: number;
+    readonly material: PhysicsMaterial;
+}
+
+export type FixedCollisionShape =
+    | FixedRectangleCollisionShape
+    | FixedCircleCollisionShape;
+
 const SUPPORT_EPSILON = 0.0001;
+const GEOMETRY_EPSILON = 0.000001;
 
 /**
- * Detects collision between two physical mechanism colliders.
+ * General narrow-phase collision detection for the current sandbox collider
+ * primitives. Object identity is deliberately irrelevant. Any
+ * DynamicCollidable using a supported shape automatically participates.
  *
- * Phase G intentionally limits mechanism-to-mechanism collision to the
- * rectangle colliders currently used by Fan and FireTube. Ball collision
- * geometry remains in StaticObstacleCollision.ts and is unchanged.
+ * Supported pairs:
+ * rectangle <-> rectangle
+ * circle    <-> circle
+ * circle    <-> rectangle
+ *
+ * Triangle support can be added here once, when a gameplay object actually
+ * requires dynamic triangle collision. It does not require object-specific
+ * pair logic.
  */
 export function detectDynamicCollidableCollision(
-    first:
-        DynamicCollidable,
-
-    second:
-        DynamicCollidable,
+    first: DynamicCollidable,
+    second: DynamicCollidable,
 ): DynamicCollisionManifold | null {
 
-    const firstDefinition =
-        first.getDefinition();
+    return detectShapePair(
+        first.getX(),
+        first.getY(),
+        first.getRotationRadians(),
+        first.getDefinition(),
+        second.getX(),
+        second.getY(),
+        second.getRotationRadians(),
+        second.getDefinition(),
+    );
+}
 
-    const secondDefinition =
-        second.getDefinition();
+/**
+ * Dynamic-versus-fixed form of the same narrow phase. The returned normal
+ * still points from the second body toward the first body, matching
+ * DynamicCollisionResponse.
+ */
+export function detectDynamicCollidableAgainstFixedCollision(
+    dynamic: DynamicCollidable,
+    fixed: FixedCollisionShape,
+): DynamicCollisionManifold | null {
+
+    const dynamicDefinition =
+        dynamic.getDefinition();
+
+    if (dynamicDefinition.shape === "triangle") {
+        return null;
+    }
+
+    if (fixed.shape === "rectangle") {
+        if (dynamicDefinition.shape === "rectangle") {
+            return detectRectangleRectangle(
+                dynamic.getX(),
+                dynamic.getY(),
+                dynamic.getRotationRadians(),
+                dynamicDefinition,
+                fixed.positionX,
+                fixed.positionY,
+                fixed.rotationRadians,
+                fixed,
+            );
+        }
+
+        return detectCircleRectangle(
+            dynamic.getX(),
+            dynamic.getY(),
+            dynamicDefinition,
+            fixed.positionX,
+            fixed.positionY,
+            fixed.rotationRadians,
+            fixed,
+            `${dynamicDefinition.id}<->${fixed.id}`,
+            dynamicDefinition.material,
+            fixed.material,
+        );
+    }
+
+    if (dynamicDefinition.shape === "circle") {
+        return detectCircleCircle(
+            dynamic.getX(),
+            dynamic.getY(),
+            dynamicDefinition,
+            fixed.positionX,
+            fixed.positionY,
+            fixed,
+            `${dynamicDefinition.id}<->${fixed.id}`,
+            dynamicDefinition.material,
+            fixed.material,
+        );
+    }
+
+    /*
+     * Rectangle is the first body and circle is the second. Reuse the
+     * circle-rectangle calculation with reversed bodies, then flip the normal.
+     */
+    const reversed =
+        detectCircleRectangle(
+            fixed.positionX,
+            fixed.positionY,
+            fixed,
+            dynamic.getX(),
+            dynamic.getY(),
+            dynamic.getRotationRadians(),
+            dynamicDefinition,
+            `${fixed.id}<->${dynamicDefinition.id}`,
+            fixed.material,
+            dynamicDefinition.material,
+        );
+
+    if (!reversed) {
+        return null;
+    }
+
+    return {
+        ...reversed,
+        obstacleId:
+            `${dynamicDefinition.id}<->${fixed.id}`,
+        normalX:
+            -reversed.normalX,
+        normalY:
+            -reversed.normalY,
+    };
+}
+
+function detectShapePair(
+    firstX: number,
+    firstY: number,
+    firstRotation: number,
+    firstDefinition: DynamicObstacleDefinition,
+    secondX: number,
+    secondY: number,
+    secondRotation: number,
+    secondDefinition: DynamicObstacleDefinition,
+): DynamicCollisionManifold | null {
 
     if (
-        firstDefinition.shape !==
-        "rectangle" ||
-        secondDefinition.shape !==
-        "rectangle"
+        firstDefinition.shape === "triangle" ||
+        secondDefinition.shape === "triangle"
     ) {
         return null;
     }
 
+    if (
+        firstDefinition.shape === "rectangle" &&
+        secondDefinition.shape === "rectangle"
+    ) {
+        return detectRectangleRectangle(
+            firstX,
+            firstY,
+            firstRotation,
+            firstDefinition,
+            secondX,
+            secondY,
+            secondRotation,
+            secondDefinition,
+        );
+    }
+
+    if (
+        firstDefinition.shape === "circle" &&
+        secondDefinition.shape === "circle"
+    ) {
+        return detectCircleCircle(
+            firstX,
+            firstY,
+            firstDefinition,
+            secondX,
+            secondY,
+            secondDefinition,
+            `${firstDefinition.id}<->${secondDefinition.id}`,
+            firstDefinition.material,
+            secondDefinition.material,
+        );
+    }
+
+    if (
+        firstDefinition.shape === "circle" &&
+        secondDefinition.shape === "rectangle"
+    ) {
+        return detectCircleRectangle(
+            firstX,
+            firstY,
+            firstDefinition,
+            secondX,
+            secondY,
+            secondRotation,
+            secondDefinition,
+            `${firstDefinition.id}<->${secondDefinition.id}`,
+            firstDefinition.material,
+            secondDefinition.material,
+        );
+    }
+
+    if (
+        firstDefinition.shape === "rectangle" &&
+        secondDefinition.shape === "circle"
+    ) {
+        const reversed =
+            detectCircleRectangle(
+                secondX,
+                secondY,
+                secondDefinition,
+                firstX,
+                firstY,
+                firstRotation,
+                firstDefinition,
+                `${secondDefinition.id}<->${firstDefinition.id}`,
+                secondDefinition.material,
+                firstDefinition.material,
+            );
+
+        if (!reversed) {
+            return null;
+        }
+
+        return {
+            ...reversed,
+            obstacleId:
+                `${firstDefinition.id}<->${secondDefinition.id}`,
+            normalX:
+                -reversed.normalX,
+            normalY:
+                -reversed.normalY,
+        };
+    }
+
+    return null;
+}
+
+function detectRectangleRectangle(
+    firstX: number,
+    firstY: number,
+    firstRotation: number,
+    firstDefinition: {
+        readonly id: string;
+        readonly width: number;
+        readonly height: number;
+        readonly material: PhysicsMaterial;
+    },
+    secondX: number,
+    secondY: number,
+    secondRotation: number,
+    secondDefinition: {
+        readonly id: string;
+        readonly width: number;
+        readonly height: number;
+        readonly material: PhysicsMaterial;
+    },
+): DynamicCollisionManifold | null {
+
     const firstRectangle =
         createOrientedRectangle(
-            first.getX(),
-            first.getY(),
-            first.getRotationRadians(),
+            firstX,
+            firstY,
+            firstRotation,
             firstDefinition,
         );
 
     const secondRectangle =
         createOrientedRectangle(
-            second.getX(),
-            second.getY(),
-            second.getRotationRadians(),
+            secondX,
+            secondY,
+            secondRotation,
             secondDefinition,
         );
 
@@ -100,10 +352,7 @@ export function detectDynamicCollidableCollision(
         Axis2D | null =
         null;
 
-    for (
-        const axis
-        of axes
-    ) {
+    for (const axis of axes) {
         const firstProjection =
             projectRectangle(
                 firstRectangle,
@@ -130,15 +379,9 @@ export function detectDynamicCollidableCollision(
             return null;
         }
 
-        if (
-            overlap <
-            minimumOverlap
-        ) {
-            minimumOverlap =
-                overlap;
-
-            minimumAxis =
-                axis;
+        if (overlap < minimumOverlap) {
+            minimumOverlap = overlap;
+            minimumAxis = axis;
         }
     }
 
@@ -146,17 +389,13 @@ export function detectDynamicCollidableCollision(
         return null;
     }
 
-    /*
-     * DynamicCollisionResponse expects its normal to point from the second
-     * body toward the first body.
-     */
     const centerDeltaX =
-        first.getX() -
-        second.getX();
+        firstX -
+        secondX;
 
     const centerDeltaY =
-        first.getY() -
-        second.getY();
+        firstY -
+        secondY;
 
     const axisDirection =
         centerDeltaX *
@@ -175,7 +414,7 @@ export function detectDynamicCollidableCollision(
             : -minimumAxis.y;
 
     const contactPoint =
-        calculateContactPoint(
+        calculateRectangleContactPoint(
             firstRectangle,
             secondRectangle,
             normalX,
@@ -185,25 +424,19 @@ export function detectDynamicCollidableCollision(
     return {
         obstacleId:
             `${firstDefinition.id}<->${secondDefinition.id}`,
-
         normalX,
         normalY,
-
         penetrationDepth:
             minimumOverlap,
-
         contactPointX:
             contactPoint.x,
-
         contactPointY:
             contactPoint.y,
-
         restitution:
             combineRestitution(
                 firstDefinition.material,
                 secondDefinition.material,
             ),
-
         friction:
             combineFriction(
                 firstDefinition.material,
@@ -212,18 +445,359 @@ export function detectDynamicCollidableCollision(
     };
 }
 
+function detectCircleCircle(
+    firstX: number,
+    firstY: number,
+    firstDefinition: {
+        readonly radius: number;
+    },
+    secondX: number,
+    secondY: number,
+    secondDefinition: {
+        readonly radius: number;
+    },
+    obstacleId: string,
+    firstMaterial: PhysicsMaterial,
+    secondMaterial: PhysicsMaterial,
+): DynamicCollisionManifold | null {
+
+    const differenceX =
+        firstX -
+        secondX;
+
+    const differenceY =
+        firstY -
+        secondY;
+
+    const combinedRadius =
+        firstDefinition.radius +
+        secondDefinition.radius;
+
+    const distanceSquared =
+        differenceX *
+        differenceX +
+        differenceY *
+        differenceY;
+
+    if (
+        distanceSquared >=
+        combinedRadius *
+        combinedRadius
+    ) {
+        return null;
+    }
+
+    let normalX = 1;
+    let normalY = 0;
+    let distance = 0;
+
+    if (
+        distanceSquared >
+        GEOMETRY_EPSILON
+    ) {
+        distance =
+            Math.sqrt(
+                distanceSquared,
+            );
+
+        normalX =
+            differenceX /
+            distance;
+
+        normalY =
+            differenceY /
+            distance;
+    }
+
+    const firstSurfaceX =
+        firstX -
+        normalX *
+        firstDefinition.radius;
+
+    const firstSurfaceY =
+        firstY -
+        normalY *
+        firstDefinition.radius;
+
+    const secondSurfaceX =
+        secondX +
+        normalX *
+        secondDefinition.radius;
+
+    const secondSurfaceY =
+        secondY +
+        normalY *
+        secondDefinition.radius;
+
+    return {
+        obstacleId,
+        normalX,
+        normalY,
+        penetrationDepth:
+            combinedRadius -
+            distance,
+        contactPointX:
+            (
+                firstSurfaceX +
+                secondSurfaceX
+            ) / 2,
+        contactPointY:
+            (
+                firstSurfaceY +
+                secondSurfaceY
+            ) / 2,
+        restitution:
+            combineRestitution(
+                firstMaterial,
+                secondMaterial,
+            ),
+        friction:
+            combineFriction(
+                firstMaterial,
+                secondMaterial,
+            ),
+    };
+}
+
+function detectCircleRectangle(
+    circleX: number,
+    circleY: number,
+    circleDefinition: {
+        readonly radius: number;
+    },
+    rectangleX: number,
+    rectangleY: number,
+    rectangleRotation: number,
+    rectangleDefinition: {
+        readonly width: number;
+        readonly height: number;
+    },
+    obstacleId: string,
+    circleMaterial: PhysicsMaterial,
+    rectangleMaterial: PhysicsMaterial,
+): DynamicCollisionManifold | null {
+
+    const rectangle =
+        createOrientedRectangle(
+            rectangleX,
+            rectangleY,
+            rectangleRotation,
+            rectangleDefinition,
+        );
+
+    const offsetX =
+        circleX -
+        rectangleX;
+
+    const offsetY =
+        circleY -
+        rectangleY;
+
+    const localX =
+        offsetX *
+        rectangle.axisX.x +
+        offsetY *
+        rectangle.axisX.y;
+
+    const localY =
+        offsetX *
+        rectangle.axisY.x +
+        offsetY *
+        rectangle.axisY.y;
+
+    const closestLocalX =
+        clamp(
+            localX,
+            -rectangle.halfWidth,
+            rectangle.halfWidth,
+        );
+
+    const closestLocalY =
+        clamp(
+            localY,
+            -rectangle.halfHeight,
+            rectangle.halfHeight,
+        );
+
+    const closestWorldX =
+        rectangleX +
+        rectangle.axisX.x *
+        closestLocalX +
+        rectangle.axisY.x *
+        closestLocalY;
+
+    const closestWorldY =
+        rectangleY +
+        rectangle.axisX.y *
+        closestLocalX +
+        rectangle.axisY.y *
+        closestLocalY;
+
+    const differenceX =
+        circleX -
+        closestWorldX;
+
+    const differenceY =
+        circleY -
+        closestWorldY;
+
+    const distanceSquared =
+        differenceX *
+        differenceX +
+        differenceY *
+        differenceY;
+
+    if (
+        distanceSquared >
+        circleDefinition.radius *
+        circleDefinition.radius
+    ) {
+        return null;
+    }
+
+    let normalX: number;
+    let normalY: number;
+    let penetrationDepth: number;
+    let contactPointX: number;
+    let contactPointY: number;
+
+    if (
+        distanceSquared >
+        GEOMETRY_EPSILON
+    ) {
+        const distance =
+            Math.sqrt(
+                distanceSquared,
+            );
+
+        normalX =
+            differenceX /
+            distance;
+
+        normalY =
+            differenceY /
+            distance;
+
+        penetrationDepth =
+            circleDefinition.radius -
+            distance;
+
+        contactPointX =
+            closestWorldX;
+
+        contactPointY =
+            closestWorldY;
+    } else {
+        const distanceToLeft =
+            localX +
+            rectangle.halfWidth;
+
+        const distanceToRight =
+            rectangle.halfWidth -
+            localX;
+
+        const distanceToTop =
+            localY +
+            rectangle.halfHeight;
+
+        const distanceToBottom =
+            rectangle.halfHeight -
+            localY;
+
+        const nearest =
+            Math.min(
+                distanceToLeft,
+                distanceToRight,
+                distanceToTop,
+                distanceToBottom,
+            );
+
+        let localNormalX = 0;
+        let localNormalY = 0;
+        let faceLocalX = localX;
+        let faceLocalY = localY;
+
+        if (nearest === distanceToLeft) {
+            localNormalX = -1;
+            faceLocalX =
+                -rectangle.halfWidth;
+        } else if (
+            nearest === distanceToRight
+        ) {
+            localNormalX = 1;
+            faceLocalX =
+                rectangle.halfWidth;
+        } else if (
+            nearest === distanceToTop
+        ) {
+            localNormalY = -1;
+            faceLocalY =
+                -rectangle.halfHeight;
+        } else {
+            localNormalY = 1;
+            faceLocalY =
+                rectangle.halfHeight;
+        }
+
+        normalX =
+            rectangle.axisX.x *
+            localNormalX +
+            rectangle.axisY.x *
+            localNormalY;
+
+        normalY =
+            rectangle.axisX.y *
+            localNormalX +
+            rectangle.axisY.y *
+            localNormalY;
+
+        penetrationDepth =
+            circleDefinition.radius +
+            nearest;
+
+        contactPointX =
+            rectangleX +
+            rectangle.axisX.x *
+            faceLocalX +
+            rectangle.axisY.x *
+            faceLocalY;
+
+        contactPointY =
+            rectangleY +
+            rectangle.axisX.y *
+            faceLocalX +
+            rectangle.axisY.y *
+            faceLocalY;
+    }
+
+    return {
+        obstacleId,
+        normalX,
+        normalY,
+        penetrationDepth,
+        contactPointX,
+        contactPointY,
+        restitution:
+            combineRestitution(
+                circleMaterial,
+                rectangleMaterial,
+            ),
+        friction:
+            combineFriction(
+                circleMaterial,
+                rectangleMaterial,
+            ),
+    };
+}
+
 function createOrientedRectangle(
-    centerX:
-        number,
-
-    centerY:
-        number,
-
-    rotationRadians:
-        number,
-
-    definition:
-        DynamicRectangleObstacleDefinition,
+    centerX: number,
+    centerY: number,
+    rotationRadians: number,
+    definition: {
+        readonly width: number;
+        readonly height: number;
+    },
 ): OrientedRectangle {
 
     const cosine =
@@ -257,7 +831,8 @@ function createOrientedRectangle(
         centerY,
         axisX,
         axisY,
-
+        halfWidth,
+        halfHeight,
         vertices: [
             createVertex(
                 centerX,
@@ -296,23 +871,12 @@ function createOrientedRectangle(
 }
 
 function createVertex(
-    centerX:
-        number,
-
-    centerY:
-        number,
-
-    axisX:
-        Axis2D,
-
-    axisY:
-        Axis2D,
-
-    localX:
-        number,
-
-    localY:
-        number,
+    centerX: number,
+    centerY: number,
+    axisX: Axis2D,
+    axisY: Axis2D,
+    localX: number,
+    localY: number,
 ): Point2D {
 
     return {
@@ -322,7 +886,6 @@ function createVertex(
             localX +
             axisY.x *
             localY,
-
         y:
             centerY +
             axisX.y *
@@ -333,11 +896,8 @@ function createVertex(
 }
 
 function projectRectangle(
-    rectangle:
-        OrientedRectangle,
-
-    axis:
-        Axis2D,
+    rectangle: OrientedRectangle,
+    axis: Axis2D,
 ): Projection {
 
     let minimum =
@@ -375,25 +935,11 @@ function projectRectangle(
     };
 }
 
-/**
- * The existing impulse solver consumes one world-space contact point.
- *
- * For each rectangle we average every equally-extreme support vertex. This
- * yields a face centre for face contacts instead of arbitrarily selecting one
- * corner, while still preserving off-centre torque for corner impacts.
- */
-function calculateContactPoint(
-    first:
-        OrientedRectangle,
-
-    second:
-        OrientedRectangle,
-
-    normalX:
-        number,
-
-    normalY:
-        number,
+function calculateRectangleContactPoint(
+    first: OrientedRectangle,
+    second: OrientedRectangle,
+    normalX: number,
+    normalY: number,
 ): Point2D {
 
     const firstSupport =
@@ -415,27 +961,19 @@ function calculateContactPoint(
             (
                 firstSupport.x +
                 secondSupport.x
-            ) /
-            2,
-
+            ) / 2,
         y:
             (
                 firstSupport.y +
                 secondSupport.y
-            ) /
-            2,
+            ) / 2,
     };
 }
 
 function getAverageSupportPoint(
-    rectangle:
-        OrientedRectangle,
-
-    directionX:
-        number,
-
-    directionY:
-        number,
+    rectangle: OrientedRectangle,
+    directionX: number,
+    directionY: number,
 ): Point2D {
 
     let maximumProjection =
@@ -490,7 +1028,6 @@ function getAverageSupportPoint(
         return {
             x:
                 rectangle.centerX,
-
             y:
                 rectangle.centerY,
         };
@@ -500,9 +1037,23 @@ function getAverageSupportPoint(
         x:
             totalX /
             count,
-
         y:
             totalY /
             count,
     };
+}
+
+function clamp(
+    value: number,
+    minimum: number,
+    maximum: number,
+): number {
+
+    return Math.max(
+        minimum,
+        Math.min(
+            value,
+            maximum,
+        ),
+    );
 }

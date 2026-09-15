@@ -44,6 +44,10 @@ import {
 } from "../config/HoleDefinition";
 
 import {
+    DEFAULT_HYDRANT_HOSE_DEFINITION,
+} from "../config/HydrantHoseDefinition";
+
+import {
     DEFAULT_SURFACE_VISUAL_DEFINITION,
 } from "../config/SurfaceVisualDefinition";
 
@@ -104,6 +108,50 @@ import {
 import {
     WaterGroundInteractionValidation,
 } from "../debug/WaterGroundInteractionValidation";
+
+import {
+    WaterObstacleFieldValidation,
+} from "../debug/WaterObstacleFieldValidation";
+
+import {
+    WaterSolidCellExclusionValidation,
+} from "../debug/WaterSolidCellExclusionValidation";
+
+import {
+    WaterObstacleFlowValidation,
+} from "../debug/WaterObstacleFlowValidation";
+
+import {
+    WaterBoundaryFlowValidation,
+} from "../debug/WaterBoundaryFlowValidation";
+
+import {
+    AirborneWaterStaticCollisionValidation,
+} from "../debug/AirborneWaterStaticCollisionValidation";
+
+import {
+    AirborneWaterImpactDepositionValidation,
+} from "../debug/AirborneWaterImpactDepositionValidation";
+
+import {
+    WaterGameObjectIntegrationValidation,
+} from "../debug/WaterGameObjectIntegrationValidation";
+
+import {
+    HoseAndWaterEmitterCollisionValidation,
+} from "../debug/HoseAndWaterEmitterCollisionValidation";
+
+import {
+    GeneralObjectCollisionValidation,
+} from "../debug/GeneralObjectCollisionValidation";
+
+import {
+    PhysicsWorldRegistrationValidation,
+} from "../debug/PhysicsWorldRegistrationValidation";
+
+import {
+    WaterStaticObstacleAcceptanceValidation,
+} from "../debug/WaterStaticObstacleAcceptanceValidation";
 
 import {
     HoseJetBallForceSystem,
@@ -182,6 +230,18 @@ import {
 } from "../physics/DynamicCollisionSystem";
 
 import {
+    DynamicStaticCollisionSystem,
+} from "../physics/DynamicStaticCollisionSystem";
+
+import {
+    PhysicsWorld,
+} from "../physics/PhysicsWorld";
+
+import {
+    HoseCollisionSystem,
+} from "../physics/rope/HoseCollisionSystem";
+
+import {
     StaticObstacle,
 } from "../entities/obstacles/StaticObstacle";
 
@@ -222,6 +282,14 @@ import {
 } from "../environment/WaterField";
 
 import {
+    WaterObstacleField,
+} from "../environment/WaterObstacleField";
+
+import {
+    WaterObstacleRegistrationSystem,
+} from "../environment/WaterObstacleRegistrationSystem";
+
+import {
     WaterGroundInteractionSystem,
 } from "../environment/WaterGroundInteractionSystem";
 
@@ -232,6 +300,10 @@ import {
 import {
     AirborneWaterSystem,
 } from "../environment/AirborneWaterSystem";
+
+import {
+    AirborneWaterCollisionField,
+} from "../environment/AirborneWaterCollisionField";
 
 import {
     WindManager,
@@ -373,6 +445,10 @@ export class World {
     private hydrantHose:
         HydrantHose | null = null;
 
+    /** General Hose-versus-world collision pass introduced by 8D-7C. */
+    private hoseCollisionSystem:
+        HoseCollisionSystem | null = null;
+
     /** Phase 8B-12 continuous Hose jet -> Ball gameplay response. */
     private hoseJetBallForceSystem:
         HoseJetBallForceSystem | null =
@@ -398,6 +474,18 @@ export class World {
     private readonly waterField:
         WaterField;
 
+    /**
+     * Phase 8D-1 cached Water-grid occupancy for static solid geometry.
+     *
+     * This foundation is intentionally not connected to WaterFlowSolver yet.
+     */
+    private readonly waterObstacleField:
+        WaterObstacleField;
+
+    /** Phase 8D-7 live gameplay-collider to Water-collider bridge. */
+    private readonly waterObstacleRegistrationSystem:
+        WaterObstacleRegistrationSystem;
+
     /** Phase 8C bridge between standing Water and ground environment state. */
     private readonly waterGroundInteractionSystem:
         WaterGroundInteractionSystem;
@@ -405,6 +493,10 @@ export class World {
     /** Phase 8B registry/timing owner for Water-producing sources. */
     private readonly waterSourceSystem:
         WaterSourceSystem;
+
+    /** Phase 8D-5 continuous static collision queries for airborne Water. */
+    private readonly airborneWaterCollisionField:
+        AirborneWaterCollisionField;
 
     /** Phase 8B-2 authoritative transport for Water currently in flight. */
     private readonly airborneWaterSystem:
@@ -467,27 +559,20 @@ export class World {
         DynamicObstacle[] = [];
 
     /**
-     * Shared live collection consumed by Ball. It contains generic dynamic
-     * obstacles plus interactive mechanisms such as Fans.
-     */
-    private readonly dynamicCollidables:
-        DynamicCollidable[] = [];
-
-    /**
-     * Phase G mechanism-only collision collection.
+     * Phase 8D-7E authoritative physical registration layer.
      *
-     * Ball continues to consume dynamicCollidables. This collection is kept
-     * deliberately narrower so this phase adds only:
-     *
-     * Fan <-> Fan
-     * Fan <-> FireTube
-     * FireTube <-> FireTube
+     * World still owns gameplay entities. PhysicsWorld owns their collider
+     * registration and exposes filtered stable views to collision consumers.
      */
-    private readonly mechanismCollidables:
-        DynamicCollidable[] = [];
+    private readonly physicsWorld:
+        PhysicsWorld;
 
     private readonly dynamicCollisionSystem:
         DynamicCollisionSystem;
+
+    /** Phase 8D-7D movable gameplay objects versus fixed world geometry. */
+    private readonly dynamicStaticCollisionSystem:
+        DynamicStaticCollisionSystem;
 
     private staticObstacleDefinitions:
         readonly StaticObstacleDefinition[] = [];
@@ -566,6 +651,9 @@ export class World {
                 this.cameraShake,
             );
 
+        this.physicsWorld =
+            new PhysicsWorld();
+
         this.windManager =
             new WindManager();
 
@@ -590,6 +678,16 @@ export class World {
         this.waterField =
             new WaterField();
 
+        this.waterObstacleField =
+            new WaterObstacleField(
+                this.waterField,
+            );
+
+        this.waterField
+            .setObstacleField(
+                this.waterObstacleField,
+            );
+
         this.waterGroundInteractionSystem =
             new WaterGroundInteractionSystem(
                 this.waterField,
@@ -606,12 +704,23 @@ export class World {
         this.waterSourceSystem =
             new WaterSourceSystem();
 
+        this.airborneWaterCollisionField =
+            new AirborneWaterCollisionField();
+
+        this.waterObstacleRegistrationSystem =
+            new WaterObstacleRegistrationSystem(
+                this.physicsWorld,
+                this.waterObstacleField,
+                this.airborneWaterCollisionField,
+            );
+
         this.airborneWaterSystem =
             new AirborneWaterSystem(
                 this.waterField,
                 undefined,
                 this.windManager,
                 this.localWindSystem,
+                this.airborneWaterCollisionField,
             );
 
         this.fireSourceSystem =
@@ -633,6 +742,9 @@ export class World {
 
         this.dynamicCollisionSystem =
             new DynamicCollisionSystem();
+
+        this.dynamicStaticCollisionSystem =
+            new DynamicStaticCollisionSystem();
     }
 
     // -------------------------------------------------------
@@ -696,6 +808,18 @@ export class World {
 
         this.createWaterGroundInteractionValidation();
 
+        this.createWaterObstacleFieldValidation();
+
+        this.createWaterSolidCellExclusionValidation();
+
+        this.createWaterObstacleFlowValidation();
+
+        this.createWaterBoundaryFlowValidation();
+
+        this.createAirborneWaterStaticCollisionValidation();
+
+        this.createAirborneWaterImpactDepositionValidation();
+
 
         this.createCameraActivationDebugGraphics();
 
@@ -711,14 +835,43 @@ export class World {
                     DEFAULT_COURSE_BOUNDARY_DEFINITION,
                 );
 
-        this.staticObstacleDefinitions =
-            obstacleField
-                .staticDefinitions;
+        this.staticObstacleDefinitions = [
+            ...obstacleField.staticDefinitions,
+            {
+                id: "8d7-test-square-1",
+                shape: "rectangle",
+                positionX: 760,
+                positionY: 260,
+                width: 72,
+                height: 72,
+                fillColor: 0x8b6f47,
+                outlineColor: 0x2f2419,
+                outlineWidth: 4,
+                material: { restitution: 0.45, collisionFriction: 0.24 },
+            },
+            {
+                id: "8d7-test-square-2",
+                shape: "rectangle",
+                positionX: 980,
+                positionY: 460,
+                width: 72,
+                height: 72,
+                fillColor: 0x8b6f47,
+                outlineColor: 0x2f2419,
+                outlineWidth: 4,
+                material: { restitution: 0.45, collisionFriction: 0.24 },
+            },
+        ];
 
         for (
             const definition
             of this.staticObstacleDefinitions
         ) {
+            this.physicsWorld
+                .registerStaticDefinition(
+                    definition,
+                );
+
             this.addEntity(
                 new StaticObstacle(
                     definition,
@@ -741,9 +894,11 @@ export class World {
                 obstacle,
             );
 
-            this.dynamicCollidables.push(
-                obstacle,
-            );
+            this.physicsWorld
+                .registerDynamicCollidable(
+                    `dynamic-obstacle-${this.dynamicObstacles.length}`,
+                    obstacle,
+                );
 
             this.addEntity(
                 obstacle,
@@ -771,8 +926,10 @@ export class World {
             new Ball(
                 undefined,
                 undefined,
-                this.staticObstacleDefinitions,
-                this.dynamicCollidables,
+                this.physicsWorld
+                    .getRigidStaticDefinitions(),
+                this.physicsWorld
+                    .getRigidDynamicCollidables(),
                 this.windManager,
                 this.surfaceSystem,
                 this.localWindSystem,
@@ -794,6 +951,17 @@ export class World {
         this.createSprinklerEntities();
 
         this.createHydrantHoseEntity();
+
+        /*
+         * Phase 8D-7:
+         * Create the deterministic Fire Tube before registering live gameplay
+         * colliders with the Water obstacle bridge. This ensures the Fire Tube
+         * exists when WaterGameObjectIntegrationValidation runs and remains
+         * registered during normal runtime.
+         */
+        this.createFireTubeEntities();
+
+        this.createWaterGameObjectIntegration();
 
         this.createHoseJetBallForceSystem();
 
@@ -829,8 +997,6 @@ export class World {
             this.hole,
             WorldRenderLayer.GroundState,
         );
-
-        this.createFireTubeEntities();
 
         this.windValidationMetrics =
             new WindValidationMetrics(
@@ -1123,10 +1289,35 @@ export class World {
          * penetration correction, normal impulse, friction and angular
          * impulse.
          */
+        /*
+         * Phase 8D-7E:
+         * Collision consumers now obtain their populations from PhysicsWorld.
+         * Registration is centralized; collision mathematics is unchanged.
+         */
         this.dynamicCollisionSystem
             .resolve(
-                this.mechanismCollidables,
+                this.physicsWorld
+                    .getRigidDynamicCollidables(),
             );
+
+        this.dynamicStaticCollisionSystem
+            .resolve(
+                this.physicsWorld,
+            );
+
+        /*
+         * 8D-7C: the flexible Hose participates in the same world collider
+         * population without being converted into a rigid DynamicCollidable.
+         */
+        if (
+            this.hydrantHose &&
+            this.hoseCollisionSystem
+        ) {
+            this.hoseCollisionSystem.resolve(
+                this.physicsWorld,
+            );
+            this.hydrantHose.synchronizeAfterExternalCollision();
+        }
 
         /*
          * Collision correction can change mechanism positions after their
@@ -1153,6 +1344,9 @@ export class World {
         ) {
             sprinkler.synchronizeAfterCollisionResolution();
         }
+
+        this.waterObstacleRegistrationSystem
+            .synchronize();
 
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
@@ -1264,11 +1458,8 @@ export class World {
         this.dynamicObstacles.length =
             0;
 
-        this.dynamicCollidables.length =
-            0;
-
-        this.mechanismCollidables.length =
-            0;
+        this.physicsWorld
+            .clear();
 
         this.fireTubes.length =
             0;
@@ -1449,6 +1640,9 @@ export class World {
             .resetToInitialPosition();
 
         this.hydrantHose =
+            null;
+
+        this.hoseCollisionSystem =
             null;
 
         this.ball =
@@ -2041,6 +2235,90 @@ export class World {
     // Phase 8C-8A Interactive Water Deposit Debug Tool
     // -------------------------------------------------------
 
+    // -------------------------------------------------------
+    // Phase 8D-1 Water Obstacle Occupancy Foundation
+    // -------------------------------------------------------
+
+    private createWaterObstacleFieldValidation():
+        void {
+
+        new WaterObstacleFieldValidation(
+            this.waterField,
+            this.waterObstacleField,
+        ).run();
+    }
+
+
+    // -------------------------------------------------------
+    // Phase 8D-2 Ground-Water Solid Cell Exclusion
+    // -------------------------------------------------------
+
+    private createWaterSolidCellExclusionValidation():
+        void {
+
+        new WaterSolidCellExclusionValidation(
+            this.waterField,
+            this.waterObstacleField,
+        ).run();
+    }
+
+
+    // -------------------------------------------------------
+    // Phase 8D-3 Obstacle-Aware Neighbor Flow
+    // -------------------------------------------------------
+
+    private createWaterObstacleFlowValidation():
+        void {
+
+        new WaterObstacleFlowValidation(
+            this.waterField,
+            this.waterObstacleField,
+        ).run();
+    }
+
+
+    // -------------------------------------------------------
+    // Phase 8D-4 Boundary Accumulation + Flow Tuning
+    // -------------------------------------------------------
+
+    private createWaterBoundaryFlowValidation():
+        void {
+
+        new WaterBoundaryFlowValidation(
+            this.waterField,
+            this.waterObstacleField,
+        ).run();
+    }
+
+
+    // -------------------------------------------------------
+    // Phase 8D-5 Airborne Water Static Collision
+    // -------------------------------------------------------
+
+    private createAirborneWaterStaticCollisionValidation():
+        void {
+
+        new AirborneWaterStaticCollisionValidation(
+            this.airborneWaterCollisionField,
+        ).run();
+    }
+
+
+    // -------------------------------------------------------
+    // Phase 8D-6 Jet Obstruction + Impact Deposition
+    // -------------------------------------------------------
+
+    private createAirborneWaterImpactDepositionValidation():
+        void {
+
+        new AirborneWaterImpactDepositionValidation(
+            this.waterField,
+            this.waterObstacleField,
+            this.airborneWaterCollisionField,
+        ).run();
+    }
+
+
     private createWaterDepositDebugController():
         void {
 
@@ -2142,41 +2420,128 @@ export class World {
 
     private createSprinklerEntities(): void {
         if (this.sprinklers.length > 0) {
-            throw new Error(
-                "World Sprinkler entities have already been created.",
-            );
+            throw new Error("World Sprinkler entities have already been created.");
         }
-
         if (!this.ball) {
-            throw new Error(
-                "World requires Ball before creating the Phase 8B-3 Sprinkler.",
-            );
+            throw new Error("World requires Ball before creating Sprinklers.");
         }
 
-        const sprinkler =
-            new Sprinkler(
-                "sprinkler-1",
-                this.ball.getX() + 280,
-                this.ball.getY(),
-                0,
-                this.waterSourceSystem,
+        const placements = [
+            { id: "sprinkler-1", x: this.ball.getX() + 280, y: this.ball.getY() - 120, rotation: 0 },
+            { id: "sprinkler-2", x: this.ball.getX() + 280, y: this.ball.getY() + 120, rotation: Math.PI / 4 },
+        ];
+
+        for (const placement of placements) {
+            const sprinkler = new Sprinkler(
+                placement.id, placement.x, placement.y, placement.rotation, this.waterSourceSystem,
             );
+            this.sprinklers.push(sprinkler);
 
-        this.sprinklers.push(
-            sprinkler,
-        );
+            this.physicsWorld
+                .registerDynamicCollidable(
+                    placement.id,
+                    sprinkler,
+                    {
+                        ownerSourceIds: [
+                            sprinkler.getSourceId(),
+                        ],
+                    },
+                );
 
-        this.dynamicCollidables.push(
-            sprinkler,
-        );
+            this.addEntity(sprinkler);
+        }
+    }
 
-        this.mechanismCollidables.push(
-            sprinkler,
-        );
+    // -------------------------------------------------------
+    // Phase 8D-7 Actual Game Object Integration
+    // -------------------------------------------------------
 
-        this.addEntity(
-            sprinkler,
-        );
+    private createWaterGameObjectIntegration(): void {
+        if (this.hydrantHose) {
+            const hoseSourceId =
+                this.hydrantHose
+                    .getWaterSourceId();
+
+            this.physicsWorld
+                .registerFixedShapeProvider(
+                    "hydrant-1",
+                    () => {
+                        const anchor =
+                            this.hydrantHose!
+                                .getAnchorPosition();
+
+                        return {
+                            id:
+                                "hydrant-body",
+                            shape:
+                                "circle",
+                            positionX:
+                                anchor.x,
+                            positionY:
+                                anchor.y,
+                            radius:
+                                DEFAULT_HYDRANT_HOSE_DEFINITION
+                                    .hydrantCollisionRadius,
+                            material: {
+                                restitution:
+                                    DEFAULT_HYDRANT_HOSE_DEFINITION
+                                        .hydrantCollisionRestitution,
+                                friction:
+                                    DEFAULT_HYDRANT_HOSE_DEFINITION
+                                        .hydrantCollisionFriction,
+                            },
+                        };
+                    },
+                    {
+                        ownerSourceIds: [
+                            `${hoseSourceId}-burst`,
+                        ],
+                    },
+                );
+
+            this.physicsWorld
+                .registerAirbornePolylineProvider(
+                    "hydrant-hose-1",
+                    DEFAULT_HYDRANT_HOSE_DEFINITION
+                        .hoseObstacleCollisionRadius,
+                    () =>
+                        this.hydrantHose!
+                            .getRopePoints(),
+                    {
+                        ownerSourceIds: [
+                            hoseSourceId,
+                            `${hoseSourceId}-burst`,
+                        ],
+                    },
+                );
+        }
+
+        this.waterObstacleRegistrationSystem
+            .synchronize();
+
+        new WaterGameObjectIntegrationValidation(
+            this.physicsWorld,
+            this.waterObstacleRegistrationSystem,
+            this.waterObstacleField,
+            this.airborneWaterCollisionField,
+        ).run();
+
+        new HoseAndWaterEmitterCollisionValidation()
+            .run();
+
+        new GeneralObjectCollisionValidation()
+            .run();
+
+        new PhysicsWorldRegistrationValidation()
+            .run();
+
+        new WaterStaticObstacleAcceptanceValidation(
+            this.physicsWorld,
+            this.waterObstacleField,
+            this.airborneWaterCollisionField,
+            this.sprinklers.length,
+            this.hydrantHose !== null,
+        ).run();
     }
 
     // -------------------------------------------------------
@@ -2245,6 +2610,12 @@ export class World {
         this.addEntity(
             this.hydrantHose,
         );
+
+        this.hoseCollisionSystem =
+            new HoseCollisionSystem(
+                this.hydrantHose.getRope(),
+                this.hydrantHose.getDefinition(),
+            );
 
         this.presentationLayers
             .getLayer(
@@ -2336,43 +2707,10 @@ export class World {
             entity instanceof FireTube ||
             entity instanceof Sprinkler
         ) {
-            const dynamicCollidableIndex =
-                this.dynamicCollidables
-                    .indexOf(
-                        entity,
-                    );
-
-            if (
-                dynamicCollidableIndex !==
-                -1
-            ) {
-                this.dynamicCollidables.splice(
-                    dynamicCollidableIndex,
-                    1,
+            this.physicsWorld
+                .unregisterDynamicBody(
+                    entity,
                 );
-            }
-        }
-
-        if (
-            entity instanceof Fan ||
-            entity instanceof FireTube ||
-            entity instanceof Sprinkler
-        ) {
-            const mechanismCollidableIndex =
-                this.mechanismCollidables
-                    .indexOf(
-                        entity,
-                    );
-
-            if (
-                mechanismCollidableIndex !==
-                -1
-            ) {
-                this.mechanismCollidables.splice(
-                    mechanismCollidableIndex,
-                    1,
-                );
-            }
         }
 
         if (
@@ -2434,6 +2772,8 @@ export class World {
             this.hydrantHose
         ) {
             this.hydrantHose =
+                null;
+            this.hoseCollisionSystem =
                 null;
         }
 
@@ -2956,42 +3296,143 @@ export class World {
             );
         }
 
-        for (
-            const source
-            of this.localWindSystem
-                .getSources()
-        ) {
-            if (
-                !source.enabled ||
-                source.id.startsWith(
-                    "fire-validation-field-",
-                )
-            ) {
-                continue;
-            }
+        /*
+         * Phase 8D-7 deterministic Fan fixture.
+         *
+         * Fan requires its Local Wind source id to exist inside
+         * LocalWindSystem because the physical mechanism continuously
+         * synchronizes the source transform as it moves and rotates.
+         *
+         * Normal Fire/Wind configurations are allowed to contain only
+         * validation-field sources, so do not make World startup depend on
+         * finding a pre-existing gameplay Fan source. Preserve every current
+         * source and append one dedicated 8D-7 source when necessary.
+         */
+        const existingSources =
+            this.localWindSystem
+                .getSources();
 
-            const fan =
-                new Fan(
-                    source,
-                    this.localWindSystem,
+        let source =
+            existingSources
+                .find(
+                    (candidate): boolean =>
+                        candidate.enabled &&
+                        !candidate.id.startsWith(
+                            "fire-validation-field-",
+                        ),
                 );
 
-            this.fans.push(
-                fan,
-            );
+        if (
+            !source
+        ) {
+            const template =
+                existingSources
+                    .find(
+                        (candidate): boolean =>
+                            candidate.enabled,
+                    ) ??
+                existingSources[0];
 
-            this.dynamicCollidables.push(
-                fan,
-            );
+            const sourceId =
+                "8d7-test-fan-wind";
 
-            this.mechanismCollidables.push(
-                fan,
-            );
+            const deterministicSource = {
+                id:
+                    sourceId,
 
-            this.addEntity(
-                fan,
+                positionX:
+                    900,
+
+                positionY:
+                    180,
+
+                directionRadians:
+                    Math.PI / 2,
+
+                range:
+                    template?.range ??
+                    560,
+
+                startHalfWidth:
+                    template?.startHalfWidth ??
+                    55,
+
+                endHalfWidth:
+                    template?.endHalfWidth ??
+                    55,
+
+                acceleration:
+                    template?.acceleration ??
+                    1100,
+
+                endStrengthMultiplier:
+                    template?.endStrengthMultiplier ??
+                    0.60,
+
+                edgeFalloffFraction:
+                    template?.edgeFalloffFraction ??
+                    0.22,
+
+                enabled:
+                    true,
+            };
+
+            this.localWindSystem
+                .replaceSources([
+                    ...existingSources,
+                    deterministicSource,
+                ]);
+
+            source =
+                this.localWindSystem
+                    .getSources()
+                    .find(
+                        (candidate): boolean =>
+                            candidate.id ===
+                            sourceId,
+                    );
+        }
+
+        if (
+            !source
+        ) {
+            throw new Error(
+                "World could not create the deterministic 8D-7 Fan Local Wind source.",
             );
         }
+
+        /*
+         * Use a copy for the Fan's initial transform while keeping the same
+         * registered source id. Fan.initialize() immediately synchronizes the
+         * authoritative LocalWindSystem source to the physical outlet.
+         */
+        const fan =
+            new Fan(
+                {
+                    ...source,
+                    positionX:
+                        900,
+                    positionY:
+                        180,
+                    directionRadians:
+                        Math.PI / 2,
+                },
+                this.localWindSystem,
+            );
+
+        this.fans.push(
+            fan,
+        );
+
+        this.physicsWorld
+            .registerDynamicCollidable(
+                `fan-${source.id}`,
+                fan,
+            );
+
+        this.addEntity(
+            fan,
+        );
     }
 
     // -------------------------------------------------------
@@ -3061,13 +3502,11 @@ export class World {
                 fireTube,
             );
 
-            this.dynamicCollidables.push(
-                fireTube,
-            );
-
-            this.mechanismCollidables.push(
-                fireTube,
-            );
+            this.physicsWorld
+                .registerDynamicCollidable(
+                    `fire-tube-${definition.sourceId}`,
+                    fireTube,
+                );
 
             this.addEntity(
                 fireTube,
@@ -3077,59 +3516,28 @@ export class World {
 
     private createFireTubeEntities(): void {
         if (this.fireTubes.length > 0) {
-            throw new Error(
-                "World Fire Tube entities have already been created.",
-            );
+            throw new Error("World Fire Tube entities have already been created.");
+        }
+        if (!this.ball) {
+            throw new Error("World requires Ball before creating the 8D-7 Fire Tube.");
         }
 
-        const count =
-            2 +
-            Math.floor(
-                Math.random() * 2,
-            );
+        const fireTube = new FireTube(
+            "fire-tube-1",
+            this.ball.getX() + 500,
+            this.ball.getY(),
+            Math.PI / 2,
+            this.fireSourceSystem,
+        );
+        this.fireTubes.push(fireTube);
 
-        const positions:
-            { readonly x: number; readonly y: number }[] = [];
-
-        for (
-            let index = 0;
-            index < count;
-            index += 1
-        ) {
-            const position =
-                this.findFireTubeSpawnPosition(
-                    positions,
-                );
-
-            positions.push(
-                position,
-            );
-
-            const fireTube =
-                new FireTube(
-                    `fire-tube-${index + 1}`,
-                    position.x,
-                    position.y,
-                    Math.random() * Math.PI * 2 - Math.PI,
-                    this.fireSourceSystem,
-                );
-
-            this.fireTubes.push(
+        this.physicsWorld
+            .registerDynamicCollidable(
+                "fire-tube-1",
                 fireTube,
             );
 
-            this.dynamicCollidables.push(
-                fireTube,
-            );
-
-            this.mechanismCollidables.push(
-                fireTube,
-            );
-
-            this.addEntity(
-                fireTube,
-            );
-        }
+        this.addEntity(fireTube);
     }
 
     private findFireTubeSpawnPosition(

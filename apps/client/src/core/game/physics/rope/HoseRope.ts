@@ -212,6 +212,47 @@ export class HoseRope {
         this.solveConstraints();
     }
 
+    /**
+     * Applies one world-space collision correction to a point interpolated
+     * along a rope segment. The correction is distributed between the two
+     * endpoints while respecting the fixed Hydrant anchor. Previous positions
+     * move with current positions so contact correction does not inject an
+     * artificial Verlet velocity spike.
+     */
+    public applySegmentPositionCorrection(
+        segmentIndex: number,
+        interpolation: number,
+        correctionX: number,
+        correctionY: number,
+    ): void {
+        const a = this.points[segmentIndex];
+        const b = this.points[segmentIndex + 1];
+        if (!a || !b) return;
+
+        const t = Math.max(0, Math.min(interpolation, 1));
+        const weightA = (1 - t) * a.inverseMass;
+        const weightB = t * b.inverseMass;
+        const totalWeight = weightA + weightB;
+        if (totalWeight <= 0) return;
+
+        const moveA = weightA / totalWeight;
+        const moveB = weightB / totalWeight;
+
+        if (!a.isFixed()) {
+            a.x += correctionX * moveA;
+            a.y += correctionY * moveA;
+            a.previousX += correctionX * moveA;
+            a.previousY += correctionY * moveA;
+        }
+
+        if (!b.isFixed()) {
+            b.x += correctionX * moveB;
+            b.y += correctionY * moveB;
+            b.previousX += correctionX * moveB;
+            b.previousY += correctionY * moveB;
+        }
+    }
+
     private step(
         deltaTime: number,
     ): void {
@@ -496,10 +537,13 @@ export class HoseRope {
             0 ||
             this.definition
                 .fixedTimeStep <=
+            0 ||
+            this.definition
+                .hoseObstacleCollisionRadius <=
             0
         ) {
             throw new Error(
-                "Hose segmentLength and fixedTimeStep must be greater than 0.",
+                "Hose segmentLength, fixedTimeStep and obstacle collision radius must be greater than 0.",
             );
         }
 

@@ -35,6 +35,14 @@ import type {
     LocalWindSystem,
 } from "./LocalWindSystem";
 
+import type {
+    AirborneWaterCollisionField,
+} from "./AirborneWaterCollisionField";
+
+import type {
+    AirborneWaterCollisionHit,
+} from "./AirborneWaterObstacleShape";
+
 /**
  * Authoritative transport system for Water that has left a source but has not
  * yet become standing Water.
@@ -63,6 +71,7 @@ export class AirborneWaterSystem {
     private totalImpactedPacketCount = 0;
     private totalExpiredPacketCount = 0;
     private totalDroppedPacketCount = 0;
+    private totalStaticCollisionCount = 0;
 
     private totalRequestedWaterAmount = 0;
     private totalDepositedWaterAmount = 0;
@@ -78,6 +87,9 @@ export class AirborneWaterSystem {
             null,
         private readonly localWindSystem:
             LocalWindSystem | null =
+            null,
+        private readonly staticCollisionField:
+            AirborneWaterCollisionField | null =
             null,
     ) {
         validateAirborneWaterDefinition(
@@ -301,6 +313,12 @@ export class AirborneWaterSystem {
                 globalWind.y +
                 localWind.y;
 
+            const previousPositionX =
+                packet.getPositionX();
+
+            const previousPositionY =
+                packet.getPositionY();
+
             const impact =
                 packet.step(
                     deltaTime,
@@ -308,6 +326,56 @@ export class AirborneWaterSystem {
                     combinedWindAccelerationX,
                     combinedWindAccelerationY,
                 );
+
+            const proposedPositionX =
+                impact
+                    ? impact.positionX
+                    : packet.getPositionX();
+
+            const proposedPositionY =
+                impact
+                    ? impact.positionY
+                    : packet.getPositionY();
+
+            /*
+             * Phase 8D-5 performs a continuous ground-plane sweep from the
+             * packet's previous position to its proposed position. This
+             * prevents fast Hose/Sprinkler packets from tunnelling through
+             * thin static geometry between fixed simulation steps.
+             *
+             * Static obstacle deposition is intentionally deferred to 8D-6.
+             * For 8D-5 a static hit terminates the airborne packet and records
+             * its Water as rejected rather than allowing it through the solid.
+             */
+            const staticHit =
+                this.staticCollisionField
+                    ?.sweep(
+                        previousPositionX,
+                        previousPositionY,
+                        proposedPositionX,
+                        proposedPositionY,
+                        packet.getSourceId(),
+                    ) ??
+                null;
+
+            if (
+                staticHit
+            ) {
+                this.depositStaticImpact(
+                    packet,
+                    staticHit,
+                );
+
+                this.activePackets.splice(
+                    index,
+                    1,
+                );
+
+                this.totalStaticCollisionCount +=
+                    1;
+
+                continue;
+            }
 
             if (
                 impact
@@ -344,6 +412,95 @@ export class AirborneWaterSystem {
                     packet.getWaterAmount();
             }
         }
+    }
+
+    /**
+     * Converts an airborne static-obstacle hit into standing Water.
+     *
+     * The deposit is moved one Water cell away from the collision surface so
+     * it begins on the approach side of the solid. Forward momentum into the
+     * surface is removed while tangential momentum is retained according to
+     * the source's normal impact-momentum retention.
+     */
+    private depositStaticImpact(
+        packet: AirborneWaterPacket,
+        hit: AirborneWaterCollisionHit,
+    ): void {
+        if (!this.staticCollisionField) {
+            return;
+        }
+
+        const clearance =
+            this.waterField
+                .getDefinition()
+                .cellSize;
+
+        const depositPoint =
+            this.staticCollisionField
+                .getExteriorPoint(
+                    hit,
+                    clearance,
+                );
+
+        const velocityX =
+            packet.getVelocityX();
+
+        const velocityY =
+            packet.getVelocityY();
+
+        const velocityIntoNormal =
+            velocityX * hit.normalX +
+            velocityY * hit.normalY;
+
+        /*
+         * A negative dot product means velocity points into the obstacle
+         * because the hit normal points outward from its surface.
+         */
+        const inwardMagnitude =
+            Math.min(
+                0,
+                velocityIntoNormal,
+            );
+
+        const tangentVelocityX =
+            velocityX -
+            hit.normalX *
+            inwardMagnitude;
+
+        const tangentVelocityY =
+            velocityY -
+            hit.normalY *
+            inwardMagnitude;
+
+        const impactMomentumRetention =
+            this.impactMomentumRetentionByPacket.get(
+                packet,
+            ) ??
+            getDefaultImpactMomentumRetention(
+                packet.getSourceType(),
+            );
+
+        const waterAmount =
+            packet.getWaterAmount();
+
+        const acceptedAmount =
+            this.waterField
+                .injectWaterWithMomentum(
+                    depositPoint.x,
+                    depositPoint.y,
+                    waterAmount,
+                    tangentVelocityX *
+                    impactMomentumRetention,
+                    tangentVelocityY *
+                    impactMomentumRetention,
+                );
+
+        this.totalDepositedWaterAmount +=
+            acceptedAmount;
+
+        this.totalRejectedWaterAmount +=
+            waterAmount -
+            acceptedAmount;
     }
 
     private depositImpact(
@@ -455,6 +612,10 @@ export class AirborneWaterSystem {
         return this.totalDroppedPacketCount;
     }
 
+    public getTotalStaticCollisionCount(): number {
+        return this.totalStaticCollisionCount;
+    }
+
     public getTotalRequestedWaterAmount(): number {
         return this.totalRequestedWaterAmount;
     }
@@ -484,6 +645,7 @@ export class AirborneWaterSystem {
         this.totalImpactedPacketCount = 0;
         this.totalExpiredPacketCount = 0;
         this.totalDroppedPacketCount = 0;
+        this.totalStaticCollisionCount = 0;
 
         this.totalRequestedWaterAmount = 0;
         this.totalDepositedWaterAmount = 0;

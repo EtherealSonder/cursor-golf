@@ -442,6 +442,27 @@ export class HydrantHose extends Entity {
             .reset();
     }
 
+    /**
+     * Called by World after the general Hose-versus-world collision pass.
+     * External rope correction happens after the normal Entity update, so the
+     * Water source and presentation must be synchronized again in the same
+     * frame.
+     */
+    public synchronizeAfterExternalCollision(): void {
+        this.rope.resolveConstraintsImmediately();
+        this.synchronizeWaterSourceTransform();
+        this.renderer.redraw(this.rope);
+
+        const nozzlePosition = this.getNozzlePosition();
+        this.nozzlePreSprayRenderer.redraw(
+            nozzlePosition.x,
+            nozzlePosition.y,
+            this.getNozzleDirectionRadians(),
+            this.pressureController.getState(),
+            this.pressureController.getStateProgress(),
+        );
+    }
+
     public getRope():
         HoseRope {
 

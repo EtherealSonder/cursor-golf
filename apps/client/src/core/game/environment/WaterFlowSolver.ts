@@ -2,6 +2,10 @@ import type {
     WaterFieldDefinition,
 } from "../config/WaterFieldDefinition";
 
+import type {
+    WaterObstacleField,
+} from "./WaterObstacleField";
+
 export interface WaterFlowStepResult {
     readonly movedWaterAmount: number;
     readonly changedCellCount: number;
@@ -42,6 +46,7 @@ export class WaterFlowSolver {
         velocityY: Float32Array,
         activeIndices: readonly number[],
         deltaTime: number,
+        obstacleField: WaterObstacleField | null = null,
     ): WaterFlowStepResult {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0 || activeIndices.length === 0) {
             return {
@@ -70,6 +75,7 @@ export class WaterFlowSolver {
             velocityY,
             activeIndices,
             deltaTime,
+            obstacleField,
         );
 
         const equalizationResponse = Math.min(
@@ -87,7 +93,13 @@ export class WaterFlowSolver {
             const gridX = index % this.columnCount;
             const gridY = Math.floor(index / this.columnCount);
 
-            if (gridX + 1 < this.columnCount) {
+            if (
+                gridX + 1 < this.columnCount &&
+                (
+                    obstacleField === null ||
+                    obstacleField.canFlowBetween(index, index + 1)
+                )
+            ) {
                 movedWaterAmount += this.accumulateEdgeTransfer(
                     depth,
                     velocityX,
@@ -101,7 +113,13 @@ export class WaterFlowSolver {
                 );
             }
 
-            if (gridY + 1 < this.rowCount) {
+            if (
+                gridY + 1 < this.rowCount &&
+                (
+                    obstacleField === null ||
+                    obstacleField.canFlowBetween(index, index + this.columnCount)
+                )
+            ) {
                 movedWaterAmount += this.accumulateEdgeTransfer(
                     depth,
                     velocityX,
@@ -167,6 +185,7 @@ export class WaterFlowSolver {
         velocityY: Float32Array,
         activeIndices: readonly number[],
         deltaTime: number,
+        obstacleField: WaterObstacleField | null,
     ): void {
         const dampingFactor = Math.exp(
             -this.definition.velocityDamping * deltaTime,
@@ -188,10 +207,31 @@ export class WaterFlowSolver {
             const gridY = Math.floor(index / this.columnCount);
             const centerDepth = depth[index];
 
-            const westDepth = gridX > 0 ? depth[index - 1] : centerDepth;
-            const eastDepth = gridX + 1 < this.columnCount ? depth[index + 1] : centerDepth;
-            const northDepth = gridY > 0 ? depth[index - this.columnCount] : centerDepth;
-            const southDepth = gridY + 1 < this.rowCount ? depth[index + this.columnCount] : centerDepth;
+            const westIndex = index - 1;
+            const eastIndex = index + 1;
+            const northIndex = index - this.columnCount;
+            const southIndex = index + this.columnCount;
+
+            const westDepth =
+                gridX > 0 &&
+                    (obstacleField === null || obstacleField.canFlowBetween(index, westIndex))
+                    ? depth[westIndex]
+                    : centerDepth;
+            const eastDepth =
+                gridX + 1 < this.columnCount &&
+                    (obstacleField === null || obstacleField.canFlowBetween(index, eastIndex))
+                    ? depth[eastIndex]
+                    : centerDepth;
+            const northDepth =
+                gridY > 0 &&
+                    (obstacleField === null || obstacleField.canFlowBetween(index, northIndex))
+                    ? depth[northIndex]
+                    : centerDepth;
+            const southDepth =
+                gridY + 1 < this.rowCount &&
+                    (obstacleField === null || obstacleField.canFlowBetween(index, southIndex))
+                    ? depth[southIndex]
+                    : centerDepth;
 
             const gradientX = (eastDepth - westDepth) * 0.5;
             const gradientY = (southDepth - northDepth) * 0.5;
@@ -203,6 +243,81 @@ export class WaterFlowSolver {
             velocityY[index] = this.clampVelocityComponent(
                 (velocityY[index] - gradientY * pressureScale) * dampingFactor,
             );
+
+            if (obstacleField !== null) {
+                this.applyBoundaryNormalDamping(
+                    index,
+                    gridX,
+                    gridY,
+                    velocityX,
+                    velocityY,
+                    obstacleField,
+                );
+            }
+        }
+    }
+
+    /**
+     * Removes most of the velocity component that points directly into a
+     * blocked neighbour while preserving tangential motion. This gives Water
+     * room to redistribute along walls and around openings without introducing
+     * an artificial bounce/reflection model.
+     */
+    private applyBoundaryNormalDamping(
+        index: number,
+        gridX: number,
+        gridY: number,
+        velocityX: Float32Array,
+        velocityY: Float32Array,
+        obstacleField: WaterObstacleField,
+    ): void {
+        const damping =
+            this.definition.boundaryNormalVelocityDamping;
+
+        if (damping <= 0) {
+            return;
+        }
+
+        const retain = 1 - damping;
+
+        if (
+            velocityX[index] < 0 &&
+            gridX > 0 &&
+            !obstacleField.canFlowBetween(
+                index,
+                index - 1,
+            )
+        ) {
+            velocityX[index] *= retain;
+        } else if (
+            velocityX[index] > 0 &&
+            gridX + 1 < this.columnCount &&
+            !obstacleField.canFlowBetween(
+                index,
+                index + 1,
+            )
+        ) {
+            velocityX[index] *= retain;
+        }
+
+        if (
+            velocityY[index] < 0 &&
+            gridY > 0 &&
+            !obstacleField.canFlowBetween(
+                index,
+                index - this.columnCount,
+            )
+        ) {
+            velocityY[index] *= retain;
+        } else if (
+            velocityY[index] > 0 &&
+            gridY + 1 < this.rowCount &&
+            !obstacleField.canFlowBetween(
+                index,
+                index + this.columnCount,
+            )
+        ) {
+            velocityY[index] *= retain;
         }
     }
 

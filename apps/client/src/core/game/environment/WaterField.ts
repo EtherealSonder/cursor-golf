@@ -19,6 +19,10 @@ import type {
     WaterFieldCell,
 } from "./WaterFieldCell";
 
+import type {
+    WaterObstacleField,
+} from "./WaterObstacleField";
+
 import {
     WaterFlowSolver,
 } from "./WaterFlowSolver";
@@ -60,6 +64,16 @@ export class WaterField {
 
     private readonly flowSolver:
         WaterFlowSolver;
+
+    /**
+     * Optional Phase 8D static-solid occupancy bridge.
+     *
+     * Phase 8D-2 uses this only for authoritative Water injection.
+     * Flow transport exclusion is connected separately in Phase 8D-3.
+     */
+    private obstacleField:
+        WaterObstacleField | null =
+        null;
 
     /** Sparse simulation membership for the current and next Water step. */
     private readonly activeFlags: Uint8Array;
@@ -319,6 +333,7 @@ export class WaterField {
                     this.velocityY,
                     this.activeIndices,
                     fixedStep * mobility,
+                    this.obstacleField,
                 );
 
             this.lastProcessedCellCount =
@@ -355,6 +370,18 @@ export class WaterField {
                 this.simulationAccumulator %
                 fixedStep;
         }
+    }
+
+    /**
+     * Registers the cached obstacle occupancy used by Water injection.
+     */
+    public setObstacleField(
+        obstacleField:
+            WaterObstacleField | null,
+    ): void {
+
+        this.obstacleField =
+            obstacleField;
     }
 
     // ---------------------------------------------------------------------
@@ -431,11 +458,33 @@ export class WaterField {
             return 0;
         }
 
-        const index =
+        let index =
             this.gridToIndex(
                 gridPosition.gridX,
                 gridPosition.gridY,
             );
+
+        if (
+            this.obstacleField !==
+            null
+        ) {
+            const resolvedIndex =
+                this.obstacleField
+                    .findNearestOccupiableIndex(
+                        gridPosition.gridX,
+                        gridPosition.gridY,
+                    );
+
+            if (
+                resolvedIndex ===
+                null
+            ) {
+                return 0;
+            }
+
+            index =
+                resolvedIndex;
+        }
 
         const previousDepth =
             this.depth[

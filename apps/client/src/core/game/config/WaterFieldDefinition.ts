@@ -12,6 +12,14 @@ export interface WaterFieldDefinition {
     readonly pressureAcceleration: number;
     readonly momentumAdvectionStrength: number;
     readonly velocityDamping: number;
+
+    /**
+     * Additional damping applied only to the velocity component pointing
+     * into a blocked Water boundary. 0 keeps the component unchanged and
+     * 1 removes it completely for the current solver step.
+     */
+    readonly boundaryNormalVelocityDamping: number;
+
     readonly minimumVelocity: number;
 
     /**
@@ -66,6 +74,7 @@ export const DEFAULT_WATER_FIELD_DEFINITION: WaterFieldDefinition = {
     pressureAcceleration: 95,
     momentumAdvectionStrength: 0.55,
     velocityDamping: 3.2,
+    boundaryNormalVelocityDamping: 0.85,
     minimumVelocity: 0.02,
     activeDepthThreshold: 0.0005,
     activeVelocityThreshold: 0.05,
@@ -116,6 +125,7 @@ export function validateWaterFieldDefinition(
         definition.momentumAdvectionStrength,
         definition.minimumVelocity,
         definition.thinWaterMinimumMobility,
+        definition.boundaryNormalVelocityDamping,
     ];
 
     if (!nonNegativeFiniteValues.every((value: number): boolean =>
@@ -126,6 +136,15 @@ export function validateWaterFieldDefinition(
         );
     }
 
+
+    if (
+        definition.boundaryNormalVelocityDamping < 0 ||
+        definition.boundaryNormalVelocityDamping > 1
+    ) {
+        throw new Error(
+            "WaterField boundaryNormalVelocityDamping must be between 0 and 1.",
+        );
+    }
 
     if (
         definition.fullMobilityDepth <=

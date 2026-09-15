@@ -150,7 +150,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
      * Retain the tuned 8C-2 baseline. Saturation now reduces this rate over
      * repeated watering rather than requiring another global reduction.
      */
-    baseInfiltrationRate: 0.006,
+    baseInfiltrationRate: 0.002,
 
     waterDepthToMoisture: 0.5,
 
@@ -173,7 +173,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
                 1.5,
 
             dryingRate:
-                0.045,
+                0.015,
         },
         {
             surfaceType:
@@ -194,7 +194,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
                 1.25,
 
             dryingRate:
-                0.065,
+                0.025,
         },
     ],
 

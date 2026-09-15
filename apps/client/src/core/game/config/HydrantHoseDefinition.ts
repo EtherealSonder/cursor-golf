@@ -16,6 +16,11 @@ export interface HydrantHoseDefinition {
     readonly segmentLength: number;
     readonly pointRadius: number;
     readonly nozzleRadius: number;
+
+    /** General Hose-versus-world collider tuning. */
+    readonly hoseObstacleCollisionRadius: number;
+    readonly hoseObstacleCollisionIterations: number;
+    readonly hoseObstacleCollisionSlop: number;
     readonly fixedTimeStep: number;
     readonly maximumSubSteps: number;
     readonly dampingPerSecond: number;
@@ -67,6 +72,11 @@ export const DEFAULT_HYDRANT_HOSE_DEFINITION: HydrantHoseDefinition = {
 
     pointRadius: 5,
     nozzleRadius: 8,
+
+    /* Slightly wider than the drawn Hose centreline for stable continuous contact. */
+    hoseObstacleCollisionRadius: 7,
+    hoseObstacleCollisionIterations: 3,
+    hoseObstacleCollisionSlop: 0.25,
 
     fixedTimeStep: 1 / 120,
     maximumSubSteps: 6,
