@@ -687,6 +687,12 @@ export class ScorchRenderer {
             this.canvas.height,
         );
 
+        /*
+         * 8C-8B visual hierarchy is supplied by ScorchVfxDefinition:
+         * a lighter burnt-earth perimeter, solid dark-brown body and
+         * near-charcoal heavy interior. The contour geometry itself remains
+         * unchanged.
+         */
         const layers:
             ScorchLayer[] = [
                 {

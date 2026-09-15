@@ -44,6 +44,10 @@ import {
 } from "../config/HoleDefinition";
 
 import {
+    DEFAULT_SURFACE_VISUAL_DEFINITION,
+} from "../config/SurfaceVisualDefinition";
+
+import {
     DEFAULT_BALL_TRAIL_DEFINITION,
 } from "../config/BallTrailDefinition";
 
@@ -108,6 +112,14 @@ import {
 import {
     WaterFieldVisualizer,
 } from "../debug/WaterFieldVisualizer";
+
+import {
+    WaterDepositDebugController,
+} from "../debug/WaterDepositDebugController";
+
+import {
+    DEFAULT_WATER_DEBUG_DEFINITION,
+} from "../config/WaterDebugDefinition";
 
 import {
     AirborneWaterVisualizer,
@@ -202,6 +214,10 @@ import {
 } from "../environment/EnvironmentField";
 
 import {
+    MoistureSurfaceBridge,
+} from "../environment/MoistureSurfaceBridge";
+
+import {
     WaterField,
 } from "../environment/WaterField";
 
@@ -234,6 +250,10 @@ import {
 } from "../surface/SurfaceType";
 
 import {
+    SurfaceState,
+} from "../surface/SurfaceState";
+
+import {
     ShotFeedback,
 } from "../ui/ShotFeedback";
 
@@ -248,6 +268,10 @@ import {
 import {
     WorldPresentationLayers,
 } from "../../rendering/WorldPresentationLayers";
+
+import {
+    WetGroundRenderer,
+} from "../../rendering/WetGroundRenderer";
 
 export class World {
 
@@ -291,6 +315,11 @@ export class World {
      */
     private surfaceGraphics:
         Graphics | null = null;
+
+    /** Phase 8C-6F continuous ground-moisture texture presentation. */
+    private wetGroundRenderer:
+        WetGroundRenderer | null =
+        null;
 
     private readonly courseVisualDefinition:
         CourseVisualDefinition;
@@ -355,6 +384,10 @@ export class World {
     private readonly environmentField:
         EnvironmentField;
 
+    /** Phase 8C-6 continuous-moisture to categorical-surface adapter. */
+    private readonly moistureSurfaceBridge:
+        MoistureSurfaceBridge;
+
     /**
      * Phase 8A authoritative standing-Water storage.
      *
@@ -398,9 +431,17 @@ export class World {
     private waterGroundInteractionValidation:
         WaterGroundInteractionValidation | null =
         null;
-
+    /**
+         * Standing-Water presentation uses the WaterField-driven visualizer.
+         * Wet Ground remains independently rendered beneath it.
+         */
     private waterFieldVisualizer:
         WaterFieldVisualizer | null =
+        null;
+
+    /** Phase 8C-8A interactive primary-button Water deposit tool. */
+    private waterDepositDebugController:
+        WaterDepositDebugController | null =
         null;
 
     /** Phase 8B-4 presentation-only airborne Water stream debug view. */
@@ -556,6 +597,12 @@ export class World {
                 this.surfaceSystem,
             );
 
+        this.moistureSurfaceBridge =
+            new MoistureSurfaceBridge(
+                this.environmentField,
+                this.surfaceSystem,
+            );
+
         this.waterSourceSystem =
             new WaterSourceSystem();
 
@@ -610,6 +657,8 @@ export class World {
 
         this.createCourse();
 
+        this.createWetGroundRenderer();
+
         if (
             DEFAULT_FIRE_TEST_DEFINITION
                 .enabled
@@ -646,6 +695,7 @@ export class World {
         this.createFireDirectionalValidation();
 
         this.createWaterGroundInteractionValidation();
+
 
         this.createCameraActivationDebugGraphics();
 
@@ -737,6 +787,8 @@ export class World {
 
         this.createWaterFieldVisualizer();
 
+        this.createWaterDepositDebugController();
+
         this.createAirborneWaterVisualizer();
 
         this.createSprinklerEntities();
@@ -744,6 +796,8 @@ export class World {
         this.createHydrantHoseEntity();
 
         this.createHoseJetBallForceSystem();
+
+
 
         this.unsubscribeFromBallImpacts =
             this.ball
@@ -979,6 +1033,24 @@ export class World {
 
         this.waterGroundInteractionSystem
             .update(
+                deltaTime,
+            );
+
+        this.moistureSurfaceBridge
+            .update();
+        /*
+                 * Phase 8C-6F:
+                 * presentation uploads small grid-resolution textures at controlled
+                 * intervals. The GPU linearly interpolates the scalar Water/moisture
+                 * samples across one quad per layer.
+                 */
+        this.wetGroundRenderer
+            ?.update(
+                deltaTime,
+            );
+
+        this.waterDepositDebugController
+            ?.update(
                 deltaTime,
             );
 
@@ -1240,6 +1312,12 @@ export class World {
         this.hoseJetBallForceSystem =
             null;
 
+        this.waterDepositDebugController
+            ?.destroy();
+
+        this.waterDepositDebugController =
+            null;
+
         this.waterFieldVisualizer
             ?.destroy();
 
@@ -1271,8 +1349,10 @@ export class World {
 
         this.fireVfxSystem
             ?.reset();
-
         this.waterGroundInteractionSystem
+            .reset();
+
+        this.moistureSurfaceBridge
             .reset();
 
         this.environmentField
@@ -1333,6 +1413,11 @@ export class World {
             .reset();
 
         this.activePerformanceBenchmark =
+            null;
+        this.wetGroundRenderer
+            ?.destroy();
+
+        this.wetGroundRenderer =
             null;
 
         this.surfaceGraphics
@@ -1843,6 +1928,8 @@ export class World {
         }
 
         this.environmentField.reset();
+        this.moistureSurfaceBridge.reset();
+        this.wetGroundRenderer?.redrawImmediately();
 
         this.surfaceSystem.removeStateRegionsByIdPrefix(
             "fire-scorch-",
@@ -1932,6 +2019,8 @@ export class World {
                 this.waterGroundInteractionSystem,
                 this.waterField,
                 this.environmentField,
+                this.moistureSurfaceBridge,
+                this.surfaceSystem,
             );
 
         this.waterGroundInteractionValidation
@@ -1948,6 +2037,50 @@ export class World {
     // Water Field Debug Visualization
     // -------------------------------------------------------
 
+    // -------------------------------------------------------
+    // Phase 8C-8A Interactive Water Deposit Debug Tool
+    // -------------------------------------------------------
+
+    private createWaterDepositDebugController():
+        void {
+
+        if (
+            this.waterDepositDebugController
+        ) {
+            throw new Error(
+                "World WaterDepositDebugController has already been created.",
+            );
+        }
+
+        this.waterDepositDebugController =
+            new WaterDepositDebugController(
+                this.app.canvas,
+                this.waterField,
+                (
+                    screenX:
+                        number,
+
+                    screenY:
+                        number,
+                ) => {
+                    return this.getWorldPositionFromScreen(
+                        screenX,
+                        screenY,
+                    );
+                },
+                DEFAULT_WATER_DEBUG_DEFINITION,
+            );
+
+        if (
+            DEFAULT_WATER_DEBUG_DEFINITION
+                .interactiveDepositEnabled
+        ) {
+            console.info(
+                "[8C-8A] Interactive Water deposit enabled. Hold LEFT MOUSE over the game world to deposit Water. Normal left-mouse golf input is temporarily reserved by this debug tool.",
+            );
+        }
+    }
+
     private createWaterFieldVisualizer():
         void {
 
@@ -1959,25 +2092,10 @@ export class World {
             );
         }
 
-        if (
-            !this.ball
-        ) {
-            throw new Error(
-                "World WaterField visualizer requires the Ball to be initialized first.",
-            );
-        }
-
         this.waterFieldVisualizer =
             new WaterFieldVisualizer(
                 this.waterField,
             );
-
-        /*
-         * Phase 8B-4C:
-         * The old 8A-6 gameplay-world validation deposit has been removed.
-         * WaterFieldValidation remains isolated; visible gameplay Water now
-         * comes only from real Water sources such as the sprinkler.
-         */
 
         this.presentationLayers
             .getLayer(
@@ -2539,6 +2657,12 @@ export class World {
         EnvironmentField {
 
         return this.environmentField;
+    }
+
+    public getMoistureSurfaceBridge():
+        MoistureSurfaceBridge {
+
+        return this.moistureSurfaceBridge;
     }
 
     public getWaterField():
@@ -3222,6 +3346,43 @@ export class World {
                 this.windVfxSystem
                     .getContainer(),
             );
+    }
+
+    // -------------------------------------------------------
+    // Phase 8C-6C Wet Surface Presentation
+    // -------------------------------------------------------
+
+    private createWetGroundRenderer():
+        void {
+        if (
+            this.wetGroundRenderer
+        ) {
+            throw new Error(
+                "World WetGroundRenderer has already been created.",
+            );
+        }
+
+        this.wetGroundRenderer =
+            new WetGroundRenderer(
+                this.environmentField,
+                this.surfaceSystem,
+            );
+
+        /*
+         * Ground moisture is below standing Water, so a retreating puddle
+         * naturally reveals the darker retained Wet footprint underneath it.
+         */
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.GroundState,
+            )
+            .addChild(
+                this.wetGroundRenderer
+                    .getDisplayObject(),
+            );
+
+        this.wetGroundRenderer
+            .redrawImmediately();
     }
 
     // -------------------------------------------------------

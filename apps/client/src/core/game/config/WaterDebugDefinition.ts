@@ -1,51 +1,41 @@
 /**
- * Presentation-only WaterField debug visualization tuning.
+ * Development presentation settings for the authoritative WaterField.
  *
- * This file must never influence authoritative Water simulation.
+ * Standing Water temporarily uses WaterFieldVisualizer again. Final Water
+ * material/VFX presentation is deferred to the later Water VFX phase.
  */
 export interface WaterDebugDefinition {
     readonly enabled: boolean;
+
     readonly showDepth: boolean;
     readonly showVelocity: boolean;
-
-    /**
-     * Dry neighbour cells are useful when diagnosing sparse activation, but
-     * rebuilding their outlines is expensive and visually noisy. Keep them
-     * disabled during ordinary Water inspection.
-     */
     readonly showActiveCells: boolean;
 
-    /**
-     * Standing Water below this depth remains authoritative but is not painted
-     * as an obvious blue puddle by the development visualizer.
-     */
     readonly minimumVisibleDepth: number;
 
     readonly depthAlphaMinimum: number;
     readonly depthAlphaMaximum: number;
+
     readonly activeCellAlpha: number;
 
     readonly velocityVectorScale: number;
     readonly maximumVelocityVectorLength: number;
     readonly velocityVectorMinimumSpeed: number;
-
-    /**
-     * Only every Nth tracked Water cell is allowed to draw a velocity vector.
-     */
     readonly velocityVectorStride: number;
 
-    /**
-     * Debug geometry refresh rate. The Water simulation still runs at its
-     * fixed authoritative timestep; only presentation is throttled.
-     */
     readonly refreshIntervalSeconds: number;
 
     /**
-     * Temporary 8A-6 demonstration deposit.
+     * Phase 8C-8A interactive development Water source.
      *
-     * The deposit is positioned relative to the initialized Ball so it is
-     * visible immediately in the initial gameplay viewport.
+     * While enabled, primary mouse input over the canvas is reserved for
+     * continuous Water deposition instead of golf-shot input.
      */
+    readonly interactiveDepositEnabled: boolean;
+    readonly interactiveDepositAmountPerPulse: number;
+    readonly interactiveDepositIntervalSeconds: number;
+    readonly interactiveDepositMaximumFrameDelta: number;
+
     readonly createValidationDeposit: boolean;
     readonly validationDepositOffsetX: number;
     readonly validationDepositOffsetY: number;
@@ -54,40 +44,80 @@ export interface WaterDebugDefinition {
     readonly validationDepositVelocityY: number;
 }
 
-export const DEFAULT_WATER_DEBUG_DEFINITION: WaterDebugDefinition = {
-    enabled: true,
-    showDepth: true,
-    showVelocity: true,
+export const DEFAULT_WATER_DEBUG_DEFINITION:
+    WaterDebugDefinition = {
 
-    showActiveCells: false,
+    enabled:
+        true,
 
-    minimumVisibleDepth: 0.003,
+    showDepth:
+        true,
 
-    depthAlphaMinimum: 0.45,
-    depthAlphaMaximum: 0.90,
-    activeCellAlpha: 0.06,
+    showVelocity:
+        false,
 
-    velocityVectorScale: 0.035,
-    maximumVelocityVectorLength: 20,
-    velocityVectorMinimumSpeed: 8,
-    velocityVectorStride: 6,
+    showActiveCells:
+        false,
+
+    minimumVisibleDepth:
+        0.003,
+
+    depthAlphaMinimum:
+        0.45,
+
+    depthAlphaMaximum:
+        0.90,
+
+    activeCellAlpha:
+        0.06,
+
+    velocityVectorScale:
+        0.035,
+
+    maximumVelocityVectorLength:
+        20,
+
+    velocityVectorMinimumSpeed:
+        8,
+
+    velocityVectorStride:
+        6,
+
+    refreshIntervalSeconds:
+        1 / 12,
 
     /*
-     * 12 Hz is smooth enough for debugging the field while avoiding a full
-     * Pixi Graphics rebuild on every rendered frame.
+     * 8C-8A testing tool. Set false to restore normal left-mouse golf input.
+     * Each pulse enters the real WaterField and therefore exercises the full
+     * production puddle -> infiltration -> Wet Ground -> drying lifecycle.
      */
-    refreshIntervalSeconds: 1 / 12,
+    interactiveDepositEnabled:
+        false,
 
-    createValidationDeposit: false,
+    interactiveDepositAmountPerPulse:
+        0.12,
 
-    /*
-     * Put the temporary puddle just left of the Ball. This keeps it inside
-     * the starting camera view without depending on hard-coded world coords.
-     */
-    validationDepositOffsetX: -180,
-    validationDepositOffsetY: 0,
+    interactiveDepositIntervalSeconds:
+        1 / 30,
 
-    validationDepositAmount: 8,
-    validationDepositVelocityX: 260,
-    validationDepositVelocityY: 40,
+    interactiveDepositMaximumFrameDelta:
+        0.1,
+
+    createValidationDeposit:
+        false,
+
+    validationDepositOffsetX:
+        -180,
+
+    validationDepositOffsetY:
+        0,
+
+    validationDepositAmount:
+        8,
+
+    validationDepositVelocityX:
+        260,
+
+    validationDepositVelocityY:
+        40,
 };

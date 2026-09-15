@@ -38,6 +38,13 @@ import type {
 export type SurfaceChangeListener =
     () => void;
 
+export type SurfaceDerivedStateResolver =
+    (
+        worldX: number,
+        worldY: number,
+        currentSample: SurfaceSample,
+    ) => SurfaceState | null;
+
 /**
  * Authoritative spatial surface-query and runtime-state system.
  *
@@ -68,6 +75,24 @@ export class SurfaceSystem {
     private readonly changeListeners:
         Set<SurfaceChangeListener> =
         new Set<SurfaceChangeListener>();
+
+    /**
+     * Lightweight derived categorical state sources.
+     *
+     * Derived resolvers are consulted only after explicit SurfaceStateRegions
+     * and explicitly changed authored zone states have had a chance to win.
+     * This keeps systems such as moisture from stamping thousands of runtime
+     * regions into SurfaceSystem.
+     */
+    private readonly derivedStateResolvers:
+        Map<
+            string,
+            SurfaceDerivedStateResolver
+        > =
+        new Map<
+            string,
+            SurfaceDerivedStateResolver
+        >();
 
     constructor(
         defaultSurfaceType:
@@ -417,6 +442,11 @@ export class SurfaceSystem {
                 worldY,
             );
 
+        /*
+         * Explicit runtime state regions have the highest categorical
+         * precedence. This preserves Fire scorch regions and any deliberately
+         * authored/runtime Wet regions.
+         */
         for (
             let regionIndex =
                 this.stateRegions.length -
@@ -451,39 +481,174 @@ export class SurfaceSystem {
                 continue;
             }
 
-            const currentState =
-                region.getCurrentState();
+            return this.createSampleForState(
+                baseSample,
+                region.getCurrentState(),
+            );
+        }
 
-            const stateDefinition =
-                getSurfaceStateDefinition(
-                    baseSample.surfaceType,
-                    currentState,
+        /*
+         * If an authored zone is currently in a non-default state, treat that
+         * as an explicit categorical choice and preserve it. A moisture-derived
+         * state must not silently overwrite an authored Wet zone or a zone that
+         * has been explicitly changed to Scorched.
+         */
+        if (
+            baseSample.zoneId !==
+            null
+        ) {
+            const defaultState =
+                getSurfaceDefinition(
+                    baseSample
+                        .surfaceType,
+                )
+                    .defaultState;
+
+            if (
+                baseSample.surfaceState !==
+                defaultState
+            ) {
+                return baseSample;
+            }
+        }
+
+        if (
+            this.derivedStateResolvers.size ===
+            0
+        ) {
+            return baseSample;
+        }
+
+        /*
+         * Later-registered derived resolvers have higher derived precedence.
+         * All of them remain below explicit state regions and explicit authored
+         * zone state.
+         */
+        const resolvers =
+            [
+                ...this.derivedStateResolvers
+                    .values(),
+            ];
+
+        for (
+            let resolverIndex =
+                resolvers.length -
+                1;
+
+            resolverIndex >= 0;
+
+            resolverIndex -= 1
+        ) {
+            const resolver =
+                resolvers[
+                resolverIndex
+                ];
+
+            if (!resolver) {
+                continue;
+            }
+
+            const derivedState =
+                resolver(
+                    worldX,
+                    worldY,
+                    baseSample,
                 );
 
-            this.validateStateDefinition(
-                stateDefinition
-                    .rollingResistanceMultiplier,
+            if (
+                derivedState ===
+                null
+            ) {
+                continue;
+            }
+
+            this.validateStateForSurface(
                 baseSample.surfaceType,
-                currentState,
+                derivedState,
             );
 
-            return {
-                surfaceType:
-                    baseSample.surfaceType,
-
-                surfaceState:
-                    currentState,
-
-                rollingResistanceMultiplier:
-                    stateDefinition
-                        .rollingResistanceMultiplier,
-
-                zoneId:
-                    baseSample.zoneId,
-            };
+            return this.createSampleForState(
+                baseSample,
+                derivedState,
+            );
         }
 
         return baseSample;
+    }
+
+    /**
+     * Registers one derived categorical state source without creating runtime
+     * SurfaceStateRegions. Resolver ids are unique so ownership is explicit.
+     *
+     * Returns an idempotent unregister callback.
+     */
+    public registerDerivedStateResolver(
+        id:
+            string,
+
+        resolver:
+            SurfaceDerivedStateResolver,
+    ): () => void {
+        if (
+            id.trim().length ===
+            0
+        ) {
+            throw new Error(
+                "Surface derived-state resolver id cannot be empty.",
+            );
+        }
+
+        if (
+            this.derivedStateResolvers
+                .has(
+                    id,
+                )
+        ) {
+            throw new Error(
+                `Surface derived-state resolver id '${id}' is duplicated.`,
+            );
+        }
+
+        this.derivedStateResolvers
+            .set(
+                id,
+                resolver,
+            );
+
+        this.notifyChanged();
+
+        let unregistered =
+            false;
+
+        return (): void => {
+            if (
+                unregistered
+            ) {
+                return;
+            }
+
+            unregistered =
+                true;
+
+            if (
+                this.derivedStateResolvers
+                    .delete(
+                        id,
+                    )
+            ) {
+                this.notifyChanged();
+            }
+        };
+    }
+
+    /**
+     * Called by a derived-state owner when its internal classification changes.
+     * Gameplay queries already read live state, while listeners can redraw
+     * presentation if they depend on SurfaceSystem.
+     */
+    public notifyDerivedStateChanged():
+        void {
+        this.notifyChanged();
     }
 
     public setZoneState(
@@ -755,6 +920,42 @@ export class SurfaceSystem {
 
             zoneId:
                 zoneDefinition.id,
+        };
+    }
+
+    private createSampleForState(
+        baseSample:
+            SurfaceSample,
+
+        state:
+            SurfaceState,
+    ): SurfaceSample {
+        const stateDefinition =
+            getSurfaceStateDefinition(
+                baseSample.surfaceType,
+                state,
+            );
+
+        this.validateStateDefinition(
+            stateDefinition
+                .rollingResistanceMultiplier,
+            baseSample.surfaceType,
+            state,
+        );
+
+        return {
+            surfaceType:
+                baseSample.surfaceType,
+
+            surfaceState:
+                state,
+
+            rollingResistanceMultiplier:
+                stateDefinition
+                    .rollingResistanceMultiplier,
+
+            zoneId:
+                baseSample.zoneId,
         };
     }
 

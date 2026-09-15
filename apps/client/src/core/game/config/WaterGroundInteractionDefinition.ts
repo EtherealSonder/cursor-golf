@@ -24,6 +24,13 @@ export interface SurfaceInfiltrationDefinition {
      * Values above 1 make the resistance to further absorption stronger.
      */
     readonly saturationExponent: number;
+
+    /**
+     * Fraction of excess ground moisture removed per second while drying.
+     * Drying is multiplicative, so moisture approaches the terrain baseline
+     * smoothly instead of falling at a constant absolute rate.
+     */
+    readonly dryingRate: number;
 }
 
 /**
@@ -36,6 +43,19 @@ export interface SurfaceInfiltrationDefinition {
  */
 export interface WaterGroundInteractionDefinition {
     readonly enabled: boolean;
+
+    /**
+     * Standing Water at or above this depth counts as meaningful ground
+     * contact for the Phase 8C-6A wet-footprint rule.
+     */
+    readonly minimumContactWettingDepth: number;
+
+    /**
+     * Minimum normalized ground moisture established beneath meaningful
+     * standing Water. This is a fast surface-contact response, separate from
+     * the slower conservative infiltration/saturation process.
+     */
+    readonly contactWetMoistureFloor: number;
 
     /**
      * Shared standing-Water depth units absorbed per second before applying
@@ -76,6 +96,28 @@ export interface WaterGroundInteractionDefinition {
     readonly SurfaceInfiltrationDefinition[];
 
     /**
+     * Fraction of a moisture difference exchanged with a four-neighbour cell
+     * per second. Kept deliberately small so moisture movement feels much
+     * slower than visible standing-Water flow.
+     */
+    readonly moistureDiffusionRate: number;
+
+    /** Ignore tiny gradients so nearly equilibrated cells can leave the active set later. */
+    readonly minimumDiffusionDifference: number;
+
+    /**
+     * Standing-Water films at or below this depth can use the cleanup
+     * dissipation sink. Visible puddles above this threshold are unaffected.
+     */
+    readonly shallowWaterDissipationDepth: number;
+
+    /**
+     * Water-depth units removed per second from qualifying microscopic films.
+     * Infiltration remains the primary puddle-removal mechanism.
+     */
+    readonly shallowWaterDissipationRate: number;
+
+    /**
      * Interaction simulation uses a fixed internal step so equivalent elapsed
      * time produces the same result at different render frame rates.
      */
@@ -95,6 +137,14 @@ export interface WaterGroundInteractionDefinition {
 export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
     WaterGroundInteractionDefinition = {
     enabled: true,
+
+    /*
+     * Meaningful standing Water immediately establishes a Wet ground
+     * footprint beneath itself. This floor sits just above the categorical
+     * Wet threshold used by MoistureSurfaceBridge.
+     */
+    minimumContactWettingDepth: 0.003,
+    contactWetMoistureFloor: 0.105,
 
     /*
      * Retain the tuned 8C-2 baseline. Saturation now reduces this rate over
@@ -121,6 +171,9 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
 
             saturationExponent:
                 1.5,
+
+            dryingRate:
+                0.045,
         },
         {
             surfaceType:
@@ -139,8 +192,22 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
 
             saturationExponent:
                 1.25,
+
+            dryingRate:
+                0.065,
         },
     ],
+
+    moistureDiffusionRate: 0.16,
+    minimumDiffusionDifference: 0.001,
+
+    /*
+     * This is deliberately far below the depth of a visible puddle. It only
+     * removes residual films that would otherwise linger around solver
+     * thresholds.
+     */
+    shallowWaterDissipationDepth: 0.002,
+    shallowWaterDissipationRate: 0.0004,
 
     fixedTimeStep: 1 / 60,
     maximumSubsteps: 6,
@@ -153,6 +220,29 @@ export function validateWaterGroundInteractionDefinition(
     if (typeof definition.enabled !== "boolean") {
         throw new Error(
             "Water ground interaction enabled must be a boolean.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.minimumContactWettingDepth,
+        ) ||
+        definition.minimumContactWettingDepth < 0
+    ) {
+        throw new Error(
+            "Water ground interaction minimumContactWettingDepth must be finite and non-negative.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.contactWetMoistureFloor,
+        ) ||
+        definition.contactWetMoistureFloor < 0 ||
+        definition.contactWetMoistureFloor > 1
+    ) {
+        throw new Error(
+            "Water ground interaction contactWetMoistureFloor must be finite and between zero and one.",
         );
     }
 
@@ -265,6 +355,17 @@ export function validateWaterGroundInteractionDefinition(
                 `Water ground interaction saturationExponent for '${profile.surfaceType}' must be finite and greater than zero.`,
             );
         }
+
+        if (
+            !Number.isFinite(
+                profile.dryingRate,
+            ) ||
+            profile.dryingRate < 0
+        ) {
+            throw new Error(
+                `Water ground interaction dryingRate for '${profile.surfaceType}' must be finite and greater than or equal to zero.`,
+            );
+        }
     }
 
     for (
@@ -282,6 +383,46 @@ export function validateWaterGroundInteractionDefinition(
                 `Water ground interaction is missing an infiltration profile for surface '${surfaceType}'.`,
             );
         }
+    }
+
+    if (
+        !Number.isFinite(definition.moistureDiffusionRate) ||
+        definition.moistureDiffusionRate < 0
+    ) {
+        throw new Error(
+            "Water ground interaction moistureDiffusionRate must be finite and greater than or equal to zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(definition.minimumDiffusionDifference) ||
+        definition.minimumDiffusionDifference < 0
+    ) {
+        throw new Error(
+            "Water ground interaction minimumDiffusionDifference must be finite and greater than or equal to zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.shallowWaterDissipationDepth,
+        ) ||
+        definition.shallowWaterDissipationDepth < 0
+    ) {
+        throw new Error(
+            "Water ground interaction shallowWaterDissipationDepth must be finite and greater than or equal to zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.shallowWaterDissipationRate,
+        ) ||
+        definition.shallowWaterDissipationRate < 0
+    ) {
+        throw new Error(
+            "Water ground interaction shallowWaterDissipationRate must be finite and greater than or equal to zero.",
+        );
     }
 
     if (

@@ -38,6 +38,10 @@ export interface WaterGroundInteractionTransferAccounting {
     readonly moistureAdded: number;
     readonly totalWaterTransferred: number;
     readonly totalMoistureAdded: number;
+    readonly groundMoistureDried: number;
+    readonly totalGroundMoistureDried: number;
+    readonly shallowWaterDissipated: number;
+    readonly totalShallowWaterDissipated: number;
     readonly substepCount: number;
     readonly accumulatorSeconds: number;
 }
@@ -90,8 +94,28 @@ export class WaterGroundInteractionSystem {
     private totalMoistureAdded =
         0;
 
+    private lastGroundMoistureDried =
+        0;
+
+    private totalGroundMoistureDried =
+        0;
+
+    private lastShallowWaterDissipated =
+        0;
+
+    private totalShallowWaterDissipated =
+        0;
+
     private lastSubstepCount =
         0;
+
+    /**
+     * Production runtime keeps this enabled. Historical validators can
+     * temporarily disable it so their exact 8C-1..8C-5 accounting remains
+     * isolated from the new contact-wetting rule.
+     */
+    private contactWettingEnabled =
+        true;
 
     public constructor(
         private readonly waterField: WaterField,
@@ -124,6 +148,12 @@ export class WaterGroundInteractionSystem {
             0;
 
         this.lastMoistureAdded =
+            0;
+
+        this.lastGroundMoistureDried =
+            0;
+
+        this.lastShallowWaterDissipated =
             0;
 
         this.lastSubstepCount =
@@ -170,7 +200,21 @@ export class WaterGroundInteractionSystem {
                     0;
             }
 
+            this.runContactWettingStep();
+
             this.runInfiltrationStep(
+                fixedTimeStep,
+            );
+
+            this.runMoistureDiffusionStep(
+                fixedTimeStep,
+            );
+
+            this.runGroundDryingStep(
+                fixedTimeStep,
+            );
+
+            this.runShallowWaterDissipationStep(
                 fixedTimeStep,
             );
 
@@ -213,6 +257,18 @@ export class WaterGroundInteractionSystem {
         this.totalMoistureAdded =
             0;
 
+        this.lastGroundMoistureDried =
+            0;
+
+        this.totalGroundMoistureDried =
+            0;
+
+        this.lastShallowWaterDissipated =
+            0;
+
+        this.totalShallowWaterDissipated =
+            0;
+
         this.lastSubstepCount =
             0;
     }
@@ -220,6 +276,19 @@ export class WaterGroundInteractionSystem {
     public getDefinition():
         WaterGroundInteractionDefinition {
         return this.definition;
+    }
+
+    public setContactWettingEnabledForValidation(
+        enabled:
+            boolean,
+    ): void {
+        this.contactWettingEnabled =
+            enabled;
+    }
+
+    public isContactWettingEnabled():
+        boolean {
+        return this.contactWettingEnabled;
     }
 
     public getWaterField(): WaterField {
@@ -255,12 +324,117 @@ export class WaterGroundInteractionSystem {
             totalMoistureAdded:
                 this.totalMoistureAdded,
 
+            groundMoistureDried:
+                this.lastGroundMoistureDried,
+
+            totalGroundMoistureDried:
+                this.totalGroundMoistureDried,
+
+            shallowWaterDissipated:
+                this.lastShallowWaterDissipated,
+
+            totalShallowWaterDissipated:
+                this.totalShallowWaterDissipated,
+
             substepCount:
                 this.lastSubstepCount,
 
             accumulatorSeconds:
                 this.simulationAccumulator,
         };
+    }
+
+    /**
+     * Phase 8C-6A fast Water-contact wetting.
+     *
+     * EnvironmentField.moisture is the persistent substrate state. A visible
+     * standing-Water cell establishes a minimum surface-moisture floor beneath
+     * itself so the former puddle footprint can remain Wet after Water
+     * retreats. Normal infiltration below remains the conservative standing
+     * Water -> substrate mass-transfer path.
+     */
+    private runContactWettingStep():
+        void {
+        if (
+            !this.contactWettingEnabled
+        ) {
+            return;
+        }
+
+        const minimumDepth =
+            this.definition
+                .minimumContactWettingDepth;
+
+        const moistureFloor =
+            this.definition
+                .contactWetMoistureFloor;
+
+        const indices:
+            number[] = [];
+
+        this.waterField
+            .forEachTrackedWaterCell(
+                (cell): void => {
+                    if (
+                        cell.depth >=
+                        minimumDepth
+                    ) {
+                        indices.push(
+                            cell.index,
+                        );
+                    }
+                },
+            );
+
+        for (
+            const index
+            of indices
+        ) {
+            const center =
+                this.waterField
+                    .getWorldCenterByIndex(
+                        index,
+                    );
+
+            if (!center) {
+                continue;
+            }
+
+            const sample =
+                this.waterField
+                    .sampleAt(
+                        center.x,
+                        center.y,
+                    );
+
+            if (
+                !sample ||
+                sample.depth <
+                minimumDepth
+            ) {
+                continue;
+            }
+
+            const currentMoisture =
+                this.environmentField
+                    .getMoistureByIndex(
+                        index,
+                    );
+
+            if (
+                currentMoisture >=
+                moistureFloor
+            ) {
+                continue;
+            }
+
+            this.environmentField
+                .addMoistureByIndex(
+                    index,
+                    moistureFloor -
+                    currentMoisture,
+                );
+        }
     }
 
     private runInfiltrationStep(
@@ -438,6 +612,496 @@ export class WaterGroundInteractionSystem {
 
             this.totalMoistureAdded +=
                 acceptedMoisture;
+        }
+    }
+
+    /**
+     * Slow four-neighbour exchange of absorbed ground moisture.
+     *
+     * Transfers are calculated from a read-only snapshot first, then applied
+     * in a second pass. This prevents iteration-order bias and preserves
+     * symmetry and frame-rate determinism.
+     */
+    private runMoistureDiffusionStep(
+        deltaTime: number,
+    ): void {
+        const trackedIndices =
+            [
+                ...this.environmentField
+                    .getTrackedMoistureIndices(),
+            ];
+
+        if (
+            trackedIndices.length === 0 ||
+            this.definition.moistureDiffusionRate <= 0
+        ) {
+            return;
+        }
+
+        const columnCount =
+            this.environmentField
+                .getColumnCount();
+
+        const rowCount =
+            this.environmentField
+                .getRowCount();
+
+        const deltas =
+            new Map<number, number>();
+
+        const scheduleDelta =
+            (
+                index: number,
+                delta: number,
+            ): void => {
+                deltas.set(
+                    index,
+                    (
+                        deltas.get(index) ??
+                        0
+                    ) +
+                    delta,
+                );
+            };
+
+        /*
+         * A pair is evaluated once. This matters when both cells are already
+         * tracked, otherwise the same edge would exchange moisture twice.
+         */
+        const visitedPairs =
+            new Set<string>();
+
+        for (
+            const sourceIndex
+            of trackedIndices
+        ) {
+            const sourceMoisture =
+                this.environmentField
+                    .getMoistureByIndex(
+                        sourceIndex,
+                    );
+
+            const sourceColumn =
+                sourceIndex %
+                columnCount;
+
+            const sourceRow =
+                Math.floor(
+                    sourceIndex /
+                    columnCount,
+                );
+
+            const neighbours:
+                number[] = [];
+
+            if (
+                sourceColumn > 0
+            ) {
+                neighbours.push(
+                    sourceIndex - 1,
+                );
+            }
+
+            if (
+                sourceColumn <
+                columnCount - 1
+            ) {
+                neighbours.push(
+                    sourceIndex + 1,
+                );
+            }
+
+            if (
+                sourceRow > 0
+            ) {
+                neighbours.push(
+                    sourceIndex -
+                    columnCount,
+                );
+            }
+
+            if (
+                sourceRow <
+                rowCount - 1
+            ) {
+                neighbours.push(
+                    sourceIndex +
+                    columnCount,
+                );
+            }
+
+            for (
+                const neighbourIndex
+                of neighbours
+            ) {
+                const pairMinimum =
+                    Math.min(
+                        sourceIndex,
+                        neighbourIndex,
+                    );
+
+                const pairMaximum =
+                    Math.max(
+                        sourceIndex,
+                        neighbourIndex,
+                    );
+
+                const pairKey =
+                    `${pairMinimum}:${pairMaximum}`;
+
+                if (
+                    visitedPairs.has(
+                        pairKey,
+                    )
+                ) {
+                    continue;
+                }
+
+                visitedPairs.add(
+                    pairKey,
+                );
+
+                const neighbourMoisture =
+                    this.environmentField
+                        .getMoistureByIndex(
+                            neighbourIndex,
+                        );
+
+                const signedDifference =
+                    sourceMoisture -
+                    neighbourMoisture;
+
+                if (
+                    Math.abs(
+                        signedDifference,
+                    ) <=
+                    this.definition
+                        .minimumDiffusionDifference
+                ) {
+                    continue;
+                }
+
+                const wetterIndex =
+                    signedDifference > 0
+                        ? sourceIndex
+                        : neighbourIndex;
+
+                const drierIndex =
+                    signedDifference > 0
+                        ? neighbourIndex
+                        : sourceIndex;
+
+                const moistureDifference =
+                    Math.abs(
+                        signedDifference,
+                    );
+
+                const availableExcess =
+                    this.environmentField
+                        .getExcessMoistureByIndex(
+                            wetterIndex,
+                        );
+
+                if (
+                    availableExcess <= 0
+                ) {
+                    continue;
+                }
+
+                const drierMoisture =
+                    this.environmentField
+                        .getMoistureByIndex(
+                            drierIndex,
+                        );
+
+                const remainingCapacity =
+                    Math.max(
+                        0,
+                        this.environmentField
+                            .getDefinition()
+                            .maximumMoisture -
+                        drierMoisture,
+                    );
+
+                const requestedTransfer =
+                    moistureDifference *
+                    this.definition
+                        .moistureDiffusionRate *
+                    deltaTime;
+
+                const transfer =
+                    Math.min(
+                        availableExcess,
+                        remainingCapacity,
+                        requestedTransfer,
+                    );
+
+                if (
+                    transfer <= 0
+                ) {
+                    continue;
+                }
+
+                scheduleDelta(
+                    wetterIndex,
+                    -transfer,
+                );
+
+                scheduleDelta(
+                    drierIndex,
+                    transfer,
+                );
+            }
+        }
+
+        /*
+         * Apply losses first, then gains. Because all amounts came from the
+         * pre-step snapshot, the second pass remains deterministic.
+         */
+        for (
+            const [
+                index,
+                delta,
+            ]
+            of deltas
+        ) {
+            if (
+                delta < 0
+            ) {
+                this.environmentField
+                    .removeMoistureByIndex(
+                        index,
+                        -delta,
+                    );
+            }
+        }
+
+        for (
+            const [
+                index,
+                delta,
+            ]
+            of deltas
+        ) {
+            if (
+                delta > 0
+            ) {
+                this.environmentField
+                    .addMoistureByIndex(
+                        index,
+                        delta,
+                    );
+            }
+        }
+    }
+
+    /**
+     * Slowly returns absorbed ground moisture toward each cell's immutable
+     * terrain baseline.
+     *
+     * Drying is proportional to current excess moisture. This produces a
+     * smooth gameplay-scale decay and avoids total drying speed exploding as
+     * diffusion expands the wet footprint across more cells.
+     */
+    private runGroundDryingStep(
+        deltaTime: number,
+    ): void {
+        const trackedIndices =
+            [
+                ...this.environmentField
+                    .getTrackedMoistureIndices(),
+            ];
+
+        if (
+            trackedIndices.length === 0
+        ) {
+            return;
+        }
+
+        const trackingThreshold =
+            this.environmentField
+                .getDefinition()
+                .minimumTrackedMoistureExcess;
+
+        for (
+            const index
+            of trackedIndices
+        ) {
+            const center =
+                this.environmentField
+                    .getWorldCenterByIndex(
+                        index,
+                    );
+
+            if (!center) {
+                continue;
+            }
+
+            const surfaceType =
+                this.surfaceSystem
+                    .getSurfaceAt(
+                        center.x,
+                        center.y,
+                    )
+                    .surfaceType;
+
+            const profile =
+                this.getSurfaceProfile(
+                    surfaceType,
+                );
+
+            if (
+                profile.dryingRate <= 0
+            ) {
+                continue;
+            }
+
+            const excessMoisture =
+                this.environmentField
+                    .getExcessMoistureByIndex(
+                        index,
+                    );
+
+            if (
+                excessMoisture <= 0
+            ) {
+                continue;
+            }
+
+            let requestedDrying =
+                excessMoisture *
+                profile.dryingRate *
+                deltaTime;
+
+            const projectedRemaining =
+                Math.max(
+                    0,
+                    excessMoisture -
+                    requestedDrying,
+                );
+
+            /*
+             * Once the remaining excess would fall below the sparse tracking
+             * threshold, finish the final microscopic remainder in this step.
+             * This lets a cell reach its true terrain baseline and untrack.
+             */
+            if (
+                projectedRemaining <=
+                trackingThreshold
+            ) {
+                requestedDrying =
+                    excessMoisture;
+            }
+
+            const removedMoisture =
+                this.environmentField
+                    .removeMoistureByIndex(
+                        index,
+                        requestedDrying,
+                    );
+
+            this.lastGroundMoistureDried +=
+                removedMoisture;
+
+            this.totalGroundMoistureDried +=
+                removedMoisture;
+        }
+    }
+
+    /**
+     * Removes only microscopic residual Water films.
+     *
+     * Normal puddles remain controlled by Water flow and infiltration. This
+     * sink is intentionally restricted to depths near the numerical tail so
+     * barely visible Water cannot survive forever because of solver cutoffs.
+     */
+    private runShallowWaterDissipationStep(
+        deltaTime: number,
+    ): void {
+        const threshold =
+            this.definition
+                .shallowWaterDissipationDepth;
+
+        const rate =
+            this.definition
+                .shallowWaterDissipationRate;
+
+        if (
+            threshold <= 0 ||
+            rate <= 0
+        ) {
+            return;
+        }
+
+        const indices:
+            number[] = [];
+
+        this.waterField
+            .forEachTrackedWaterCell(
+                (
+                    cell,
+                ): void => {
+                    indices.push(
+                        cell.index,
+                    );
+                },
+            );
+
+        for (
+            const index
+            of indices
+        ) {
+            const center =
+                this.waterField
+                    .getWorldCenterByIndex(
+                        index,
+                    );
+
+            if (!center) {
+                continue;
+            }
+
+            const waterCell =
+                this.waterField
+                    .sampleAt(
+                        center.x,
+                        center.y,
+                    );
+
+            if (
+                !waterCell ||
+                waterCell.depth <= 0 ||
+                waterCell.depth >
+                threshold
+            ) {
+                continue;
+            }
+
+            const requestedRemoval =
+                Math.min(
+                    waterCell.depth,
+                    rate *
+                    deltaTime,
+                );
+
+            if (
+                requestedRemoval <= 0
+            ) {
+                continue;
+            }
+
+            const removedWater =
+                this.waterField
+                    .removeWaterByIndex(
+                        index,
+                        requestedRemoval,
+                    );
+
+            this.lastShallowWaterDissipated +=
+                removedWater;
+
+            this.totalShallowWaterDissipated +=
+                removedWater;
         }
     }
 

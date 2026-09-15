@@ -46,7 +46,6 @@ export class WaterFieldVisualizer {
     ) {
         this.graphics.visible =
             definition.enabled;
-
     }
 
     public getGraphics():
@@ -87,10 +86,6 @@ export class WaterFieldVisualizer {
             return;
         }
 
-        /*
-         * Do not attempt to catch up by redrawing multiple times after a
-         * hitch. One current-state redraw is sufficient for a debug view.
-         */
         this.refreshAccumulator =
             0;
 
@@ -147,11 +142,6 @@ export class WaterFieldVisualizer {
                 .getDefinition()
                 .maximumDepth;
 
-        /*
-         * Optional sparse-region inspection. Disabled by default because dry
-         * neighbour outlines create substantial Graphics geometry without
-         * helping normal Water-flow inspection.
-         */
         if (
             this.definition
                 .showActiveCells

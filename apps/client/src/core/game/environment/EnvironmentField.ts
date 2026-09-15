@@ -72,6 +72,21 @@ export class EnvironmentField {
     private readonly moisture:
         Float32Array;
 
+    /** Immutable terrain moisture baseline captured when a cell is first initialized. */
+    private readonly baselineMoisture:
+        Float32Array;
+
+    /** Sparse set containing only cells meaningfully above their baseline moisture. */
+    private readonly trackedMoistureIndices:
+        number[] = [];
+
+    private readonly moistureIndexTracked:
+        Uint8Array;
+
+    /** O(1) removal positions for trackedMoistureIndices. */
+    private readonly trackedMoisturePositions:
+        Int32Array;
+
     private readonly trackedBurnIndices:
         number[] = [];
 
@@ -169,6 +184,25 @@ export class EnvironmentField {
                 this.cellCount,
             );
 
+        this.baselineMoisture =
+            new Float32Array(
+                this.cellCount,
+            );
+
+        this.moistureIndexTracked =
+            new Uint8Array(
+                this.cellCount,
+            );
+
+        this.trackedMoisturePositions =
+            new Int32Array(
+                this.cellCount,
+            );
+
+        this.trackedMoisturePositions.fill(
+            -1,
+        );
+
         this.burnIndexTracked =
             new Uint8Array(
                 this.cellCount,
@@ -206,6 +240,18 @@ export class EnvironmentField {
             0,
         );
 
+        this.baselineMoisture.fill(
+            0,
+        );
+
+        this.moistureIndexTracked.fill(
+            0,
+        );
+
+        this.trackedMoisturePositions.fill(
+            -1,
+        );
+
         this.burnIndexTracked.fill(
             0,
         );
@@ -218,6 +264,9 @@ export class EnvironmentField {
             0;
 
         this.trackedHeatIndices.length =
+            0;
+
+        this.trackedMoistureIndices.length =
             0;
 
         this.renderCache
@@ -859,7 +908,121 @@ export class EnvironmentField {
         this.moisture[index] =
             nextMoisture;
 
+        this.refreshMoistureTracking(
+            index,
+        );
+
         return acceptedAmount;
+    }
+
+    /**
+     * Returns the immutable natural terrain moisture captured when the cell
+     * was initialized. Later Wet surface presentation must not redefine it.
+     */
+    public getBaselineMoistureByIndex(
+        index: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount
+        ) {
+            return 0;
+        }
+
+        this.ensureInitialized(
+            index,
+        );
+
+        return this.baselineMoisture[
+            index
+        ];
+    }
+
+    public getExcessMoistureByIndex(
+        index: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount
+        ) {
+            return 0;
+        }
+
+        this.ensureInitialized(
+            index,
+        );
+
+        return Math.max(
+            0,
+            this.moisture[index] -
+            this.baselineMoisture[index],
+        );
+    }
+
+    public getTrackedMoistureIndices():
+        readonly number[] {
+        return this.trackedMoistureIndices;
+    }
+
+    public getTrackedMoistureCellCount():
+        number {
+        return this.trackedMoistureIndices
+            .length;
+    }
+
+    /**
+     * Removes only moisture above the cell's immutable terrain baseline.
+     * Returns the amount actually removed.
+     */
+    public removeMoistureByIndex(
+        index: number,
+        amount: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount ||
+            !Number.isFinite(amount) ||
+            amount <= 0
+        ) {
+            return 0;
+        }
+
+        this.ensureInitialized(
+            index,
+        );
+
+        const availableExcess =
+            Math.max(
+                0,
+                this.moisture[index] -
+                this.baselineMoisture[index],
+            );
+
+        const removedAmount =
+            Math.min(
+                availableExcess,
+                amount,
+            );
+
+        if (removedAmount <= 0) {
+            return 0;
+        }
+
+        this.moisture[index] =
+            Math.max(
+                this.baselineMoisture[index],
+                this.moisture[index] -
+                removedAmount,
+            );
+
+        this.refreshMoistureTracking(
+            index,
+        );
+
+        return removedAmount;
     }
 
     public getAverageMoistureInRadius(
@@ -1190,6 +1353,10 @@ export class EnvironmentField {
                         .wetGrassInitialMoisture
                     : this.definition
                         .normalGrassInitialMoisture;
+
+            this.baselineMoisture[index] =
+                this.definition
+                    .normalGrassInitialMoisture;
         } else if (
             surface.surfaceType ===
             SurfaceType.Sand
@@ -1205,12 +1372,99 @@ export class EnvironmentField {
                         .wetSandInitialMoisture
                     : this.definition
                         .drySandInitialMoisture;
+
+            this.baselineMoisture[index] =
+                this.definition
+                    .drySandInitialMoisture;
         }
 
         this.initialized[
             index
         ] =
             1;
+
+        this.refreshMoistureTracking(
+            index,
+        );
+    }
+
+    private refreshMoistureTracking(
+        index: number,
+    ): void {
+        const shouldTrack =
+            this.moisture[index] -
+            this.baselineMoisture[index] >=
+            this.definition
+                .minimumTrackedMoistureExcess;
+
+        const isTracked =
+            this.moistureIndexTracked[
+            index
+            ] === 1;
+
+        if (
+            shouldTrack &&
+            !isTracked
+        ) {
+            this.moistureIndexTracked[
+                index
+            ] = 1;
+
+            this.trackedMoisturePositions[
+                index
+            ] =
+                this.trackedMoistureIndices
+                    .length;
+
+            this.trackedMoistureIndices.push(
+                index,
+            );
+
+            return;
+        }
+
+        if (
+            !shouldTrack &&
+            isTracked
+        ) {
+            const position =
+                this.trackedMoisturePositions[
+                index
+                ];
+
+            const lastPosition =
+                this.trackedMoistureIndices
+                    .length - 1;
+
+            const lastIndex =
+                this.trackedMoistureIndices[
+                lastPosition
+                ];
+
+            if (
+                lastIndex !== undefined
+            ) {
+                this.trackedMoistureIndices[
+                    position
+                ] =
+                    lastIndex;
+
+                this.trackedMoisturePositions[
+                    lastIndex
+                ] =
+                    position;
+            }
+
+            this.trackedMoistureIndices.pop();
+
+            this.moistureIndexTracked[
+                index
+            ] = 0;
+
+            this.trackedMoisturePositions[
+                index
+            ] = -1;
+        }
     }
 
     // ---------------------------------------------------------------------

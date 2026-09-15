@@ -21,6 +21,12 @@ export interface EnvironmentFieldDefinition {
     readonly maximumBurnAmount: number;
     readonly maximumMoisture: number;
 
+    /**
+     * Minimum moisture above a cell's immutable terrain baseline before
+     * that cell participates in sparse moisture processing.
+     */
+    readonly minimumTrackedMoistureExcess: number;
+
     readonly minimumTrackedBurnAmount: number;
 
     /**
@@ -90,6 +96,8 @@ export const DEFAULT_ENVIRONMENT_FIELD_DEFINITION:
     maximumBurnAmount: 1,
     maximumMoisture: 1,
 
+    minimumTrackedMoistureExcess: 0.001,
+
     minimumTrackedBurnAmount: 0.025,
 
     minimumTrackedHeat: 0.01,
@@ -140,6 +148,7 @@ export function validateEnvironmentFieldDefinition(
         ["drySandInitialMoisture", definition.drySandInitialMoisture],
         ["wetSandInitialMoisture", definition.wetSandInitialMoisture],
         ["minimumTrackedBurnAmount", definition.minimumTrackedBurnAmount],
+        ["minimumTrackedMoistureExcess", definition.minimumTrackedMoistureExcess],
         ["minimumTrackedHeat", definition.minimumTrackedHeat],
         ["heatDecayPerSecond", definition.heatDecayPerSecond],
         ["minimumBurnNoiseMultiplier", definition.minimumBurnNoiseMultiplier],
