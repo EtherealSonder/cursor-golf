@@ -234,6 +234,10 @@ import {
 } from "../debug/GroundMoistureFireSuppressionValidation";
 
 import {
+    WetTerrainReignitionValidation,
+} from "../debug/WetTerrainReignitionValidation";
+
+import {
     FireSourceVisualizer,
 } from "../environment/FireSourceVisualizer";
 
@@ -826,6 +830,9 @@ export class World {
         GroundMoistureFireSuppressionValidation.run(
             this.fireManager,
         );
+
+        /* Phase 8F-7 retained-moisture ignition/reignition validation. */
+        WetTerrainReignitionValidation.run();
 
         this.createCameraActivationDebugGraphics();
 

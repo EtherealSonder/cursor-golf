@@ -12,6 +12,10 @@ interface MoistureCase {
  * Phase 8F-6 deterministic validation for continuous ground-moisture Fire
  * suppression. It is read-only. The validator queries the same response
  * curves FireManager uses during ignition, spread, and established burning.
+ *
+ * Runtime FireManager now samples moisture across the Fire influence
+ * footprint for ignition and neighbour spread. These band checks therefore
+ * define the expected response applied to that representative moisture.
  */
 export class GroundMoistureFireSuppressionValidation {
     private static readonly CASES:
@@ -93,6 +97,15 @@ export class GroundMoistureFireSuppressionValidation {
             responses[responses.length - 1]
                 ?.response;
 
+        const slightlyDamp =
+            responses[1]?.response;
+
+        const moderatelyWet =
+            responses[2]?.response;
+
+        const veryWet =
+            responses[3]?.response;
+
         this.check(
             "Increasing moisture monotonically reduces ignition score",
             ignitionMonotonic,
@@ -111,6 +124,21 @@ export class GroundMoistureFireSuppressionValidation {
         this.check(
             "Dry baseline Grass remains ignitable with full fuel",
             dry?.canIgnite === true,
+        );
+
+        this.check(
+            "Slightly damp Grass can still ignite with full fuel",
+            slightlyDamp?.canIgnite === true,
+        );
+
+        this.check(
+            "Moderately wet Grass rejects new ignition with full fuel",
+            moderatelyWet?.canIgnite === false,
+        );
+
+        this.check(
+            "Very wet Grass rejects new ignition with full fuel",
+            veryWet?.canIgnite === false,
         );
 
         this.check(
@@ -135,15 +163,6 @@ export class GroundMoistureFireSuppressionValidation {
                 saturated.spreadMultiplier <= 0.05,
             ),
         );
-
-        const slightlyDamp =
-            responses[1]?.response;
-
-        const moderatelyWet =
-            responses[2]?.response;
-
-        const veryWet =
-            responses[3]?.response;
 
         this.check(
             "Moderately wet ground cuts spread to a clearly reduced level",

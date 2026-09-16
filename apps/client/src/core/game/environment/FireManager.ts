@@ -842,11 +842,10 @@ export class FireManager {
             }
 
             const targetMoisture =
-                this.environmentField
-                    .getMoistureAt(
-                        center.x,
-                        center.y,
-                    );
+                this.getIgnitionFootprintMoisture(
+                    center.x,
+                    center.y,
+                );
 
             const moistureSpreadMultiplier =
                 this.getMoistureSpreadMultiplier(
@@ -1378,11 +1377,10 @@ export class FireManager {
             );
 
         const moisture =
-            this.environmentField
-                .getMoistureAt(
-                    worldX,
-                    worldY,
-                );
+            this.getIgnitionFootprintMoisture(
+                worldX,
+                worldY,
+            );
 
         const dryness =
             this.getDrynessFromMoisture(
@@ -1512,11 +1510,10 @@ export class FireManager {
         }
 
         const moisture =
-            this.environmentField
-                .getMoistureAt(
-                    worldX,
-                    worldY,
-                );
+            this.getIgnitionFootprintMoisture(
+                worldX,
+                worldY,
+            );
 
         const normalizedFuel =
             Math.min(
@@ -1537,6 +1534,28 @@ export class FireManager {
             moisture,
             normalizedFuel,
         ).canIgnite;
+    }
+
+    /**
+     * Samples moisture across the coarse Fire footprint instead of relying
+     * on one fine EnvironmentField cell at the Fire-cell centre.
+     *
+     * The Fire influence radius is already the spatial footprint used for
+     * established-combustion moisture, so using it here keeps ignition,
+     * legacy spread, and established Fire spatially consistent without
+     * introducing any duplicate wetness state.
+     */
+    private getIgnitionFootprintMoisture(
+        worldX: number,
+        worldY: number,
+    ): number {
+        return this.environmentField
+            .getAverageMoistureInRadius(
+                worldX,
+                worldY,
+                this.definition
+                    .fieldInfluenceRadius,
+            );
     }
 
     private getMoistureSpreadMultiplier(
