@@ -101,7 +101,7 @@ export const WET_GRASS_STATE_DEFINITION:
      * clearly perceptible during testing.
      */
     rollingResistanceMultiplier:
-        1.3,
+        1.55,
 
     durationSeconds:
         SURFACE_STATE_TIMERS_ENABLED
@@ -145,7 +145,7 @@ export const DRY_SAND_STATE_DEFINITION:
         SurfaceState.Dry,
 
     rollingResistanceMultiplier:
-        2,
+        2.4,
 
     durationSeconds:
         null,
@@ -169,7 +169,7 @@ export const WET_SAND_STATE_DEFINITION:
      * while remaining slower than Normal Grass.
      */
     rollingResistanceMultiplier:
-        1.35,
+        1.9,
 
     durationSeconds:
         SURFACE_STATE_TIMERS_ENABLED

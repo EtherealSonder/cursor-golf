@@ -67,6 +67,35 @@ import type {
     SurfaceSystem,
 } from "../surface/SurfaceSystem";
 
+import type {
+    WaterField,
+} from "../environment/WaterField";
+
+import {
+    BallWaterSampler,
+} from "../physics/water/BallWaterSampler";
+
+import type {
+    BallWaterSample,
+} from "../physics/water/BallWaterSampler";
+
+import {
+    BallWaterInteraction,
+} from "../physics/water/BallWaterInteraction";
+
+import type {
+    BallWaterInteractionState,
+} from "../physics/water/BallWaterInteraction";
+
+import {
+    BallWaterSplashSystem,
+} from "../physics/water/BallWaterSplashSystem";
+
+import type {
+    BallWaterSplashEvent,
+    BallWaterSplashListener,
+} from "../physics/water/BallWaterSplashEvent";
+
 import {
     AssetLoader,
 } from "../../rendering/AssetLoader";
@@ -115,6 +144,39 @@ export type BallImpactListener = (
     event:
         BallImpactEvent,
 ) => void;
+
+export interface BallStandingWaterDebugSnapshot {
+    readonly averageDepth: number;
+    readonly maximumDepth: number;
+    readonly coveredFraction: number;
+    readonly representativeWetDepth: number;
+    readonly normalizedDepth: number;
+    readonly curvedDepth: number;
+    readonly targetExposure: number;
+    readonly smoothedExposure: number;
+    readonly transitionState: BallWaterInteractionState["transitionState"];
+    readonly additionalResistance: number;
+    readonly surfaceResistance: number;
+    readonly combinedResistance: number;
+    readonly baseDeceleration: number;
+    readonly terrainDeceleration: number;
+    readonly waterDeceleration: number;
+    readonly totalDeceleration: number;
+    readonly peakAverageDepth: number;
+    readonly peakMaximumDepth: number;
+    readonly peakRepresentativeWetDepth: number;
+    readonly peakCoveredFraction: number;
+    readonly peakTargetExposure: number;
+    readonly peakSmoothedExposure: number;
+    readonly peakAdditionalResistance: number;
+    readonly contactTime: number;
+    readonly splashArmed: boolean;
+    readonly inSplashWater: boolean;
+    readonly splashCount: number;
+    readonly lastSplashIntensity: number;
+    readonly lastSplashSpeed: number;
+    readonly lastSplashDepth: number;
+}
 
 interface BoundaryCollisionResult {
     readonly collidedLeft: boolean;
@@ -193,6 +255,44 @@ export class Ball extends Entity {
      */
     private readonly surfaceSystem:
         SurfaceSystem;
+
+    /** Phase 8E-4 standing-Water footprint query. Null when Water is not wired. */
+    private readonly ballWaterSampler:
+        BallWaterSampler | null;
+
+    /** Phase 8E-4 Water response state, kept separate from terrain SurfaceSystem. */
+    private readonly ballWaterInteraction:
+        BallWaterInteraction | null;
+
+    /** Phase 8E-7 entry-event detector. Rendering consumes its events later. */
+    private readonly ballWaterSplashSystem:
+        BallWaterSplashSystem | null;
+
+    private readonly waterSplashListeners:
+        Set<BallWaterSplashListener> =
+        new Set<BallWaterSplashListener>();
+
+    private splashCount = 0;
+    private lastSplashEvent:
+        BallWaterSplashEvent | null = null;
+
+    private lastWaterInteractionState:
+        BallWaterInteractionState | null = null;
+
+    private lastWaterSample:
+        BallWaterSample | null = null;
+
+    private lastStandingWaterDebugSnapshot:
+        BallStandingWaterDebugSnapshot | null = null;
+
+    private peakWaterAverageDepth = 0;
+    private peakWaterMaximumDepth = 0;
+    private peakWaterRepresentativeDepth = 0;
+    private peakWaterCoveredFraction = 0;
+    private peakWaterTargetExposure = 0;
+    private peakWaterSmoothedExposure = 0;
+    private peakWaterAdditionalResistance = 0;
+    private standingWaterContactTime = 0;
 
     private motionState =
         BallMotionState.Stationary;
@@ -274,6 +374,9 @@ export class Ball extends Entity {
 
         localWindSystem:
             LocalWindSystem,
+
+        waterField?:
+            WaterField,
     ) {
         super();
 
@@ -313,6 +416,23 @@ export class Ball extends Entity {
 
         this.localWindSystem =
             localWindSystem;
+
+        this.ballWaterSampler =
+            waterField
+                ? new BallWaterSampler(
+                    waterField,
+                )
+                : null;
+
+        this.ballWaterInteraction =
+            waterField
+                ? new BallWaterInteraction()
+                : null;
+
+        this.ballWaterSplashSystem =
+            waterField
+                ? new BallWaterSplashSystem()
+                : null;
     }
 
     // -------------------------------------------------------
@@ -428,6 +548,9 @@ export class Ball extends Entity {
         this.impactListeners
             .clear();
 
+        this.waterSplashListeners
+            .clear();
+
         this.container.destroy({
             children:
                 true,
@@ -447,6 +570,8 @@ export class Ball extends Entity {
         this.stop(
             false,
         );
+
+        this.resetStandingWaterInteraction();
 
         this.setPosition(
             this.getInitialPositionX(),
@@ -711,6 +836,8 @@ export class Ball extends Entity {
         this.obstacleCollisionCount = 0;
 
         this.restStabilityElapsedTime = 0;
+
+        this.resetStandingWaterInteraction();
 
         this.setInteractionState(
             BallInteractionState.Normal,
@@ -1262,11 +1389,33 @@ export class Ball extends Entity {
                     this.getY(),
                 );
 
+        /*
+         * Phase 8E-4: standing Water is an independent additive resistance
+         * contribution. Wet terrain remains owned by SurfaceSystem.
+         */
+        const waterInteractionState =
+            this.updateStandingWaterInteraction(
+                deltaTime,
+                currentSurface.rollingResistanceMultiplier,
+            );
+
+        const combinedRollingResistance =
+            this.ballWaterInteraction
+                ? this.ballWaterInteraction
+                    .combineRollingResistance(
+                        currentSurface
+                            .rollingResistanceMultiplier,
+                        waterInteractionState
+                            ?.additionalResistance ??
+                        0,
+                    )
+                : currentSurface
+                    .rollingResistanceMultiplier;
+
         const effectiveRollingDeceleration =
             this.physicsDefinition
                 .rollingDeceleration *
-            currentSurface
-                .rollingResistanceMultiplier;
+            combinedRollingResistance;
 
         const speedReduction =
             effectiveRollingDeceleration *
@@ -1492,6 +1641,139 @@ export class Ball extends Entity {
         this.evaluateRestStability(
             deltaTime,
         );
+    }
+
+    private updateStandingWaterInteraction(
+        deltaTime: number,
+        surfaceResistance: number,
+    ): BallWaterInteractionState | null {
+        if (!this.ballWaterSampler || !this.ballWaterInteraction) {
+            this.lastWaterSample = null;
+            this.lastWaterInteractionState = null;
+            this.lastStandingWaterDebugSnapshot = null;
+            return null;
+        }
+
+        const sample = this.ballWaterSampler.sample(
+            this.getX(),
+            this.getY(),
+            this.radius,
+        );
+
+        const splashEvent =
+            this.ballWaterSplashSystem?.update({
+                worldX: this.getX(),
+                worldY: this.getY(),
+                velocityX: this.velocityX,
+                velocityY: this.velocityY,
+                sample,
+            }) ?? null;
+
+        if (splashEvent) {
+            this.lastSplashEvent = splashEvent;
+            this.splashCount += 1;
+
+            for (const listener of this.waterSplashListeners) {
+                listener(splashEvent);
+            }
+        }
+
+        const state = this.ballWaterInteraction.update(sample, deltaTime);
+        this.lastWaterSample = sample;
+        this.lastWaterInteractionState = state;
+
+        if (state.targetExposure > 0 && sample.coveredFraction > 0) {
+            this.standingWaterContactTime += deltaTime;
+        }
+
+        this.peakWaterAverageDepth = Math.max(this.peakWaterAverageDepth, sample.averageDepth);
+        this.peakWaterMaximumDepth = Math.max(this.peakWaterMaximumDepth, sample.maximumDepth);
+        this.peakWaterRepresentativeDepth = Math.max(this.peakWaterRepresentativeDepth, state.representativeWetDepth);
+        this.peakWaterCoveredFraction = Math.max(this.peakWaterCoveredFraction, sample.coveredFraction);
+        this.peakWaterTargetExposure = Math.max(this.peakWaterTargetExposure, state.targetExposure);
+        this.peakWaterSmoothedExposure = Math.max(this.peakWaterSmoothedExposure, state.smoothedExposure);
+        this.peakWaterAdditionalResistance = Math.max(this.peakWaterAdditionalResistance, state.additionalResistance);
+
+        const combinedResistance = this.ballWaterInteraction.combineRollingResistance(
+            surfaceResistance,
+            state.additionalResistance,
+        );
+        const baseDeceleration = this.physicsDefinition.rollingDeceleration;
+
+        this.lastStandingWaterDebugSnapshot = {
+            averageDepth: sample.averageDepth,
+            maximumDepth: sample.maximumDepth,
+            coveredFraction: sample.coveredFraction,
+            representativeWetDepth: state.representativeWetDepth,
+            normalizedDepth: state.normalizedDepth,
+            curvedDepth: state.curvedDepth,
+            targetExposure: state.targetExposure,
+            smoothedExposure: state.smoothedExposure,
+            transitionState: state.transitionState,
+            additionalResistance: state.additionalResistance,
+            surfaceResistance,
+            combinedResistance,
+            baseDeceleration,
+            terrainDeceleration: baseDeceleration * surfaceResistance,
+            waterDeceleration: baseDeceleration * state.additionalResistance,
+            totalDeceleration: baseDeceleration * combinedResistance,
+            peakAverageDepth: this.peakWaterAverageDepth,
+            peakMaximumDepth: this.peakWaterMaximumDepth,
+            peakRepresentativeWetDepth: this.peakWaterRepresentativeDepth,
+            peakCoveredFraction: this.peakWaterCoveredFraction,
+            peakTargetExposure: this.peakWaterTargetExposure,
+            peakSmoothedExposure: this.peakWaterSmoothedExposure,
+            peakAdditionalResistance: this.peakWaterAdditionalResistance,
+            contactTime: this.standingWaterContactTime,
+            splashArmed: this.ballWaterSplashSystem?.isArmed() ?? false,
+            inSplashWater: this.ballWaterSplashSystem?.isInSplashWater() ?? false,
+            splashCount: this.splashCount,
+            lastSplashIntensity: this.lastSplashEvent?.intensity ?? 0,
+            lastSplashSpeed: this.lastSplashEvent?.ballSpeed ?? 0,
+            lastSplashDepth: this.lastSplashEvent?.waterDepth ?? 0,
+        };
+
+        return state;
+    }
+
+    private resetStandingWaterInteraction(): void {
+        this.ballWaterInteraction?.reset();
+        this.ballWaterSplashSystem?.reset();
+        this.splashCount = 0;
+        this.lastSplashEvent = null;
+        this.lastWaterSample = null;
+        this.lastWaterInteractionState = null;
+        this.lastStandingWaterDebugSnapshot = null;
+        this.peakWaterAverageDepth = 0;
+        this.peakWaterMaximumDepth = 0;
+        this.peakWaterRepresentativeDepth = 0;
+        this.peakWaterCoveredFraction = 0;
+        this.peakWaterTargetExposure = 0;
+        this.peakWaterSmoothedExposure = 0;
+        this.peakWaterAdditionalResistance = 0;
+        this.standingWaterContactTime = 0;
+    }
+
+    public addWaterSplashListener(
+        listener: BallWaterSplashListener,
+    ): () => void {
+        this.waterSplashListeners.add(listener);
+
+        return (): void => {
+            this.waterSplashListeners.delete(listener);
+        };
+    }
+
+    public getLastWaterSplashEvent(): BallWaterSplashEvent | null {
+        return this.lastSplashEvent;
+    }
+
+    public getStandingWaterInteractionState(): BallWaterInteractionState | null {
+        return this.lastWaterInteractionState;
+    }
+
+    public getStandingWaterDebugSnapshot(): BallStandingWaterDebugSnapshot | null {
+        return this.lastStandingWaterDebugSnapshot;
     }
 
     private evaluateRestStability(
@@ -2903,6 +3185,20 @@ export class Ball extends Entity {
                     2,
                 ),
         );
+
+        const waterState = this.lastWaterInteractionState;
+        const waterDebug = this.lastStandingWaterDebugSnapshot;
+
+        console.log("Standing Water Exposure:", (waterState?.smoothedExposure ?? 0).toFixed(3));
+        console.log("Standing Water Additional Resistance:", (waterState?.additionalResistance ?? 0).toFixed(3));
+        console.log("Peak Water Average Depth:", (waterDebug?.peakAverageDepth ?? 0).toFixed(4));
+        console.log("Peak Water Maximum Depth:", (waterDebug?.peakMaximumDepth ?? 0).toFixed(4));
+        console.log("Peak Water Representative Depth:", (waterDebug?.peakRepresentativeWetDepth ?? 0).toFixed(4));
+        console.log("Peak Water Coverage:", `${((waterDebug?.peakCoveredFraction ?? 0) * 100).toFixed(1)}%`);
+        console.log("Peak Water Target Exposure:", (waterDebug?.peakTargetExposure ?? 0).toFixed(3));
+        console.log("Peak Water Smoothed Exposure:", (waterDebug?.peakSmoothedExposure ?? 0).toFixed(3));
+        console.log("Peak Water Additional Resistance:", (waterDebug?.peakAdditionalResistance ?? 0).toFixed(3));
+        console.log("Standing Water Contact Time:", (waterDebug?.contactTime ?? 0).toFixed(3), "seconds");
 
         console.log(
             "Movement Time:",

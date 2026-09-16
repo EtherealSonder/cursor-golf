@@ -279,49 +279,6 @@ export class ProceduralObstacleFieldGenerator {
             );
         }
 
-        console.log(
-            "Generated stratified procedural obstacle field.",
-            {
-                total:
-                    shuffledPoints.length,
-
-                static:
-                    staticDefinitions.length,
-
-                dynamic:
-                    dynamicDefinitions.length,
-
-                gridColumns:
-                    gridDimensions.columns,
-
-                gridRows:
-                    gridDimensions.rows,
-
-                generationBounds: {
-                    minimumX:
-                        generationMinimumX,
-
-                    maximumX:
-                        generationMaximumX,
-
-                    minimumY:
-                        generationMinimumY,
-
-                    maximumY:
-                        generationMaximumY,
-                },
-
-                rectangleSize: {
-                    width:
-                        this.definition
-                            .obstacleWidth,
-
-                    height:
-                        this.definition
-                            .obstacleHeight,
-                },
-            },
-        );
 
         return {
             staticDefinitions,

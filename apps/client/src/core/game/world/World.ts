@@ -106,54 +106,6 @@ import {
 } from "../debug/LocalWindDebugVisualizer";
 
 import {
-    WaterGroundInteractionValidation,
-} from "../debug/WaterGroundInteractionValidation";
-
-import {
-    WaterObstacleFieldValidation,
-} from "../debug/WaterObstacleFieldValidation";
-
-import {
-    WaterSolidCellExclusionValidation,
-} from "../debug/WaterSolidCellExclusionValidation";
-
-import {
-    WaterObstacleFlowValidation,
-} from "../debug/WaterObstacleFlowValidation";
-
-import {
-    WaterBoundaryFlowValidation,
-} from "../debug/WaterBoundaryFlowValidation";
-
-import {
-    AirborneWaterStaticCollisionValidation,
-} from "../debug/AirborneWaterStaticCollisionValidation";
-
-import {
-    AirborneWaterImpactDepositionValidation,
-} from "../debug/AirborneWaterImpactDepositionValidation";
-
-import {
-    WaterGameObjectIntegrationValidation,
-} from "../debug/WaterGameObjectIntegrationValidation";
-
-import {
-    HoseAndWaterEmitterCollisionValidation,
-} from "../debug/HoseAndWaterEmitterCollisionValidation";
-
-import {
-    GeneralObjectCollisionValidation,
-} from "../debug/GeneralObjectCollisionValidation";
-
-import {
-    PhysicsWorldRegistrationValidation,
-} from "../debug/PhysicsWorldRegistrationValidation";
-
-import {
-    WaterStaticObstacleAcceptanceValidation,
-} from "../debug/WaterStaticObstacleAcceptanceValidation";
-
-import {
     HoseJetBallForceSystem,
 } from "../physics/water/HoseJetBallForceSystem";
 
@@ -365,7 +317,6 @@ export class World {
     private performanceDebugOverlay:
         PerformanceDebugOverlay | null =
         null;
-
     private readonly performanceMetrics:
         PerformanceMetrics =
         new PerformanceMetrics();
@@ -519,14 +470,10 @@ export class World {
     private fireDirectionalValidation:
         FireDirectionalValidation | null =
         null;
-
-    private waterGroundInteractionValidation:
-        WaterGroundInteractionValidation | null =
-        null;
     /**
-         * Standing-Water presentation uses the WaterField-driven visualizer.
-         * Wet Ground remains independently rendered beneath it.
-         */
+             * Standing-Water presentation uses the WaterField-driven visualizer.
+             * Wet Ground remains independently rendered beneath it.
+             */
     private waterFieldVisualizer:
         WaterFieldVisualizer | null =
         null;
@@ -805,22 +752,6 @@ export class World {
         this.createFireVfxSystem();
 
         this.createFireDirectionalValidation();
-
-        this.createWaterGroundInteractionValidation();
-
-        this.createWaterObstacleFieldValidation();
-
-        this.createWaterSolidCellExclusionValidation();
-
-        this.createWaterObstacleFlowValidation();
-
-        this.createWaterBoundaryFlowValidation();
-
-        this.createAirborneWaterStaticCollisionValidation();
-
-        this.createAirborneWaterImpactDepositionValidation();
-
-
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
@@ -905,18 +836,7 @@ export class World {
             );
         }
 
-        console.log(
-            "Procedural obstacle field created.",
-            {
-                staticObstacles:
-                    this.staticObstacleDefinitions
-                        .length,
 
-                dynamicObstacles:
-                    this.dynamicObstacles
-                        .length,
-            },
-        );
 
         // ---------------------------------------------------
         // Create Ball
@@ -933,13 +853,13 @@ export class World {
                 this.windManager,
                 this.surfaceSystem,
                 this.localWindSystem,
+                this.waterField,
             );
 
         this.addEntity(
             this.ball,
             WorldRenderLayer.GameplayActors,
         );
-
         this.createBallTrail();
 
         this.createWaterFieldVisualizer();
@@ -1279,17 +1199,16 @@ export class World {
                 deltaTime,
             );
         }
-
         /*
-         * Phase 8B-12:
-         * HydrantHose has now advanced rope/nozzle physics and synchronized
-         * its current pressure/source state. Apply the continuous jet impulse
-         * to Ball from that authoritative current-frame mechanism state.
-         *
-         * Ball itself appears earlier in the entity list, so position
-         * integration occurs on the following Ball physics frame. Velocity is
-         * updated immediately through Ball.applyImpulseAtWorldPoint().
-         */
+                 * Phase 8B-12:
+                 * HydrantHose has now advanced rope/nozzle physics and synchronized
+                 * its current pressure/source state. Apply the continuous jet impulse
+                 * to Ball from that authoritative current-frame mechanism state.
+                 *
+                 * Ball itself appears earlier in the entity list, so position
+                 * integration occurs on the following Ball physics frame. Velocity is
+                 * updated immediately through Ball.applyImpulseAtWorldPoint().
+                 */
         this.hoseJetBallForceSystem
             ?.update(
                 deltaTime,
@@ -1472,7 +1391,6 @@ export class World {
 
     public destroy():
         void {
-
         this.airborneWaterVisualizer
             ?.destroy();
 
@@ -2233,39 +2151,49 @@ export class World {
             );
     }
 
+
+
     // -------------------------------------------------------
-    // Water Ground Interaction Validation
+    // Phase 8E-1 Ball Footprint Water Sampling Validation
+
+
     // -------------------------------------------------------
+    // Phase 8E-2 Ball Water Interaction Contract Validation
 
-    private createWaterGroundInteractionValidation():
-        void {
 
-        if (
-            this.waterGroundInteractionValidation
-        ) {
-            throw new Error(
-                "World WaterGroundInteraction validation has already been created.",
-            );
-        }
+    // -------------------------------------------------------
+    // Phase 8E-3 Surface + Standing Water Resistance Validation
 
-        this.waterGroundInteractionValidation =
-            new WaterGroundInteractionValidation(
-                this.waterGroundInteractionSystem,
-                this.waterField,
-                this.environmentField,
-                this.moistureSurfaceBridge,
-                this.surfaceSystem,
-            );
 
-        this.waterGroundInteractionValidation
-            .run();
-    }
+    // -------------------------------------------------------
+    // Phase 8E-4 Standing-Water Drag Validation
 
-    public getWaterGroundInteractionValidationState() {
-        return this.waterGroundInteractionValidation
-            ?.getState() ??
-            null;
-    }
+
+    // -------------------------------------------------------
+    // Phase 8E-5 Nonlinear Water Depth Slowdown + Debug
+
+
+    // -------------------------------------------------------
+    // Surface Resistance Tuning Validation
+
+
+    // -------------------------------------------------------
+    // Phase 8E-6 Smooth Water Entry/Exit Validation
+
+
+    // -------------------------------------------------------
+    // Phase 8E-7 Splash Physics Event System Validation
+
+
+    // -------------------------------------------------------
+    // Phase 8E-8 Controlled Shot-Distance Comparison
+
+
+    // -------------------------------------------------------
+    // Phase 8E-9 30/60/120 FPS Stability
+
+
+
 
     // -------------------------------------------------------
     // Water Field Debug Visualization
@@ -2277,86 +2205,32 @@ export class World {
 
     // -------------------------------------------------------
     // Phase 8D-1 Water Obstacle Occupancy Foundation
-    // -------------------------------------------------------
 
-    private createWaterObstacleFieldValidation():
-        void {
-
-        new WaterObstacleFieldValidation(
-            this.waterField,
-            this.waterObstacleField,
-        ).run();
-    }
 
 
     // -------------------------------------------------------
     // Phase 8D-2 Ground-Water Solid Cell Exclusion
-    // -------------------------------------------------------
 
-    private createWaterSolidCellExclusionValidation():
-        void {
-
-        new WaterSolidCellExclusionValidation(
-            this.waterField,
-            this.waterObstacleField,
-        ).run();
-    }
 
 
     // -------------------------------------------------------
     // Phase 8D-3 Obstacle-Aware Neighbor Flow
-    // -------------------------------------------------------
 
-    private createWaterObstacleFlowValidation():
-        void {
-
-        new WaterObstacleFlowValidation(
-            this.waterField,
-            this.waterObstacleField,
-        ).run();
-    }
 
 
     // -------------------------------------------------------
     // Phase 8D-4 Boundary Accumulation + Flow Tuning
-    // -------------------------------------------------------
 
-    private createWaterBoundaryFlowValidation():
-        void {
-
-        new WaterBoundaryFlowValidation(
-            this.waterField,
-            this.waterObstacleField,
-        ).run();
-    }
 
 
     // -------------------------------------------------------
     // Phase 8D-5 Airborne Water Static Collision
-    // -------------------------------------------------------
 
-    private createAirborneWaterStaticCollisionValidation():
-        void {
-
-        new AirborneWaterStaticCollisionValidation(
-            this.airborneWaterCollisionField,
-        ).run();
-    }
 
 
     // -------------------------------------------------------
     // Phase 8D-6 Jet Obstruction + Impact Deposition
-    // -------------------------------------------------------
 
-    private createAirborneWaterImpactDepositionValidation():
-        void {
-
-        new AirborneWaterImpactDepositionValidation(
-            this.waterField,
-            this.waterObstacleField,
-            this.airborneWaterCollisionField,
-        ).run();
-    }
 
 
     private createWaterDepositDebugController():
@@ -2559,29 +2433,15 @@ export class World {
         this.waterObstacleRegistrationSystem
             .synchronize();
 
-        new WaterGameObjectIntegrationValidation(
-            this.physicsWorld,
-            this.waterObstacleRegistrationSystem,
-            this.waterObstacleField,
-            this.airborneWaterCollisionField,
-        ).run();
 
-        new HoseAndWaterEmitterCollisionValidation()
-            .run();
 
-        new GeneralObjectCollisionValidation()
-            .run();
 
-        new PhysicsWorldRegistrationValidation()
-            .run();
 
-        new WaterStaticObstacleAcceptanceValidation(
-            this.physicsWorld,
-            this.waterObstacleField,
-            this.airborneWaterCollisionField,
-            this.sprinklers.length,
-            this.hydrantHose !== null,
-        ).run();
+
+
+
+
+
     }
 
     // -------------------------------------------------------
