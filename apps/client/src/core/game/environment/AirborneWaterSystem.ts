@@ -43,6 +43,28 @@ import type {
     AirborneWaterCollisionHit,
 } from "./AirborneWaterObstacleShape";
 
+
+/**
+ * One authoritative ground-plane movement segment produced by an airborne
+ * Water packet during the most recent AirborneWaterSystem.update() call.
+ *
+ * Phase 8F-3 exposes these immutable records so Water/Fire interaction can
+ * perform swept contact without taking ownership of packet state.
+ */
+export interface AirborneWaterSweep {
+    readonly sourceId: string;
+    readonly sequence: number;
+    readonly waterAmount: number;
+
+    readonly startX: number;
+    readonly startY: number;
+    readonly startHeight: number;
+
+    readonly endX: number;
+    readonly endY: number;
+    readonly endHeight: number;
+}
+
 /**
  * Authoritative transport system for Water that has left a source but has not
  * yet become standing Water.
@@ -56,6 +78,15 @@ export class AirborneWaterSystem {
 
     private readonly activePackets:
         AirborneWaterPacket[] = [];
+
+
+    /**
+     * Movement segments generated during the most recent public update call.
+     * Cleared at the start of every update so consumers never process stale
+     * packet motion twice.
+     */
+    private readonly lastMovementSweeps:
+        AirborneWaterSweep[] = [];
 
     /**
      * Presentation-independent impact tuning kept alongside packet runtime
@@ -212,6 +243,7 @@ export class AirborneWaterSystem {
         deltaTime: number,
     ): void {
         this.lastSubstepCount = 0;
+        this.lastMovementSweeps.length = 0;
 
         if (
             this.activePackets.length === 0 ||
@@ -319,6 +351,9 @@ export class AirborneWaterSystem {
             const previousPositionY =
                 packet.getPositionY();
 
+            const previousHeight =
+                packet.getHeight();
+
             const impact =
                 packet.step(
                     deltaTime,
@@ -361,6 +396,20 @@ export class AirborneWaterSystem {
             if (
                 staticHit
             ) {
+                this.recordMovementSweep(
+                    packet,
+                    previousPositionX,
+                    previousPositionY,
+                    previousHeight,
+                    staticHit.positionX,
+                    staticHit.positionY,
+                    this.lerp(
+                        previousHeight,
+                        packet.getHeight(),
+                        staticHit.fraction,
+                    ),
+                );
+
                 this.depositStaticImpact(
                     packet,
                     staticHit,
@@ -376,6 +425,18 @@ export class AirborneWaterSystem {
 
                 continue;
             }
+
+            this.recordMovementSweep(
+                packet,
+                previousPositionX,
+                previousPositionY,
+                previousHeight,
+                proposedPositionX,
+                proposedPositionY,
+                impact
+                    ? 0
+                    : packet.getHeight(),
+            );
 
             if (
                 impact
@@ -412,6 +473,71 @@ export class AirborneWaterSystem {
                     packet.getWaterAmount();
             }
         }
+    }
+
+    private recordMovementSweep(
+        packet: AirborneWaterPacket,
+        startX: number,
+        startY: number,
+        startHeight: number,
+        endX: number,
+        endY: number,
+        endHeight: number,
+    ): void {
+        this.lastMovementSweeps.push({
+            sourceId:
+                packet.getSourceId(),
+            sequence:
+                packet.getSequence(),
+            waterAmount:
+                packet.getWaterAmount(),
+            startX,
+            startY,
+            startHeight:
+                Math.max(
+                    0,
+                    startHeight,
+                ),
+            endX,
+            endY,
+            endHeight:
+                Math.max(
+                    0,
+                    endHeight,
+                ),
+        });
+    }
+
+    /**
+     * Read-only movement history for the most recent update call.
+     *
+     * The returned array must not be retained as mutable simulation state.
+     * It is cleared and rebuilt by the next AirborneWaterSystem.update().
+     */
+    public getLastMovementSweeps():
+        readonly AirborneWaterSweep[] {
+        return this.lastMovementSweeps;
+    }
+
+    private lerp(
+        start: number,
+        end: number,
+        t: number,
+    ): number {
+        const safeT =
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    t,
+                ),
+            );
+
+        return (
+            start +
+            (end - start) *
+            safeT
+        );
     }
 
     /**
@@ -638,6 +764,7 @@ export class AirborneWaterSystem {
 
     public reset(): void {
         this.activePackets.length = 0;
+        this.lastMovementSweeps.length = 0;
         this.simulationAccumulator = 0;
         this.lastSubstepCount = 0;
 

@@ -72,6 +72,16 @@ interface PendingIgnition {
     readonly generation: number;
 }
 
+export interface FireMoistureResponse {
+    readonly moisture: number;
+    readonly dryness: number;
+    readonly normalizedFuel: number;
+    readonly ignitionCombustibility: number;
+    readonly canIgnite: boolean;
+    readonly spreadMultiplier: number;
+    readonly combustionMultiplier: number;
+}
+
 export interface FireFieldIgnitionMetrics {
     readonly trackedHeatCellCount: number;
     readonly peakHeat: number;
@@ -593,8 +603,121 @@ export class FireManager {
         return this.activeCells.length;
     }
 
+    /**
+     * Phase 8F-2 controlled Ground-Fire extinguish API.
+     *
+     * External interaction systems identify the Fire cell to suppress, while
+     * FireManager remains authoritative for active-cell and occupancy
+     * bookkeeping. Burn/fuel/moisture history in EnvironmentField is not
+     * modified here.
+     */
+    public extinguishCell(
+        gridX: number,
+        gridY: number,
+    ): boolean {
+        if (
+            !Number.isInteger(gridX) ||
+            !Number.isInteger(gridY)
+        ) {
+            return false;
+        }
+
+        const key =
+            this.createCellKey(
+                gridX,
+                gridY,
+            );
+
+        if (!this.occupiedCellKeys.has(key)) {
+            return false;
+        }
+
+        for (
+            let index = this.activeCells.length - 1;
+            index >= 0;
+            index -= 1
+        ) {
+            const cell = this.activeCells[index];
+
+            if (
+                cell &&
+                cell.getGridX() === gridX &&
+                cell.getGridY() === gridY
+            ) {
+                cell.setIntensity(0);
+                this.activeCells.splice(index, 1);
+                this.occupiedCellKeys.delete(key);
+                return true;
+            }
+        }
+
+        /* Repair stale occupancy defensively if invariants were violated. */
+        this.occupiedCellKeys.delete(key);
+        return false;
+    }
+
     public getDefinition(): FireDefinition {
         return this.definition;
+    }
+
+    /**
+     * Phase 8F-6 read-only moisture response query.
+     *
+     * This exposes the exact curves used by gameplay so validation and later
+     * tuning do not duplicate Fire moisture mathematics. EnvironmentField
+     * remains authoritative for actual world moisture.
+     */
+    public getMoistureResponse(
+        moisture: number,
+        normalizedFuel = 1,
+    ): FireMoistureResponse {
+        const safeFuel =
+            Math.min(
+                1,
+                Math.max(
+                    0,
+                    Number.isFinite(normalizedFuel)
+                        ? normalizedFuel
+                        : 0,
+                ),
+            );
+
+        const safeMoisture =
+            Number.isFinite(moisture)
+                ? Math.max(0, moisture)
+                : 0;
+
+        const dryness =
+            this.getDrynessFromMoisture(
+                safeMoisture,
+            );
+
+        const ignitionCombustibility =
+            safeFuel *
+            Math.pow(
+                dryness,
+                this.moistureDefinition
+                    .ignitionDrynessResponseExponent,
+            );
+
+        return {
+            moisture: safeMoisture,
+            dryness,
+            normalizedFuel: safeFuel,
+            ignitionCombustibility,
+            canIgnite:
+                ignitionCombustibility >=
+                this.moistureDefinition
+                    .minimumIgnitionCombustibility,
+            spreadMultiplier:
+                this.getMoistureSpreadMultiplier(
+                    safeMoisture,
+                ),
+            combustionMultiplier:
+                this.getMoistureCombustionMultiplier(
+                    safeMoisture,
+                ),
+        };
     }
 
     public getFieldIgnitionMetrics():
@@ -1410,27 +1533,10 @@ export class FireManager {
                 ),
             );
 
-        const dryness =
-            this.getDrynessFromMoisture(
-                moisture,
-            );
-
-        const ignitionDrynessResponse =
-            Math.pow(
-                dryness,
-                this.moistureDefinition
-                    .ignitionDrynessResponseExponent,
-            );
-
-        const ignitionCombustibility =
-            normalizedFuel *
-            ignitionDrynessResponse;
-
-        return (
-            ignitionCombustibility >=
-            this.moistureDefinition
-                .minimumIgnitionCombustibility
-        );
+        return this.getMoistureResponse(
+            moisture,
+            normalizedFuel,
+        ).canIgnite;
     }
 
     private getMoistureSpreadMultiplier(

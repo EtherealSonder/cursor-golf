@@ -71,6 +71,11 @@ export type FireVfxTextureVariant =
  * GroundFireEmitter and JetFireEmitter intentionally converge on the same
  * FireVfxPool, FireVfxParticle class and texture material set.
  *
+ * Phase 8F-4 keeps that shared pool architecture. JetFireEmitter attaches an
+ * optional live directional-travel constraint to its activations, while
+ * Ground Fire activations remain unconstrained. The generic pool therefore
+ * needs no source-specific ownership or update path.
+ *
  * Normal runtime path:
  *
  * FireManager

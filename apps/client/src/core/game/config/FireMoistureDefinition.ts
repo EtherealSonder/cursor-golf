@@ -30,8 +30,8 @@ export interface FireMoistureDefinition {
 
     /**
      * Already-burning Fire is weakened by moisture but is not
-     * instantly deleted. Fuel depletion remains the main sustain/
-     * extinction mechanism until active Water cooling is implemented.
+     * instantly deleted. Direct Water contact handles immediate extinguishing separately. Ground
+     * moisture continuously weakens established combustion while it remains.
      */
     readonly minimumCombustionMultiplier: number;
 
@@ -45,22 +45,22 @@ export const DEFAULT_FIRE_MOISTURE_DEFINITION:
     FireMoistureDefinition = {
 
     minimumIgnitionCombustibility:
-        0.20,
+        0.28,
 
     ignitionDrynessResponseExponent:
-        1.25,
+        2.20,
 
     minimumSpreadMultiplier:
-        0.08,
+        0.03,
 
     spreadDrynessResponseExponent:
-        1.35,
+        3.00,
 
     minimumCombustionMultiplier:
-        0.35,
+        0.08,
 
     combustionDrynessResponseExponent:
-        0.90,
+        2.40,
 };
 
 export function validateFireMoistureDefinition(

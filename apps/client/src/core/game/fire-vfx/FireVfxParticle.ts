@@ -87,6 +87,25 @@ export interface FireVfxParticleActivation {
     readonly turbulenceFrequency: number;
 
     /**
+     * Optional presentation-only directional-jet travel constraint.
+     *
+     * Ground Fire and diagnostic particles omit this completely. Jet Fire
+     * supplies it so active particles follow the current authoritative
+     * directional Fire length, including transient Water suppression.
+     *
+     * getMaximumForwardDistance is intentionally evaluated every update.
+     * This lets already-active particles react immediately when the Water
+     * contact point moves closer to the Fire source.
+     */
+    readonly directionalTravelConstraint?: {
+        readonly originX: number;
+        readonly originY: number;
+        readonly directionX: number;
+        readonly directionY: number;
+        readonly getMaximumForwardDistance: () => number;
+    };
+
+    /**
      * Presentation-only thermal tint.
      */
     readonly tint?: number;
@@ -209,6 +228,10 @@ export class FireVfxParticle {
 
     private previousTurbulenceOffsetY =
         0;
+
+    private directionalTravelConstraint:
+        FireVfxParticleActivation["directionalTravelConstraint"] =
+        undefined;
 
     public constructor(
         texture: Texture,
@@ -423,6 +446,9 @@ export class FireVfxParticle {
 
         this.previousTurbulenceOffsetY =
             0;
+
+        this.directionalTravelConstraint =
+            activation.directionalTravelConstraint;
 
         this.sprite.texture =
             texture;
@@ -669,6 +695,18 @@ export class FireVfxParticle {
             normalizedAge,
         );
 
+        // ---------------------------------------------------
+        // Phase 8F-4 directional Fire presentation boundary
+        // ---------------------------------------------------
+
+        if (
+            this.hasExceededDirectionalTravelConstraint()
+        ) {
+            this.deactivate();
+
+            return false;
+        }
+
         return true;
     }
 
@@ -712,6 +750,9 @@ export class FireVfxParticle {
 
         this.angularVelocityRetention =
             1;
+
+        this.directionalTravelConstraint =
+            undefined;
     }
 
     public destroy():
@@ -721,6 +762,54 @@ export class FireVfxParticle {
             texture:
                 false,
         });
+    }
+
+    // -------------------------------------------------------
+    // Phase 8F-4 directional Fire presentation constraint
+    // -------------------------------------------------------
+
+    private hasExceededDirectionalTravelConstraint():
+        boolean {
+
+        const constraint =
+            this.directionalTravelConstraint;
+
+        if (!constraint) {
+            return false;
+        }
+
+        const maximumForwardDistance =
+            constraint.getMaximumForwardDistance();
+
+        if (
+            !Number.isFinite(
+                maximumForwardDistance,
+            )
+        ) {
+            return false;
+        }
+
+        const offsetX =
+            this.sprite.x -
+            constraint.originX;
+
+        const offsetY =
+            this.sprite.y -
+            constraint.originY;
+
+        const forwardDistance =
+            offsetX *
+            constraint.directionX +
+            offsetY *
+            constraint.directionY;
+
+        return (
+            forwardDistance >=
+            Math.max(
+                0,
+                maximumForwardDistance,
+            )
+        );
     }
 
     // -------------------------------------------------------

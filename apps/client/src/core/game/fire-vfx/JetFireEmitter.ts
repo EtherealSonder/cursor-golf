@@ -312,6 +312,24 @@ export class JetFireEmitter {
                 sourceDirection,
             );
 
+        const sourceId =
+            source.getId();
+
+        const sourceDefinition =
+            source.getDefinition();
+
+        const authoredLength =
+            sourceDefinition.type ===
+                FireSourceType.Directional
+                ? sourceDefinition.length
+                : 0;
+
+        const sourceOriginX =
+            source.getPositionX();
+
+        const sourceOriginY =
+            source.getPositionY();
+
         const spawnAngle =
             Math.random() *
             Math.PI *
@@ -582,6 +600,39 @@ export class JetFireEmitter {
                     particle
                         .turbulenceFrequencyMaximum,
                 ),
+
+            /*
+             * Phase 8F-4 presentation bridge.
+             *
+             * The resolver is deliberately live rather than capturing one
+             * length value at spawn. Existing particles therefore disappear
+             * when Water moves the authoritative suppression point closer.
+             * When Water moves away, newly emitted particles naturally refill
+             * the restored portion of the jet.
+             */
+            directionalTravelConstraint: {
+                originX:
+                    sourceOriginX,
+
+                originY:
+                    sourceOriginY,
+
+                directionX:
+                    sourceDirectionX,
+
+                directionY:
+                    sourceDirectionY,
+
+                getMaximumForwardDistance:
+                    (): number => {
+
+                        return this.fireSourceSystem
+                            .getDirectionalEffectiveLength(
+                                sourceId,
+                                authoredLength,
+                            );
+                    },
+            },
 
             tint:
                 role.tint,

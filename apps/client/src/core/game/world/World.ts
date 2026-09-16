@@ -206,6 +206,34 @@ import {
 } from "../environment/FireSourceSystem";
 
 import {
+    WaterFireInteraction,
+} from "../environment/WaterFireInteraction";
+
+import {
+    WaterFireInteractionValidation,
+} from "../debug/WaterFireInteractionValidation";
+
+import {
+    StandingWaterFireValidation,
+} from "../debug/StandingWaterFireValidation";
+
+import {
+    AirborneWaterFireValidation,
+} from "../debug/AirborneWaterFireValidation";
+
+import {
+    AirborneWaterDirectionalFireValidation,
+} from "../debug/AirborneWaterDirectionalFireValidation";
+
+import {
+    StandingWaterDirectionalFireValidation,
+} from "../debug/StandingWaterDirectionalFireValidation";
+
+import {
+    GroundMoistureFireSuppressionValidation,
+} from "../debug/GroundMoistureFireSuppressionValidation";
+
+import {
     FireSourceVisualizer,
 } from "../environment/FireSourceVisualizer";
 
@@ -459,6 +487,10 @@ export class World {
     private readonly fireSourceSystem:
         FireSourceSystem;
 
+    /** Phase 8F-1 policy boundary between Water and Fire simulations. */
+    private readonly waterFireInteraction:
+        WaterFireInteraction;
+
     private fireSourceVisualizer:
         FireSourceVisualizer | null =
         null;
@@ -682,6 +714,9 @@ export class World {
                 this.localWindSystem,
             );
 
+        this.waterFireInteraction =
+            new WaterFireInteraction();
+
         this.windTuningController =
             new WindTuningController(
                 this.windManager,
@@ -752,6 +787,46 @@ export class World {
         this.createFireVfxSystem();
 
         this.createFireDirectionalValidation();
+
+        /*
+         * Phase 8F-1 validates only the Water/Fire interaction contract.
+         * No Fire or Water gameplay state is mutated by this validation.
+         */
+        WaterFireInteractionValidation.run(
+            this.waterFireInteraction,
+        );
+
+
+        /* Phase 8F-2 isolated runtime interaction validation. */
+        StandingWaterFireValidation.run(
+            this.waterFireInteraction,
+            this.waterField,
+            this.fireManager,
+        );
+
+        /* Phase 8F-3 isolated airborne Water x Ground Fire validation. */
+        AirborneWaterFireValidation.run(
+            this.waterFireInteraction,
+            this.airborneWaterSystem,
+            this.waterField,
+            this.fireManager,
+        );
+
+        /* Phase 8F-4 isolated airborne Water x directional Fire validation. */
+        AirborneWaterDirectionalFireValidation.run(
+            this.waterFireInteraction,
+        );
+
+        /* Phase 8F-5 isolated standing Water x directional Fire validation. */
+        StandingWaterDirectionalFireValidation.run(
+            this.waterFireInteraction,
+        );
+
+        /* Phase 8F-6 continuous ground-moisture Fire suppression validation. */
+        GroundMoistureFireSuppressionValidation.run(
+            this.fireManager,
+        );
+
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
@@ -1114,6 +1189,33 @@ export class World {
                 deltaTime,
             );
 
+        /*
+         * Phase 8F-4 suppression is rebuilt from only the current transport
+         * sweeps. Clearing first guarantees that moving or stopping Water
+         * restores the complete directional Fire jet automatically.
+         */
+        this.fireSourceSystem
+            .beginDirectionalWaterSuppressionFrame();
+
+        this.waterFireInteraction
+            .updateAirborneWaterDirectionalFire(
+                this.airborneWaterSystem
+                    .getLastMovementSweeps(),
+                this.fireSourceSystem,
+            );
+
+        /*
+         * Phase 8F-3: resolve every fixed-step airborne Water movement sweep
+         * immediately after transport. Ground Fire contacted by the stream is
+         * removed before FireManager advances later in this frame.
+         */
+        this.waterFireInteraction
+            .updateAirborneWaterGroundFire(
+                this.airborneWaterSystem
+                    .getLastMovementSweeps(),
+                this.fireManager,
+            );
+
         this.airborneWaterVisualizer
             ?.update();
 
@@ -1137,6 +1239,30 @@ export class World {
         this.moistureSurfaceBridge
             .update(
                 deltaTime,
+            );
+
+
+        /*
+         * Phase 8F-2: resolve meaningful standing-Water overlap before the
+         * Fire simulation advances, so extinguished Ground Fire cannot
+         * deposit heat, burn fuel, scorch, or spread during this frame.
+         */
+        this.waterFireInteraction
+            .updateStandingWaterGroundFire(
+                this.waterField,
+                this.fireManager,
+            );
+
+
+        /*
+         * Phase 8F-5: standing Water contributes to the same transient
+         * directional suppression map already populated by 8F-4 airborne
+         * Water. The earliest Water contact therefore limits the jet.
+         */
+        this.waterFireInteraction
+            .updateStandingWaterDirectionalFire(
+                this.waterField,
+                this.fireSourceSystem,
             );
 
 

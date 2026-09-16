@@ -31,6 +31,14 @@ export class FireSourceSystem {
     private readonly sourceById =
         new Map<string, FireSource>();
 
+    /**
+     * Phase 8F-4/8F-5 transient directional-jet cutoff distances for the current
+     * frame. Airborne and standing Water both contribute to this shared map.
+     * The earliest current Water contact wins without disabling the source.
+     */
+    private readonly directionalSuppressionDistanceBySourceId =
+        new Map<string, number>();
+
     constructor(
         private readonly environmentField: EnvironmentField,
     ) { }
@@ -92,6 +100,19 @@ export class FireSourceSystem {
         const tuning =
             DEFAULT_DIRECTIONAL_FIRE_SOURCE_DEFINITION;
 
+        const effectiveLength =
+            Math.min(
+                length,
+                this.getDirectionalEffectiveLength(
+                    source.getId(),
+                    length,
+                ),
+            );
+
+        if (effectiveLength <= 0) {
+            return;
+        }
+
         const spacing =
             Math.max(
                 1,
@@ -102,7 +123,7 @@ export class FireSourceSystem {
             Math.max(
                 1,
                 Math.ceil(
-                    length /
+                    effectiveLength /
                     spacing,
                 ),
             );
@@ -146,7 +167,7 @@ export class FireSourceSystem {
 
             const distance =
                 normalizedDistance *
-                length;
+                effectiveLength;
 
             const heatMultiplier =
                 1 +
@@ -197,6 +218,106 @@ export class FireSourceSystem {
         source.markPointEmissionConsumed();
     }
 
+
+    /**
+     * Clears all transient directional Water suppression before current-frame
+     * airborne and standing Water contacts are evaluated. This makes direct
+     * Water suppression transient by design.
+     */
+    public beginDirectionalWaterSuppressionFrame(): void {
+        this.directionalSuppressionDistanceBySourceId.clear();
+    }
+
+    /**
+     * Applies a current-frame cutoff to one enabled directional source. The
+     * source remains enabled and operational. Multiple Water contacts keep the
+     * earliest contact point along the jet.
+     */
+    public suppressDirectionalSourceFromDistance(
+        sourceId: string,
+        distanceFromSource: number,
+    ): boolean {
+        const source =
+            this.sourceById.get(sourceId);
+
+        if (
+            !source ||
+            source.getType() !== FireSourceType.Directional ||
+            !Number.isFinite(distanceFromSource)
+        ) {
+            return false;
+        }
+
+        const definition =
+            source.getDefinition();
+
+        if (definition.type !== FireSourceType.Directional) {
+            return false;
+        }
+
+        const clampedDistance =
+            Math.max(
+                0,
+                Math.min(
+                    definition.length,
+                    distanceFromSource,
+                ),
+            );
+
+        const previousDistance =
+            this.directionalSuppressionDistanceBySourceId
+                .get(sourceId);
+
+        if (
+            previousDistance === undefined ||
+            clampedDistance < previousDistance
+        ) {
+            this.directionalSuppressionDistanceBySourceId.set(
+                sourceId,
+                clampedDistance,
+            );
+        }
+
+        return true;
+    }
+
+    public getDirectionalEffectiveLength(
+        sourceId: string,
+        authoredLength?: number,
+    ): number {
+        const source =
+            this.sourceById.get(sourceId);
+
+        if (!source) {
+            return 0;
+        }
+
+        const definition =
+            source.getDefinition();
+
+        if (definition.type !== FireSourceType.Directional) {
+            return 0;
+        }
+
+        const fullLength =
+            authoredLength ??
+            definition.length;
+
+        return Math.min(
+            fullLength,
+            this.directionalSuppressionDistanceBySourceId
+                .get(sourceId) ??
+            fullLength,
+        );
+    }
+
+    public isDirectionalSourceWaterSuppressed(
+        sourceId: string,
+    ): boolean {
+        return this.directionalSuppressionDistanceBySourceId
+            .has(sourceId);
+    }
+
     public addSource(
         definition: FireSourceDefinition,
     ): FireSource {
@@ -245,6 +366,7 @@ export class FireSourceSystem {
     public clearSources(): void {
         this.sources.length = 0;
         this.sourceById.clear();
+        this.directionalSuppressionDistanceBySourceId.clear();
     }
 
     public setSourceDirection(
@@ -308,6 +430,8 @@ export class FireSourceSystem {
     }
 
     public reset(): void {
+        this.directionalSuppressionDistanceBySourceId.clear();
+
         for (const source of this.sources) {
             source.resetRuntimeState();
         }
