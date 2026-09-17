@@ -106,8 +106,8 @@ import {
 } from "../physics/water/HoseJetBallForceSystem";
 
 import {
-    WaterFieldVisualizer,
-} from "../debug/WaterFieldVisualizer";
+    StandingWaterRenderer,
+} from "../water-vfx/StandingWaterRenderer";
 
 import {
     WaterDepositDebugController,
@@ -466,12 +466,9 @@ export class World {
     private fireDirectionalValidation:
         FireDirectionalValidation | null =
         null;
-    /**
-             * Standing-Water presentation uses the WaterField-driven visualizer.
-             * Wet Ground remains independently rendered beneath it.
-             */
-    private waterFieldVisualizer:
-        WaterFieldVisualizer | null =
+    /** Phase 8I-1 production standing-Water presentation. */
+    private standingWaterRenderer:
+        StandingWaterRenderer | null =
         null;
 
     /** Phase 8C-8A interactive primary-button Water deposit tool. */
@@ -861,7 +858,8 @@ export class World {
         );
         this.createBallTrail();
 
-        this.createWaterFieldVisualizer();
+        this.createStandingWaterRenderer();
+
 
         this.createWaterDepositDebugController();
 
@@ -1213,7 +1211,7 @@ export class World {
                 deltaTime,
             );
 
-        this.waterFieldVisualizer
+        this.standingWaterRenderer
             ?.update(
                 deltaTime,
             );
@@ -1447,6 +1445,7 @@ export class World {
 
     public destroy():
         void {
+
         this.airborneWaterVisualizer
             ?.destroy();
 
@@ -1523,10 +1522,10 @@ export class World {
         this.waterDepositDebugController =
             null;
 
-        this.waterFieldVisualizer
+        this.standingWaterRenderer
             ?.destroy();
 
-        this.waterFieldVisualizer =
+        this.standingWaterRenderer =
             null;
 
         this.fireSourceVisualizer
@@ -2286,8 +2285,11 @@ export class World {
 
     // -------------------------------------------------------
     // Phase 8D-6 Jet Obstruction + Impact Deposition
+    // -------------------------------------------------------
 
-
+    // The temporary authoritative WaterField diagnostic visualizer used
+    // during 8I diagnosis has been removed. StandingWaterRenderer is the
+    // normal runtime standing-Water presentation path.
 
     private createWaterDepositDebugController():
         void {
@@ -2329,19 +2331,19 @@ export class World {
         }
     }
 
-    private createWaterFieldVisualizer():
+    private createStandingWaterRenderer():
         void {
 
         if (
-            this.waterFieldVisualizer
+            this.standingWaterRenderer
         ) {
             throw new Error(
-                "World WaterField visualizer has already been created.",
+                "World standing-Water renderer has already been created.",
             );
         }
 
-        this.waterFieldVisualizer =
-            new WaterFieldVisualizer(
+        this.standingWaterRenderer =
+            new StandingWaterRenderer(
                 this.waterField,
             );
 
@@ -2350,11 +2352,11 @@ export class World {
                 WorldRenderLayer.StandingWater,
             )
             .addChild(
-                this.waterFieldVisualizer
-                    .getGraphics(),
+                this.standingWaterRenderer
+                    .getDisplayObject(),
             );
 
-        this.waterFieldVisualizer
+        this.standingWaterRenderer
             .redrawImmediately();
     }
 

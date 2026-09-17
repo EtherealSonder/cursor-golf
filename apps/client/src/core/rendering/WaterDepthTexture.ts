@@ -184,13 +184,8 @@ export class WaterDepthTexture {
                 ): void => {
 
                     const normalizedDepth =
-                        Math.max(
-                            0,
-                            Math.min(
-                                1,
-                                cell.depth /
-                                this.fullScaleDepth,
-                            ),
+                        this.normalizeDepth(
+                            cell.depth,
                         );
 
                     if (
@@ -290,6 +285,28 @@ export class WaterDepthTexture {
 
         this.touchedIndices.length =
             0;
+    }
+
+    private normalizeDepth(
+        depth:
+            number,
+    ): number {
+
+        if (
+            !Number.isFinite(depth) ||
+            depth <= 0
+        ) {
+            return 0;
+        }
+
+        return Math.max(
+            0,
+            Math.min(
+                1,
+                depth /
+                this.fullScaleDepth,
+            ),
+        );
     }
 
     private upload():

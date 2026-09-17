@@ -45,7 +45,7 @@ export class WaterFieldVisualizer {
             DEFAULT_WATER_DEBUG_DEFINITION,
     ) {
         this.graphics.visible =
-            definition.enabled;
+            true;
     }
 
     public getGraphics():
@@ -61,7 +61,7 @@ export class WaterFieldVisualizer {
 
         if (
             this.destroyed ||
-            !this.definition.enabled
+            false
         ) {
             return;
         }
@@ -97,7 +97,7 @@ export class WaterFieldVisualizer {
 
         if (
             this.destroyed ||
-            !this.definition.enabled
+            false
         ) {
             return;
         }
@@ -170,7 +170,7 @@ export class WaterFieldVisualizer {
                                 cellSize,
                             )
                             .stroke({
-                                color: 0x55c9df,
+                                color: 0x35cfff,
 
                                 alpha:
                                     this.definition
@@ -245,8 +245,8 @@ export class WaterFieldVisualizer {
                                 cellSize,
                             )
                             .fill({
-                                color: 0x55c9df,
-                                alpha,
+                                color: 0x35cfff,
+                                alpha: Math.max(0.65, alpha),
                             });
                     }
 
