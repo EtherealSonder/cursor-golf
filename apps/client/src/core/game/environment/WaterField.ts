@@ -1111,6 +1111,50 @@ export class WaterField {
         return this.trackedWaterIndices.length;
     }
 
+    /**
+     * Allocation-free indexed access for aligned sparse interaction systems.
+     * This does not expose mutable storage.
+     */
+    public getDepthByIndex(
+        index: number,
+    ): number {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= this.cellCount
+        ) {
+            return 0;
+        }
+
+        return this.depth[index];
+    }
+
+    /**
+     * Allocation-free sparse traversal for systems that only need the
+     * authoritative index/depth pair. Avoids constructing WaterFieldCell
+     * objects for every tracked cell.
+     */
+    public forEachTrackedWaterIndex(
+        callback: (
+            index: number,
+            depth: number,
+        ) => void,
+    ): void {
+        for (
+            let offset = 0;
+            offset < this.trackedWaterIndices.length;
+            offset += 1
+        ) {
+            const index =
+                this.trackedWaterIndices[offset];
+
+            callback(
+                index,
+                this.depth[index],
+            );
+        }
+    }
+
     public getLastSubstepCount():
         number {
 

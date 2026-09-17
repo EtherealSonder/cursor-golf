@@ -145,6 +145,13 @@ export class WaterGroundInteractionSystem {
     private readonly moistureDiffusionTouchedFlags:
         Uint8Array;
 
+    /** Reused snapshot because infiltration/removal can mutate sparse Water membership. */
+    private readonly waterIndexScratch:
+        number[] = [];
+
+    private readonly surfaceProfileByType:
+        ReadonlyMap<SurfaceType, SurfaceInfiltrationDefinition>;
+
     private performanceBreakdown:
         WaterGroundInteractionPerformanceBreakdown = {
             contactWettingMilliseconds: 0,
@@ -179,6 +186,16 @@ export class WaterGroundInteractionSystem {
             new Uint8Array(
                 this.environmentField
                     .getCellCount(),
+            );
+
+        this.surfaceProfileByType =
+            new Map(
+                this.definition.surfaceProfiles.map(
+                    (profile) => [
+                        profile.surfaceType,
+                        profile,
+                    ] as const,
+                ),
             );
 
         this.validateFieldCompatibility();
@@ -535,192 +552,129 @@ export class WaterGroundInteractionSystem {
      */
     private runContactWettingStep():
         void {
-        if (
-            !this.contactWettingEnabled
-        ) {
+        if (!this.contactWettingEnabled) {
             return;
         }
 
         const minimumDepth =
-            this.definition
-                .minimumContactWettingDepth;
+            this.definition.minimumContactWettingDepth;
 
         const moistureFloor =
-            this.definition
-                .contactWetMoistureFloor;
+            this.definition.contactWetMoistureFloor;
 
-        const indices:
-            number[] = [];
+        /*
+         * WaterField and EnvironmentField are validated as index-aligned.
+         * Work directly by index to avoid WaterFieldCell creation, world
+         * coordinate conversion, and a second WaterField sample per cell.
+         */
+        this.waterField.forEachTrackedWaterIndex(
+            (index, depth): void => {
+                if (depth < minimumDepth) {
+                    return;
+                }
 
-        this.waterField
-            .forEachTrackedWaterCell(
-                (cell): void => {
-                    if (
-                        cell.depth >=
-                        minimumDepth
-                    ) {
-                        indices.push(
-                            cell.index,
-                        );
-                    }
-                },
-            );
-
-        for (
-            const index
-            of indices
-        ) {
-            const center =
-                this.waterField
-                    .getWorldCenterByIndex(
+                const currentMoisture =
+                    this.environmentField.getMoistureByIndex(
                         index,
                     );
 
-            if (!center) {
-                continue;
-            }
+                if (currentMoisture >= moistureFloor) {
+                    return;
+                }
 
-            const sample =
-                this.waterField
-                    .sampleAt(
-                        center.x,
-                        center.y,
-                    );
-
-            if (
-                !sample ||
-                sample.depth <
-                minimumDepth
-            ) {
-                continue;
-            }
-
-            const currentMoisture =
-                this.environmentField
-                    .getMoistureByIndex(
-                        index,
-                    );
-
-            if (
-                currentMoisture >=
-                moistureFloor
-            ) {
-                continue;
-            }
-
-            this.environmentField
-                .addMoistureByIndex(
+                this.environmentField.addMoistureByIndex(
                     index,
-                    moistureFloor -
-                    currentMoisture,
+                    moistureFloor - currentMoisture,
                 );
-        }
+            },
+        );
     }
 
     private runInfiltrationStep(
         deltaTime: number,
     ): void {
-        const indices:
-            number[] = [];
+        this.waterIndexScratch.length = 0;
 
         /*
-         * Water removal can untrack a cell. Copy indices first so the sparse
-         * tracked collection is never mutated during its own traversal.
+         * Removal can untrack Water cells. Snapshot only integer indices into
+         * reusable storage so traversal remains deterministic without
+         * allocating WaterFieldCell objects or a fresh array every substep.
          */
-        this.waterField
-            .forEachTrackedWaterCell(
-                (cell): void => {
-                    indices.push(
-                        cell.index,
-                    );
-                },
-            );
+        this.waterField.forEachTrackedWaterIndex(
+            (index): void => {
+                this.waterIndexScratch.push(index);
+            },
+        );
+
+        const maximumMoisture =
+            this.environmentField
+                .getDefinition()
+                .maximumMoisture;
 
         for (
-            const index
-            of indices
+            let offset = 0;
+            offset < this.waterIndexScratch.length;
+            offset += 1
         ) {
-            this.lastProcessedWaterCellCount +=
-                1;
+            const index =
+                this.waterIndexScratch[offset];
+
+            this.lastProcessedWaterCellCount += 1;
+
+            const waterDepth =
+                this.waterField.getDepthByIndex(index);
+
+            if (waterDepth <= 0) {
+                continue;
+            }
 
             const waterCenter =
-                this.waterField
-                    .getWorldCenterByIndex(
-                        index,
-                    );
+                this.waterField.getWorldCenterByIndex(index);
 
             if (!waterCenter) {
                 continue;
             }
 
-            const waterCell =
-                this.waterField.sampleAt(
+            const surfaceSample =
+                this.surfaceSystem.getSurfaceAt(
                     waterCenter.x,
                     waterCenter.y,
                 );
-
-            if (
-                !waterCell ||
-                waterCell.depth <= 0
-            ) {
-                continue;
-            }
-
-            const environmentCell =
-                this.environmentField
-                    .getCellAtWorld(
-                        waterCenter.x,
-                        waterCenter.y,
-                    );
-
-            if (!environmentCell) {
-                continue;
-            }
-
-            const surfaceSample =
-                this.surfaceSystem
-                    .getSurfaceAt(
-                        waterCenter.x,
-                        waterCenter.y,
-                    );
 
             const surfaceProfile =
                 this.getSurfaceProfile(
                     surfaceSample.surfaceType,
                 );
 
-            const maximumMoisture =
-                this.environmentField
-                    .getDefinition()
-                    .maximumMoisture;
+            const environmentMoisture =
+                this.environmentField.getMoistureByIndex(
+                    index,
+                );
 
             const remainingMoistureCapacity =
                 Math.max(
                     0,
                     maximumMoisture -
-                    environmentCell.moisture,
+                    environmentMoisture,
                 );
 
-            if (
-                remainingMoistureCapacity <= 0
-            ) {
+            if (remainingMoistureCapacity <= 0) {
                 continue;
             }
 
             const waterCapacity =
                 remainingMoistureCapacity /
-                this.definition
-                    .waterDepthToMoisture;
+                this.definition.waterDepthToMoisture;
 
             const depthMultiplier =
                 this.calculateDepthInfiltrationMultiplier(
-                    waterCell.depth,
+                    waterDepth,
                 );
 
             const normalizedSaturation =
                 this.calculateNormalizedSaturation(
                     surfaceSample.surfaceType,
-                    environmentCell.moisture,
+                    environmentMoisture,
                 );
 
             const saturationMultiplier =
@@ -730,36 +684,31 @@ export class WaterGroundInteractionSystem {
                 );
 
             const requestedWater =
-                this.definition
-                    .baseInfiltrationRate *
-                surfaceProfile
-                    .infiltrationRateMultiplier *
+                this.definition.baseInfiltrationRate *
+                surfaceProfile.infiltrationRateMultiplier *
                 depthMultiplier *
                 saturationMultiplier *
                 deltaTime;
 
             const requestedTransfer =
                 Math.min(
-                    waterCell.depth,
+                    waterDepth,
                     waterCapacity,
                     requestedWater,
                 );
 
             if (
-                !Number.isFinite(
-                    requestedTransfer,
-                ) ||
+                !Number.isFinite(requestedTransfer) ||
                 requestedTransfer <= 0
             ) {
                 continue;
             }
 
             const removedWater =
-                this.waterField
-                    .removeWaterByIndex(
-                        index,
-                        requestedTransfer,
-                    );
+                this.waterField.removeWaterByIndex(
+                    index,
+                    requestedTransfer,
+                );
 
             if (removedWater <= 0) {
                 continue;
@@ -767,31 +716,19 @@ export class WaterGroundInteractionSystem {
 
             const requestedMoisture =
                 removedWater *
-                this.definition
-                    .waterDepthToMoisture;
+                this.definition.waterDepthToMoisture;
 
             const acceptedMoisture =
-                this.environmentField
-                    .addMoistureAt(
-                        waterCenter.x,
-                        waterCenter.y,
-                        requestedMoisture,
-                    );
+                this.environmentField.addMoistureByIndex(
+                    index,
+                    requestedMoisture,
+                );
 
-            this.lastInfiltratingCellCount +=
-                1;
-
-            this.lastWaterTransferred +=
-                removedWater;
-
-            this.lastMoistureAdded +=
-                acceptedMoisture;
-
-            this.totalWaterTransferred +=
-                removedWater;
-
-            this.totalMoistureAdded +=
-                acceptedMoisture;
+            this.lastInfiltratingCellCount += 1;
+            this.lastWaterTransferred += removedWater;
+            this.lastMoistureAdded += acceptedMoisture;
+            this.totalWaterTransferred += removedWater;
+            this.totalMoistureAdded += acceptedMoisture;
         }
     }
 
@@ -1175,89 +1112,59 @@ export class WaterGroundInteractionSystem {
         deltaTime: number,
     ): void {
         const threshold =
-            this.definition
-                .shallowWaterDissipationDepth;
+            this.definition.shallowWaterDissipationDepth;
 
         const rate =
-            this.definition
-                .shallowWaterDissipationRate;
+            this.definition.shallowWaterDissipationRate;
 
-        if (
-            threshold <= 0 ||
-            rate <= 0
-        ) {
+        if (threshold <= 0 || rate <= 0) {
             return;
         }
 
-        const indices:
-            number[] = [];
+        this.waterIndexScratch.length = 0;
 
-        this.waterField
-            .forEachTrackedWaterCell(
-                (
-                    cell,
-                ): void => {
-                    indices.push(
-                        cell.index,
-                    );
-                },
-            );
+        this.waterField.forEachTrackedWaterIndex(
+            (index): void => {
+                this.waterIndexScratch.push(index);
+            },
+        );
 
         for (
-            const index
-            of indices
+            let offset = 0;
+            offset < this.waterIndexScratch.length;
+            offset += 1
         ) {
-            const center =
-                this.waterField
-                    .getWorldCenterByIndex(
-                        index,
-                    );
+            const index =
+                this.waterIndexScratch[offset];
 
-            if (!center) {
-                continue;
-            }
-
-            const waterCell =
-                this.waterField
-                    .sampleAt(
-                        center.x,
-                        center.y,
-                    );
+            const depth =
+                this.waterField.getDepthByIndex(index);
 
             if (
-                !waterCell ||
-                waterCell.depth <= 0 ||
-                waterCell.depth >
-                threshold
+                depth <= 0 ||
+                depth > threshold
             ) {
                 continue;
             }
 
             const requestedRemoval =
                 Math.min(
-                    waterCell.depth,
-                    rate *
-                    deltaTime,
+                    depth,
+                    rate * deltaTime,
                 );
 
-            if (
-                requestedRemoval <= 0
-            ) {
+            if (requestedRemoval <= 0) {
                 continue;
             }
 
             const removedWater =
-                this.waterField
-                    .removeWaterByIndex(
-                        index,
-                        requestedRemoval,
-                    );
+                this.waterField.removeWaterByIndex(
+                    index,
+                    requestedRemoval,
+                );
 
-            this.lastShallowWaterDissipated +=
-                removedWater;
-
-            this.totalShallowWaterDissipated +=
-                removedWater;
+            this.lastShallowWaterDissipated += removedWater;
+            this.totalShallowWaterDissipated += removedWater;
         }
     }
 
@@ -1405,15 +1312,9 @@ export class WaterGroundInteractionSystem {
         surfaceType: SurfaceType,
     ): SurfaceInfiltrationDefinition {
         const profile =
-            this.definition
-                .surfaceProfiles
-                .find(
-                    (
-                        candidate,
-                    ): boolean =>
-                        candidate.surfaceType ===
-                        surfaceType,
-                );
+            this.surfaceProfileByType.get(
+                surfaceType,
+            );
 
         if (!profile) {
             throw new Error(

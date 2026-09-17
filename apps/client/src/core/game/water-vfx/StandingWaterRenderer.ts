@@ -2,6 +2,10 @@ import {
     Container,
 } from "pixi.js";
 
+import type {
+    WaterPerformanceProfiler,
+} from "../debug/WaterPerformanceProfiler";
+
 import {
     WaterPresentationDefinition,
 } from "../config/WaterPresentationDefinition";
@@ -24,265 +28,780 @@ import {
     getStandingWaterHighlightStrength,
 } from "./StandingWaterShader";
 
+import {
+    WaterRenderRegionBuilder,
+} from "./WaterRenderRegion";
+
+import type {
+    WaterRenderRegion,
+} from "./WaterRenderRegion";
+
+interface VisibleWaterCell {
+    readonly index:
+    number;
+
+    readonly column:
+    number;
+
+    readonly row:
+    number;
+
+    readonly depth:
+    number;
+
+    readonly alpha:
+    number;
+}
+
+interface RegionFrameData {
+    readonly descriptor:
+    WaterRenderRegion;
+
+    readonly cells:
+    VisibleWaterCell[];
+}
+
+interface ActiveRegion {
+    readonly descriptor:
+    WaterRenderRegion;
+
+    readonly fieldTexture:
+    ScalarFieldTexture;
+
+    lastSeenRefresh:
+    number;
+
+    clearedWhileInactive:
+    boolean;
+}
+
 /**
- * Phase 8I-2 production standing-Water presentation.
+ * Phase 8I-3 bounded production standing-Water presentation.
  *
- * WaterField remains authoritative. The renderer mirrors tracked Water cells
- * into a presentation texture fixed in world space. The body is deliberately
- * near opaque and depth is expressed mainly through restrained colour changes.
+ * WaterField remains authoritative. Presentation is partitioned into fixed
+ * local regions. Only regions containing visible tracked Water are authored,
+ * uploaded and rendered, so procedural world size no longer determines the
+ * standing-Water texture/fill cost.
  */
 export class StandingWaterRenderer {
-    private readonly container: Container;
-    private readonly fieldTexture: ScalarFieldTexture;
-    private readonly cellCount: number;
-    private readonly columnCount: number;
+    private readonly container:
+        Container;
 
-    private readonly directAlpha: Float32Array;
-    private readonly directDepth: Float32Array;
-    private readonly touchedFlags: Uint8Array;
-    private readonly touchedIndices: number[] = [];
+    private readonly regions =
+        new Map<
+            string,
+            ActiveRegion
+        >();
 
-    private refreshAccumulator = 0;
-    private destroyed = false;
+    private readonly cellSize:
+        number;
+
+    private readonly columnCount:
+        number;
+
+    private readonly rowCount:
+        number;
+
+    private readonly minimumWorldX:
+        number;
+
+    private readonly minimumWorldY:
+        number;
+
+    private refreshAccumulator =
+        0;
+
+    private refreshGeneration =
+        0;
+
+    private destroyed =
+        false;
 
     public constructor(
-        private readonly waterField: WaterField,
-        private readonly definition: WaterPresentationDefinitionType =
+        private readonly waterField:
+            WaterField,
+
+        private readonly definition:
+            WaterPresentationDefinitionType =
             WaterPresentationDefinition,
+
+        private readonly performanceProfiler:
+            WaterPerformanceProfiler | null =
+            null,
     ) {
-        this.container = new Container();
-        this.cellCount = waterField.getCellCount();
-        this.columnCount = waterField.getColumnCount();
+        this.container =
+            new Container();
 
-        this.directAlpha = new Float32Array(this.cellCount);
-        this.directDepth = new Float32Array(this.cellCount);
-        this.touchedFlags = new Uint8Array(this.cellCount);
+        this.cellSize =
+            waterField
+                .getDefinition()
+                .cellSize;
 
-        const cellSize = waterField.getDefinition().cellSize;
+        this.columnCount =
+            waterField
+                .getColumnCount();
 
-        this.fieldTexture = new ScalarFieldTexture({
-            columnCount: waterField.getColumnCount(),
-            rowCount: waterField.getRowCount(),
-            cellSize,
-            minimumWorldX: waterField.getMinimumWorldX(),
-            minimumWorldY: waterField.getMinimumWorldY(),
-        });
+        this.rowCount =
+            waterField
+                .getRowCount();
 
-        this.fieldTexture.getSprite().visible =
-            definition.enabled && definition.standingWater.enabled;
+        this.minimumWorldX =
+            waterField
+                .getMinimumWorldX();
 
-        this.container.addChild(this.fieldTexture.getSprite());
+        this.minimumWorldY =
+            waterField
+                .getMinimumWorldY();
+
         this.redrawImmediately();
     }
 
-    public getDisplayObject(): Container {
+    public getDisplayObject():
+        Container {
         return this.container;
     }
 
-    public update(deltaTime: number): void {
+    public update(
+        deltaTime:
+            number,
+    ): void {
         if (
             this.destroyed ||
             !this.definition.enabled ||
-            !this.definition.standingWater.enabled ||
-            !Number.isFinite(deltaTime) ||
+            !this.definition
+                .standingWater
+                .enabled ||
+            !Number.isFinite(
+                deltaTime,
+            ) ||
             deltaTime < 0
         ) {
             return;
         }
 
-        this.refreshAccumulator += deltaTime;
+        this.refreshAccumulator +=
+            deltaTime;
 
         const refreshInterval =
-            this.definition.standingWater.refreshIntervalSeconds;
+            this.definition
+                .standingWater
+                .refreshIntervalSeconds;
 
         if (
             refreshInterval > 0 &&
-            this.refreshAccumulator < refreshInterval
+            this.refreshAccumulator <
+            refreshInterval
         ) {
             return;
         }
 
-        if (refreshInterval > 0) {
-            this.refreshAccumulator %= refreshInterval;
+        if (
+            refreshInterval > 0
+        ) {
+            this.refreshAccumulator %=
+                refreshInterval;
         } else {
-            this.refreshAccumulator = 0;
+            this.refreshAccumulator =
+                0;
         }
 
         this.redraw();
     }
 
-    public redrawImmediately(): void {
+    public redrawImmediately():
+        void {
         if (
             this.destroyed ||
             !this.definition.enabled ||
-            !this.definition.standingWater.enabled
+            !this.definition
+                .standingWater
+                .enabled
         ) {
             return;
         }
 
-        this.refreshAccumulator = 0;
+        this.refreshAccumulator =
+            0;
+
         this.redraw();
     }
 
-    public clear(): void {
+    public clear():
+        void {
         if (this.destroyed) {
             return;
         }
 
-        this.refreshAccumulator = 0;
-        this.clearWorkingSet();
-        this.fieldTexture.clear();
+        this.refreshAccumulator =
+            0;
+
+        for (
+            const region
+            of this.regions.values()
+        ) {
+            region.fieldTexture
+                .clear();
+
+            region.fieldTexture
+                .getSprite()
+                .visible =
+                false;
+
+            region.clearedWhileInactive =
+                true;
+        }
     }
 
-    public destroy(): void {
+    public destroy():
+        void {
         if (this.destroyed) {
             return;
         }
 
-        this.destroyed = true;
-        this.touchedIndices.length = 0;
+        this.destroyed =
+            true;
 
-        this.fieldTexture.destroy();
-        this.container.removeFromParent();
-        this.container.destroy();
+        for (
+            const region
+            of this.regions.values()
+        ) {
+            region.fieldTexture
+                .destroy();
+        }
+
+        this.regions
+            .clear();
+
+        this.container
+            .removeFromParent();
+
+        this.container
+            .destroy({
+                children:
+                    false,
+            });
     }
 
-    private redraw(): void {
-        this.clearWorkingSet();
+    private redraw():
+        void {
+        this.refreshGeneration +=
+            1;
 
-        const standingWater = this.definition.standingWater;
+        const standingWater =
+            this.definition
+                .standingWater;
 
-        this.waterField.forEachTrackedWaterCell((cell): void => {
-            const alpha = getStandingWaterAlpha(
-                cell.depth,
-                standingWater.minimumVisibleDepth,
-                standingWater.edgeTransitionDepth,
-                standingWater.fullScaleDepth,
-                standingWater.shallowAlpha,
-                standingWater.baseAlpha,
-                standingWater.deepAlpha,
+        const regionSizeCells =
+            standingWater
+                .renderRegionSizeCells;
+
+        const frameRegions =
+            new Map<
+                string,
+                RegionFrameData
+            >();
+
+        /*
+         * WaterField traversal is already sparse. Group only visible tracked
+         * cells into fixed local regions. No world-sized intermediate arrays
+         * or world-sized presentation texture are allocated.
+         */
+        this.waterField
+            .forEachTrackedWaterCell(
+                (cell): void => {
+                    const alpha =
+                        getStandingWaterAlpha(
+                            cell.depth,
+                            standingWater
+                                .minimumVisibleDepth,
+                            standingWater
+                                .edgeTransitionDepth,
+                            standingWater
+                                .fullScaleDepth,
+                            standingWater
+                                .shallowAlpha,
+                            standingWater
+                                .baseAlpha,
+                            standingWater
+                                .deepAlpha,
+                        );
+
+                    if (
+                        alpha <= 0
+                    ) {
+                        return;
+                    }
+
+                    const column =
+                        cell.index %
+                        this.columnCount;
+
+                    const row =
+                        Math.floor(
+                            cell.index /
+                            this.columnCount,
+                        );
+
+                    const key =
+                        WaterRenderRegionBuilder
+                            .getKeyForCell(
+                                column,
+                                row,
+                                regionSizeCells,
+                            );
+
+                    let frameRegion =
+                        frameRegions.get(
+                            key,
+                        );
+
+                    if (!frameRegion) {
+                        frameRegion = {
+                            descriptor:
+                                WaterRenderRegionBuilder
+                                    .buildForCell(
+                                        column,
+                                        row,
+                                        this.columnCount,
+                                        this.rowCount,
+                                        regionSizeCells,
+                                        this.cellSize,
+                                        this.minimumWorldX,
+                                        this.minimumWorldY,
+                                    ),
+
+                            cells:
+                                [],
+                        };
+
+                        frameRegions.set(
+                            key,
+                            frameRegion,
+                        );
+                    }
+
+                    frameRegion.cells
+                        .push({
+                            index:
+                                cell.index,
+
+                            column,
+                            row,
+
+                            depth:
+                                cell.depth,
+
+                            alpha,
+                        });
+                },
             );
 
-            if (alpha <= 0) {
-                return;
+        let visibleWaterCells =
+            0;
+
+        const frameRegionList =
+            Array.from(
+                frameRegions.values(),
+            );
+
+        for (
+            let regionIndex = 0;
+            regionIndex < frameRegionList.length;
+            regionIndex += 1
+        ) {
+            visibleWaterCells +=
+                frameRegionList[
+                    regionIndex
+                ].cells.length;
+        }
+
+        this.performanceProfiler
+            ?.setWaterCounts(
+                this.waterField
+                    .getTrackedWaterCellCount(),
+                visibleWaterCells,
+                frameRegionList.length,
+            );
+
+        for (
+            let regionOffset = 0;
+            regionOffset <
+            frameRegionList.length;
+            regionOffset += 1
+        ) {
+            const frameRegion =
+                frameRegionList[
+                regionOffset
+                ];
+
+            const activeRegion =
+                this.getOrCreateRegion(
+                    frameRegion
+                        .descriptor,
+                );
+
+            activeRegion.lastSeenRefresh =
+                this.refreshGeneration;
+
+            activeRegion.clearedWhileInactive =
+                false;
+
+            const sprite =
+                activeRegion
+                    .fieldTexture
+                    .getSprite();
+
+            sprite.visible =
+                true;
+
+            activeRegion
+                .fieldTexture
+                .beginUpdate();
+
+            const cells =
+                frameRegion
+                    .cells;
+
+            for (
+                let cellOffset = 0;
+                cellOffset <
+                cells.length;
+                cellOffset += 1
+            ) {
+                const cell =
+                    cells[
+                    cellOffset
+                    ];
+
+                const depthFactor =
+                    getStandingWaterDepthFactor(
+                        cell.depth,
+                        standingWater
+                            .minimumVisibleDepth,
+                        standingWater
+                            .fullScaleDepth,
+                    );
+
+                const deepMix =
+                    Math.max(
+                        0,
+                        Math.min(
+                            1,
+                            (
+                                depthFactor -
+                                0.55
+                            ) /
+                            0.45,
+                        ),
+                    ) *
+                    0.32;
+
+                const bodyColor =
+                    mixRgb(
+                        this.definition
+                            .palette
+                            .baseWater,
+
+                        this.definition
+                            .palette
+                            .deepWater,
+
+                        deepMix,
+                    );
+
+                let color =
+                    bodyColor;
+
+                if (
+                    standingWater
+                        .highlightsEnabled
+                ) {
+                    const highlightPattern =
+                        getStandingWaterHighlightStrength(
+                            cell.index,
+                            this.columnCount,
+                            depthFactor,
+                            standingWater
+                                .highlightMinimumDepthFactor,
+                            standingWater
+                                .highlightSpacingCellsX,
+                            standingWater
+                                .highlightSpacingCellsY,
+                        );
+
+                    if (
+                        highlightPattern >
+                        0
+                    ) {
+                        color =
+                            mixRgb(
+                                bodyColor,
+                                this.definition
+                                    .palette
+                                    .waterHighlight,
+                                highlightPattern *
+                                standingWater
+                                    .highlightStrength,
+                            );
+                    }
+                }
+
+                activeRegion
+                    .fieldTexture
+                    .writeColorByCell(
+                        cell.column -
+                        frameRegion
+                            .descriptor
+                            .minimumColumn,
+
+                        cell.row -
+                        frameRegion
+                            .descriptor
+                            .minimumRow,
+
+                        color,
+                        cell.alpha,
+                    );
             }
 
-            this.directAlpha[cell.index] = Math.max(
-                this.directAlpha[cell.index],
-                alpha,
+            activeRegion
+                .fieldTexture
+                .commit();
+        }
+
+        this.retireInactiveRegions();
+    }
+
+    private getOrCreateRegion(
+        descriptor:
+            WaterRenderRegion,
+    ): ActiveRegion {
+        const existing =
+            this.regions.get(
+                descriptor.key,
             );
 
-            this.directDepth[cell.index] = Math.max(
-                this.directDepth[cell.index],
-                cell.depth,
+        if (existing) {
+            return existing;
+        }
+
+        const fieldTexture =
+            new ScalarFieldTexture({
+                columnCount:
+                    descriptor
+                        .columnCount,
+
+                rowCount:
+                    descriptor
+                        .rowCount,
+
+                cellSize:
+                    this.cellSize,
+
+                minimumWorldX:
+                    descriptor
+                        .minimumWorldX,
+
+                minimumWorldY:
+                    descriptor
+                        .minimumWorldY,
+            });
+
+        const region:
+            ActiveRegion = {
+            descriptor,
+            fieldTexture,
+
+            lastSeenRefresh:
+                this.refreshGeneration,
+
+            clearedWhileInactive:
+                false,
+        };
+
+        this.regions.set(
+            descriptor.key,
+            region,
+        );
+
+        this.container
+            .addChild(
+                fieldTexture
+                    .getSprite(),
             );
 
-            this.markTouched(cell.index);
-        });
+        return region;
+    }
 
-        this.fieldTexture.beginUpdate();
+    private retireInactiveRegions():
+        void {
+        const retention =
+            this.definition
+                .standingWater
+                .renderRegionRetentionRefreshes;
 
-        for (const index of this.touchedIndices) {
-            const alpha = this.directAlpha[index];
+        const entries =
+            Array.from(
+                this.regions
+                    .entries(),
+            );
 
-            if (alpha <= 0) {
+        for (
+            let offset = 0;
+            offset <
+            entries.length;
+            offset += 1
+        ) {
+            const [
+                key,
+                region,
+            ] =
+                entries[
+                offset
+                ];
+
+            if (
+                region.lastSeenRefresh ===
+                this.refreshGeneration
+            ) {
                 continue;
             }
 
-            const depthFactor = getStandingWaterDepthFactor(
-                this.directDepth[index],
-                standingWater.minimumVisibleDepth,
-                standingWater.fullScaleDepth,
-            );
+            /*
+             * Clear once immediately so stale Water never remains visible,
+             * then keep the small texture hidden briefly to avoid allocation
+             * churn if Water returns to the same region.
+             */
+            if (
+                !region
+                    .clearedWhileInactive
+            ) {
+                region.fieldTexture
+                    .clear();
 
-            // Keep most of the puddle in the bright base colour. Only deeper
-            // areas receive a restrained shift toward deepWater.
-            const deepMix = Math.max(
-                0,
-                Math.min(1, (depthFactor - 0.55) / 0.45),
-            ) * 0.32;
+                region.fieldTexture
+                    .getSprite()
+                    .visible =
+                    false;
 
-            const bodyColor = mixRgb(
-                this.definition.palette.baseWater,
-                this.definition.palette.deepWater,
-                deepMix,
-            );
-
-            let color = bodyColor;
-
-            if (standingWater.highlightsEnabled) {
-                const highlightPattern =
-                    getStandingWaterHighlightStrength(
-                        index,
-                        this.columnCount,
-                        depthFactor,
-                        standingWater.highlightMinimumDepthFactor,
-                        standingWater.highlightSpacingCellsX,
-                        standingWater.highlightSpacingCellsY,
-                    );
-
-                if (highlightPattern > 0) {
-                    color = mixRgb(
-                        bodyColor,
-                        this.definition.palette.waterHighlight,
-                        highlightPattern *
-                            standingWater.highlightStrength,
-                    );
-                }
+                region.clearedWhileInactive =
+                    true;
             }
 
-            this.fieldTexture.writeColorByIndex(
-                index,
-                color,
-                alpha,
-            );
+            const inactiveRefreshes =
+                this.refreshGeneration -
+                region.lastSeenRefresh;
+
+            if (
+                inactiveRefreshes <=
+                retention
+            ) {
+                continue;
+            }
+
+            region.fieldTexture
+                .destroy();
+
+            this.regions
+                .delete(
+                    key,
+                );
         }
-
-        this.fieldTexture.commit();
-    }
-
-    private markTouched(index: number): void {
-        if (
-            index < 0 ||
-            index >= this.cellCount ||
-            this.touchedFlags[index] !== 0
-        ) {
-            return;
-        }
-
-        this.touchedFlags[index] = 1;
-        this.touchedIndices.push(index);
-    }
-
-    private clearWorkingSet(): void {
-        for (const index of this.touchedIndices) {
-            this.directAlpha[index] = 0;
-            this.directDepth[index] = 0;
-            this.touchedFlags[index] = 0;
-        }
-
-        this.touchedIndices.length = 0;
     }
 }
 
 function mixRgb(
-    from: number,
-    to: number,
-    amount: number,
+    from:
+        number,
+
+    to:
+        number,
+
+    amount:
+        number,
 ): number {
-    const t = Math.max(0, Math.min(1, amount));
+    const t =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                amount,
+            ),
+        );
 
-    const fromR = (from >> 16) & 0xff;
-    const fromG = (from >> 8) & 0xff;
-    const fromB = from & 0xff;
+    const fromR =
+        (
+            from >>
+            16
+        ) &
+        0xff;
 
-    const toR = (to >> 16) & 0xff;
-    const toG = (to >> 8) & 0xff;
-    const toB = to & 0xff;
+    const fromG =
+        (
+            from >>
+            8
+        ) &
+        0xff;
 
-    const r = Math.round(fromR + (toR - fromR) * t);
-    const g = Math.round(fromG + (toG - fromG) * t);
-    const b = Math.round(fromB + (toB - fromB) * t);
+    const fromB =
+        from &
+        0xff;
 
-    return (r << 16) | (g << 8) | b;
+    const toR =
+        (
+            to >>
+            16
+        ) &
+        0xff;
+
+    const toG =
+        (
+            to >>
+            8
+        ) &
+        0xff;
+
+    const toB =
+        to &
+        0xff;
+
+    const r =
+        Math.round(
+            fromR +
+            (
+                toR -
+                fromR
+            ) *
+            t,
+        );
+
+    const g =
+        Math.round(
+            fromG +
+            (
+                toG -
+                fromG
+            ) *
+            t,
+        );
+
+    const b =
+        Math.round(
+            fromB +
+            (
+                toB -
+                fromB
+            ) *
+            t,
+        );
+
+    return (
+        r <<
+        16
+    ) |
+        (
+            g <<
+            8
+        ) |
+        b;
 }

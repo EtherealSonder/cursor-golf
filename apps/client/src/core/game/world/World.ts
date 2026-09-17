@@ -98,6 +98,26 @@ import {
 } from "../debug/PerformanceMetrics";
 
 import {
+    WaterPerformanceProfiler,
+} from "../debug/WaterPerformanceProfiler";
+
+import {
+    WaterPerformanceOverlay,
+} from "../debug/WaterPerformanceOverlay";
+
+import {
+    WaterRuntimeCorrectnessValidation,
+} from "../debug/WaterRuntimeCorrectnessValidation";
+
+import {
+    DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
+} from "../debug/WorldPerformanceProfileDefinition";
+
+import {
+    ScalarFieldTexture,
+} from "../../rendering/ScalarFieldTexture";
+
+import {
     LocalWindDebugVisualizer,
 } from "../debug/LocalWindDebugVisualizer";
 
@@ -312,6 +332,16 @@ export class World {
     private readonly performanceMetrics:
         PerformanceMetrics =
         new PerformanceMetrics();
+
+    private readonly waterPerformanceProfiler:
+        WaterPerformanceProfiler =
+        new WaterPerformanceProfiler(
+            DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
+        );
+
+    private waterPerformanceOverlay:
+        WaterPerformanceOverlay | null =
+        null;
 
     private activePerformanceBenchmark:
         PerformanceBenchmarkDefinition | null =
@@ -751,6 +781,17 @@ export class World {
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
+        if (
+            this.waterPerformanceProfiler
+                .isOverlayEnabled()
+        ) {
+            this.createWaterPerformanceOverlay();
+        }
+
+        ScalarFieldTexture
+            .setPerformanceProfiler(
+                this.waterPerformanceProfiler,
+            );
 
         // ---------------------------------------------------
         // Procedural Obstacle Field
@@ -1058,6 +1099,12 @@ export class World {
                 viewportHeight,
             );
 
+        this.waterPerformanceOverlay
+            ?.setViewportSize(
+                viewportWidth,
+                viewportHeight,
+            );
+
     }
 
     public updateCamera(
@@ -1081,12 +1128,12 @@ export class World {
             number,
     ): void {
 
+        this.waterPerformanceProfiler
+            .beginFrame();
 
-
-        this.surfaceSystem
-            .update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure("surface", (): void => {
+            this.surfaceSystem.update(deltaTime);
+        });
 
 
 
@@ -1095,79 +1142,73 @@ export class World {
          * source timing -> immutable emission handoff -> Wind-responsive
          * airborne flight -> ground impact -> standing-Water simulation.
          */
-        this.waterSourceSystem
-            .update(
-                deltaTime,
+        this.waterPerformanceProfiler.measure("waterSources", (): void => {
+            this.waterSourceSystem.update(deltaTime);
+            this.airborneWaterSystem.consumeEmissionRequests(
+                this.waterSourceSystem.drainEmissionRequests(),
             );
+        });
 
-        this.airborneWaterSystem
-            .consumeEmissionRequests(
-                this.waterSourceSystem
-                    .drainEmissionRequests(),
-            );
-
-        this.airborneWaterSystem
-            .update(
-                deltaTime,
+        this.waterPerformanceProfiler
+            .measure(
+                "airborneWater",
+                (): void => {
+                    this.airborneWaterSystem
+                        .update(
+                            deltaTime,
+                        );
+                },
             );
 
         /*
          * Phase 8F-10: 8I is not consuming gameplay events yet, so discard
          * previous-frame events before producing this frame's contacts.
          */
-        this.waterFireInteraction.clearGameplayEvents();
-
-        /*
-         * Phase 8F-4 suppression is rebuilt from only the current transport
-         * sweeps. Clearing first guarantees that moving or stopping Water
-         * restores the complete directional Fire jet automatically.
-         */
-        this.fireSourceSystem
-            .beginDirectionalWaterSuppressionFrame();
-
-        this.waterFireInteraction
-            .updateAirborneWaterDirectionalFire(
-                this.airborneWaterSystem
-                    .getLastMovementSweeps(),
+        this.waterPerformanceProfiler.measure("waterFireInteraction", (): void => {
+            this.waterFireInteraction.clearGameplayEvents();
+            this.fireSourceSystem.beginDirectionalWaterSuppressionFrame();
+            this.waterFireInteraction.updateAirborneWaterDirectionalFire(
+                this.airborneWaterSystem.getLastMovementSweeps(),
                 this.fireSourceSystem,
             );
-
-        /*
-         * Phase 8F-3: resolve every fixed-step airborne Water movement sweep
-         * immediately after transport. Ground Fire contacted by the stream is
-         * removed before FireManager advances later in this frame.
-         */
-        this.waterFireInteraction
-            .updateAirborneWaterGroundFire(
-                this.airborneWaterSystem
-                    .getLastMovementSweeps(),
+            this.waterFireInteraction.updateAirborneWaterGroundFire(
+                this.airborneWaterSystem.getLastMovementSweeps(),
                 this.fireManager,
             );
+        });
 
-        this.airborneWaterVisualizer
-            ?.update();
+        this.airborneWaterVisualizer?.update();
 
-
-
-        this.waterField
-            .update(
-                deltaTime,
+        this.waterPerformanceProfiler
+            .measure(
+                "waterSimulation",
+                (): void => {
+                    this.waterField
+                        .update(
+                            deltaTime,
+                        );
+                },
             );
 
 
 
-        this.waterGroundInteractionSystem
-            .update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure(
+            "waterGroundInteraction",
+            (): void => {
+                this.waterGroundInteractionSystem.update(deltaTime);
+            },
+        );
 
+        this.waterPerformanceProfiler.recordGroundInteractionBreakdown(
+            this.waterGroundInteractionSystem.getPerformanceBreakdown(),
+        );
 
-
-
-        this.moistureSurfaceBridge
-            .update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure(
+            "moistureSurfaceBridge",
+            (): void => {
+                this.moistureSurfaceBridge.update(deltaTime);
+            },
+        );
 
 
         /*
@@ -1175,23 +1216,16 @@ export class World {
          * Fire simulation advances, so extinguished Ground Fire cannot
          * deposit heat, burn fuel, scorch, or spread during this frame.
          */
-        this.waterFireInteraction
-            .updateStandingWaterGroundFire(
+        this.waterPerformanceProfiler.measure("waterFireInteraction", (): void => {
+            this.waterFireInteraction.updateStandingWaterGroundFire(
                 this.waterField,
                 this.fireManager,
             );
-
-
-        /*
-         * Phase 8F-5: standing Water contributes to the same transient
-         * directional suppression map already populated by 8F-4 airborne
-         * Water. The earliest Water contact therefore limits the jet.
-         */
-        this.waterFireInteraction
-            .updateStandingWaterDirectionalFire(
+            this.waterFireInteraction.updateStandingWaterDirectionalFire(
                 this.waterField,
                 this.fireSourceSystem,
             );
+        });
 
 
 
@@ -1201,9 +1235,15 @@ export class World {
                  * intervals. The GPU linearly interpolates the scalar Water/moisture
                  * samples across one quad per layer.
                  */
-        this.wetGroundRenderer
-            ?.update(
-                deltaTime,
+        this.waterPerformanceProfiler
+            .measure(
+                "wetGround",
+                (): void => {
+                    this.wetGroundRenderer
+                        ?.update(
+                            deltaTime,
+                        );
+                },
             );
 
         this.waterDepositDebugController
@@ -1211,48 +1251,39 @@ export class World {
                 deltaTime,
             );
 
-        this.standingWaterRenderer
-            ?.update(
-                deltaTime,
+        this.waterPerformanceProfiler
+            .measure(
+                "standingWater",
+                (): void => {
+                    this.standingWaterRenderer
+                        ?.update(
+                            deltaTime,
+                        );
+                },
             );
 
 
 
-        this.fireSourceSystem
-            .update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure("fireSimulation", (): void => {
+            this.fireSourceSystem.update(deltaTime);
+            this.fireManager.update(deltaTime);
+        });
 
-        this.fireManager
-            .update(
-                deltaTime,
-            );
-
-        this.fireDirectionalValidation
-            ?.update();
-
-        this.fireSourceVisualizer
-            ?.update();
-
-        if (
-            this.fireVfxEnabled
-        ) {
-            this.fireVfxSystem
-                ?.update(
-                    deltaTime,
-                );
-        }
+        this.waterPerformanceProfiler.measure("firePresentation", (): void => {
+            this.fireDirectionalValidation?.update();
+            this.fireSourceVisualizer?.update();
+            if (this.fireVfxEnabled) {
+                this.fireVfxSystem?.update(deltaTime);
+            }
+        });
 
 
 
-        for (
-            const entity
-            of this.entities
-        ) {
-            entity.update(
-                deltaTime,
-            );
-        }
+        this.waterPerformanceProfiler.measure("entities", (): void => {
+            for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
+                this.entities[entityIndex]?.update(deltaTime);
+            }
+        });
         /*
                  * Phase 8B-12:
                  * HydrantHose has now advanced rope/nozzle physics and synchronized
@@ -1263,19 +1294,17 @@ export class World {
                  * integration occurs on the following Ball physics frame. Velocity is
                  * updated immediately through Ball.applyImpulseAtWorldPoint().
                  */
-        this.hoseJetBallForceSystem
-            ?.update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure("hoseBallForce", (): void => {
+            this.hoseJetBallForceSystem?.update(deltaTime);
+        });
 
         /*
          * H2. Sample the Ball only after its authoritative physics update.
          * The trail is presentation-only and never feeds state back into Ball.
          */
-        this.ballTrail
-            ?.update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure("ballTrail", (): void => {
+            this.ballTrail?.update(deltaTime);
+        });
 
 
 
@@ -1290,16 +1319,12 @@ export class World {
          * Collision consumers now obtain their populations from PhysicsWorld.
          * Registration is centralized; collision mathematics is unchanged.
          */
-        this.dynamicCollisionSystem
-            .resolve(
-                this.physicsWorld
-                    .getRigidDynamicCollidables(),
+        this.waterPerformanceProfiler.measure("dynamicCollisions", (): void => {
+            this.dynamicCollisionSystem.resolve(
+                this.physicsWorld.getRigidDynamicCollidables(),
             );
-
-        this.dynamicStaticCollisionSystem
-            .resolve(
-                this.physicsWorld,
-            );
+            this.dynamicStaticCollisionSystem.resolve(this.physicsWorld);
+        });
 
 
 
@@ -1307,15 +1332,12 @@ export class World {
          * 8D-7C: the flexible Hose participates in the same world collider
          * population without being converted into a rigid DynamicCollidable.
          */
-        if (
-            this.hydrantHose &&
-            this.hoseCollisionSystem
-        ) {
-            this.hoseCollisionSystem.resolve(
-                this.physicsWorld,
-            );
-            this.hydrantHose.synchronizeAfterExternalCollision();
-        }
+        this.waterPerformanceProfiler.measure("hoseCollisions", (): void => {
+            if (this.hydrantHose && this.hoseCollisionSystem) {
+                this.hoseCollisionSystem.resolve(this.physicsWorld);
+                this.hydrantHose.synchronizeAfterExternalCollision();
+            }
+        });
 
 
 
@@ -1324,122 +1346,137 @@ export class World {
          * normal update. Synchronize their visual/environmental transforms
          * immediately so Wind and Fire never lag one frame behind physics.
          */
-        for (
-            const fan
-            of this.fans
-        ) {
-            fan.synchronizeAfterCollisionResolution();
-        }
+        this.waterPerformanceProfiler.measure("mechanismSync", (): void => {
+            for (
+                const fan
+                of this.fans
+            ) {
+                fan.synchronizeAfterCollisionResolution();
+            }
 
-        for (
-            const fireTube
-            of this.fireTubes
-        ) {
-            fireTube.synchronizeAfterCollisionResolution();
-        }
+            for (
+                const fireTube
+                of this.fireTubes
+            ) {
+                fireTube.synchronizeAfterCollisionResolution();
+            }
 
-        for (
-            const sprinkler
-            of this.sprinklers
-        ) {
-            sprinkler.synchronizeAfterCollisionResolution();
-        }
+            for (
+                const sprinkler
+                of this.sprinklers
+            ) {
+                sprinkler.synchronizeAfterCollisionResolution();
+            }
+        });
 
 
 
-        this.waterObstacleRegistrationSystem
-            .synchronize();
+        this.waterPerformanceProfiler.measure("waterObstacleSync", (): void => {
+            this.waterObstacleRegistrationSystem.synchronize();
+        });
 
 
 
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
-        this.localWindDebugVisualizer
-            ?.update();
+        this.waterPerformanceProfiler.measure("windPresentation", (): void => {
+            this.localWindDebugVisualizer?.update();
+            this.windVfxSystem?.update(deltaTime);
+        });
 
-        this.windVfxSystem
+        this.waterPerformanceProfiler.measure("gameplayPresentation", (): void => {
+            if (
+                this.connector &&
+                this.ball &&
+                this.club
+            ) {
+                this.connector.render(
+                    this.ball,
+                    this.club,
+                    deltaTime,
+                );
+            }
+
+            this.windValidationMetrics
+                ?.update();
+        });
+
+
+
+
+
+
+
+
+
+
+        this.waterPerformanceProfiler.measure("debugAndMetrics", (): void => {
+            this.performanceMetrics
+                .update(
+                    deltaTime,
+                );
+
+            this.performanceDebugOverlay
+                ?.update(
+                    deltaTime,
+                    this.performanceMetrics
+                        .getSnapshot(),
+                    {
+                        benchmarkLabel:
+                            this.activePerformanceBenchmark
+                                ?.label ??
+                            "Normal Runtime",
+
+                        windVfxEnabled:
+                            this.windVfxSystem
+                                ?.isEnabled() ??
+                            false,
+
+                        fireVfxEnabled:
+                            this.fireVfxEnabled,
+
+                        fanCount:
+                            this.fans.length,
+
+                        fireTubeCount:
+                            this.fireTubes.length,
+
+                        windParticleCount:
+                            this.windVfxSystem
+                                ?.getActiveParticleCount() ??
+                            0,
+
+                        windParticleCapacity:
+                            this.windVfxSystem
+                                ?.getParticleCapacity() ??
+                            0,
+
+                        fireParticleCount:
+                            this.fireVfxSystem
+                                ?.getActiveParticleCount() ??
+                            0,
+
+                        fireParticleCapacity:
+                            this.fireVfxSystem
+                                ?.getParticleCapacity() ??
+                            0,
+
+                        fireCellCount:
+                            this.fireManager
+                                .getActiveCellCount(),
+                    },
+                );
+        });
+
+        this.waterPerformanceProfiler
+            .endFrame(
+                deltaTime,
+            );
+
+        this.waterPerformanceOverlay
             ?.update(
-                deltaTime,
-            );
-
-        if (
-            this.connector &&
-            this.ball &&
-            this.club
-        ) {
-            this.connector.render(
-                this.ball,
-                this.club,
-                deltaTime,
-            );
-        }
-
-        this.windValidationMetrics
-            ?.update();
-
-
-
-
-
-
-
-
-
-
-        this.performanceMetrics
-            .update(
-                deltaTime,
-            );
-
-        this.performanceDebugOverlay
-            ?.update(
-                deltaTime,
-                this.performanceMetrics
+                this.waterPerformanceProfiler
                     .getSnapshot(),
-                {
-                    benchmarkLabel:
-                        this.activePerformanceBenchmark
-                            ?.label ??
-                        "Normal Runtime",
-
-                    windVfxEnabled:
-                        this.windVfxSystem
-                            ?.isEnabled() ??
-                        false,
-
-                    fireVfxEnabled:
-                        this.fireVfxEnabled,
-
-                    fanCount:
-                        this.fans.length,
-
-                    fireTubeCount:
-                        this.fireTubes.length,
-
-                    windParticleCount:
-                        this.windVfxSystem
-                            ?.getActiveParticleCount() ??
-                        0,
-
-                    windParticleCapacity:
-                        this.windVfxSystem
-                            ?.getParticleCapacity() ??
-                        0,
-
-                    fireParticleCount:
-                        this.fireVfxSystem
-                            ?.getActiveParticleCount() ??
-                        0,
-
-                    fireParticleCapacity:
-                        this.fireVfxSystem
-                            ?.getParticleCapacity() ??
-                        0,
-
-                    fireCellCount:
-                        this.fireManager
-                            .getActiveCellCount(),
-                },
             );
     }
 
@@ -1612,6 +1649,17 @@ export class World {
 
         this.performanceDebugOverlay =
             null;
+
+        this.waterPerformanceOverlay
+            ?.destroy();
+
+        this.waterPerformanceOverlay =
+            null;
+
+        ScalarFieldTexture
+            .setPerformanceProfiler(
+                null,
+            );
 
         this.performanceMetrics
             .reset();
@@ -2345,6 +2393,8 @@ export class World {
         this.standingWaterRenderer =
             new StandingWaterRenderer(
                 this.waterField,
+                undefined,
+                this.waterPerformanceProfiler,
             );
 
         this.presentationLayers
@@ -3685,6 +3735,35 @@ export class World {
         this.screenOverlayContainer
             .addChild(
                 this.performanceDebugOverlay
+                    .getContainer(),
+            );
+    }
+
+    private createWaterPerformanceOverlay():
+        void {
+
+        if (
+            this.waterPerformanceOverlay
+        ) {
+            throw new Error(
+                "World Water performance overlay has already been created.",
+            );
+        }
+
+        this.waterPerformanceOverlay =
+            new WaterPerformanceOverlay();
+
+        this.waterPerformanceOverlay
+            .setViewportSize(
+                this.camera
+                    .getViewportWidth(),
+                this.camera
+                    .getViewportHeight(),
+            );
+
+        this.screenOverlayContainer
+            .addChild(
+                this.waterPerformanceOverlay
                     .getContainer(),
             );
     }

@@ -1,7 +1,7 @@
 /**
  * Production Water presentation contract.
  *
- * Phase 8I-2 final illustrated standing-Water pass.
+ * Phase 8I-3 adds bounded standing-Water rendering controls.
  * Presentation only. WaterField and gameplay remain authoritative.
  */
 
@@ -29,17 +29,29 @@ export interface StandingWaterPresentationDefinition {
     readonly shallowAlpha: number;
     readonly deepAlpha: number;
 
-    /**
-     * Phase 8I-2 sparse illustrated surface highlights.
-     * These are deterministic presentation marks, not foam or gameplay state.
-     */
     readonly highlightsEnabled: boolean;
     readonly highlightMinimumDepthFactor: number;
     readonly highlightSpacingCellsX: number;
     readonly highlightSpacingCellsY: number;
     readonly highlightStrength: number;
 
+    /**
+     * Presentation refresh cadence only. Water simulation timing is unchanged.
+     * 20 Hz is sufficient for standing Water while reducing CPU texture work.
+     */
     readonly refreshIntervalSeconds: number;
+
+    /**
+     * Fixed local texture size used by Phase 8I-3 bounded rendering.
+     * Distant puddles therefore occupy independent small textures.
+     */
+    readonly renderRegionSizeCells: number;
+
+    /**
+     * Empty region textures are retained briefly to avoid allocation churn
+     * when shallow Water flickers around the visibility threshold.
+     */
+    readonly renderRegionRetentionRefreshes: number;
 }
 
 export interface WaterPresentationDefinitionType {
@@ -52,7 +64,6 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
     enabled: true,
 
     palette: {
-        // Restrained cyan/blue hierarchy. Depth is communicated by colour rather than transparency.
         deepWater: 0x43a8d2,
         baseWater: 0x55c3df,
         lightWater: 0x79d7e9,
@@ -68,25 +79,28 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
     standingWater: {
         enabled: true,
 
-        // Preserve the broad authoritative WaterField footprint established in 8I-1.
         minimumVisibleDepth: 0.0005,
         fullScaleDepth: 0.12,
-
-        // Narrow transition so only the reconstructed silhouette fringe is translucent.
         edgeTransitionDepth: 0.003,
 
-        // Illustrated pop-colour body. Wet ground should no longer dominate the perceived colour.
         shallowAlpha: 0.95,
         baseAlpha: 0.985,
         deepAlpha: 1.0,
 
-        // Sparse Plucky-Squire-like graphic glints. Large puddles receive only a few marks.
         highlightsEnabled: true,
         highlightMinimumDepthFactor: 0.32,
         highlightSpacingCellsX: 20,
         highlightSpacingCellsY: 16,
         highlightStrength: 0.78,
 
-        refreshIntervalSeconds: 1 / 30,
+        refreshIntervalSeconds: 1 / 20,
+
+        /*
+         * 48 cells at the current 8 px Water grid gives a 384 px world-space
+         * region while the backing texture is only 48 x 48 texels.
+         */
+        renderRegionSizeCells: 48,
+
+        renderRegionRetentionRefreshes: 8,
     },
 } as const;

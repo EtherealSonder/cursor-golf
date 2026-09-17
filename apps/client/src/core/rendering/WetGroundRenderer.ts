@@ -31,13 +31,16 @@ import {
     ScalarFieldTexture,
 } from "./ScalarFieldTexture";
 
+import {
+    WetGroundShader,
+} from "./WetGroundShader";
+
 /**
- * First scalar-texture Wet-ground presentation.
+ * Scalar-texture wet-ground presentation.
  *
- * The gameplay bridge may still answer Wet/Normal categorically for rolling
- * resistance. Visual darkening is driven directly by continuous excess ground
- * moisture so the former puddle footprint fades gradually rather than losing
- * entire cells when a categorical threshold is crossed.
+ * EnvironmentField remains authoritative. The renderer reconstructs a small
+ * presentation-only moisture neighbourhood, writes one texel per field cell,
+ * and relies on Pixi linear sampling plus the lightweight edge shader.
  */
 export class WetGroundRenderer {
     private readonly fieldTexture:
@@ -49,8 +52,17 @@ export class WetGroundRenderer {
             number
         >;
 
+    private readonly edgeShader:
+        WetGroundShader;
+
     private refreshAccumulator =
         0;
+
+    private readonly candidateFlags:
+        Uint8Array;
+
+    private readonly candidateIndices:
+        number[] = [];
 
     private destroyed =
         false;
@@ -104,9 +116,26 @@ export class WetGroundRenderer {
                         .getMinimumWorldY(),
             });
 
-        this.fieldTexture
-            .getSprite()
-            .visible =
+        this.candidateFlags =
+            new Uint8Array(
+                environmentField.getCellCount(),
+            );
+
+        this.edgeShader =
+            new WetGroundShader(
+                definition.edgeThreshold,
+                definition.edgeSoftness,
+            );
+
+        const sprite =
+            this.fieldTexture
+                .getSprite();
+
+        sprite.filters = [
+            this.edgeShader,
+        ];
+
+        sprite.visible =
             definition.enabled;
     }
 
@@ -187,6 +216,9 @@ export class WetGroundRenderer {
         this.destroyed =
             true;
 
+        this.edgeShader
+            .destroy();
+
         this.fieldTexture
             .destroy();
     }
@@ -208,22 +240,28 @@ export class WetGroundRenderer {
             this.definition
                 .smoothingRadiusCells;
 
-        /*
-         * Presentation-only reconstruction.
-         *
-         * EnvironmentField remains authoritative. We expand the sparse set by
-         * a small halo and blend neighbouring excess-moisture samples into a
-         * continuous visual field. This prevents isolated watered cells and
-         * the edges of larger wet regions from exposing obvious square texels.
-         */
         const candidateIndices =
-            new Set<number>();
+            this.candidateIndices;
+
+        const candidateFlags =
+            this.candidateFlags;
+
+        candidateIndices.length = 0;
+
+        const tracked =
+            this.environmentField
+                .getTrackedMoistureIndices();
 
         for (
-            const trackedIndex
-            of this.environmentField
-                .getTrackedMoistureIndices()
+            let trackedOffset = 0;
+            trackedOffset < tracked.length;
+            trackedOffset += 1
         ) {
+            const trackedIndex =
+                tracked[
+                trackedOffset
+                ];
+
             const trackedColumn =
                 trackedIndex %
                 columnCount;
@@ -235,8 +273,7 @@ export class WetGroundRenderer {
                 );
 
             for (
-                let offsetY =
-                    -radius;
+                let offsetY = -radius;
                 offsetY <= radius;
                 offsetY += 1
             ) {
@@ -252,8 +289,7 @@ export class WetGroundRenderer {
                 }
 
                 for (
-                    let offsetX =
-                        -radius;
+                    let offsetX = -radius;
                     offsetX <= radius;
                     offsetX += 1
                 ) {
@@ -268,19 +304,38 @@ export class WetGroundRenderer {
                         continue;
                     }
 
-                    candidateIndices.add(
+                    const candidateIndex =
                         row *
                         columnCount +
-                        column,
-                    );
+                        column;
+
+                    if (
+                        candidateFlags[
+                        candidateIndex
+                        ] === 0
+                    ) {
+                        candidateFlags[
+                            candidateIndex
+                        ] = 1;
+
+                        candidateIndices.push(
+                            candidateIndex,
+                        );
+                    }
                 }
             }
         }
 
         for (
-            const index
-            of candidateIndices
+            let candidateOffset = 0;
+            candidateOffset < candidateIndices.length;
+            candidateOffset += 1
         ) {
+            const index =
+                candidateIndices[
+                candidateOffset
+                ];
+
             const smoothedExcess =
                 this.getSmoothedExcessByIndex(
                     index,
@@ -295,8 +350,7 @@ export class WetGroundRenderer {
                 );
 
             if (
-                alpha <=
-                0
+                alpha <= 0
             ) {
                 continue;
             }
@@ -318,10 +372,6 @@ export class WetGroundRenderer {
                         center.y,
                     );
 
-            /*
-             * ScorchRenderer remains visually authoritative over permanently
-             * damaged substrate. Moisture can still exist there in gameplay.
-             */
             if (
                 surface.surfaceState ===
                 SurfaceState.Scorched
@@ -352,6 +402,16 @@ export class WetGroundRenderer {
 
         this.fieldTexture
             .commit();
+
+        for (
+            let offset = 0;
+            offset < candidateIndices.length;
+            offset += 1
+        ) {
+            candidateFlags[
+                candidateIndices[offset]
+            ] = 0;
+        }
     }
 
     private getSmoothedExcessByIndex(
@@ -390,18 +450,12 @@ export class WetGroundRenderer {
         let totalWeight =
             0;
 
-        /*
-         * Compact Gaussian-like kernel. The quadratic falloff softens the
-         * silhouette without spreading the presentation far beyond the
-         * authoritative wet region.
-         */
         const maximumDistance =
             radius +
             1;
 
         for (
-            let offsetY =
-                -radius;
+            let offsetY = -radius;
             offsetY <= radius;
             offsetY += 1
         ) {
@@ -417,8 +471,7 @@ export class WetGroundRenderer {
             }
 
             for (
-                let offsetX =
-                    -radius;
+                let offsetX = -radius;
                 offsetX <= radius;
                 offsetX += 1
             ) {
@@ -454,8 +507,7 @@ export class WetGroundRenderer {
                     );
 
                 if (
-                    weight <=
-                    0
+                    weight <= 0
                 ) {
                     continue;
                 }
@@ -478,8 +530,7 @@ export class WetGroundRenderer {
         }
 
         if (
-            totalWeight <=
-            0
+            totalWeight <= 0
         ) {
             return 0;
         }
@@ -528,10 +579,6 @@ export class WetGroundRenderer {
                 ),
             );
 
-        /*
-         * Smoothstep keeps the drying edge from popping when moisture crosses
-         * the visual floor.
-         */
         normalized =
             normalized *
             normalized *

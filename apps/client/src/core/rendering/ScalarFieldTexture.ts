@@ -3,6 +3,10 @@ import {
     Texture,
 } from "pixi.js";
 
+import type {
+    WaterPerformanceProfiler,
+} from "../game/debug/WaterPerformanceProfiler";
+
 export interface ScalarFieldTextureDefinition {
     readonly columnCount:
     number;
@@ -33,6 +37,17 @@ export interface ScalarFieldTextureDefinition {
  * world-sized Canvas/Graphics rebuild.
  */
 export class ScalarFieldTexture {
+    private static performanceProfiler:
+        WaterPerformanceProfiler | null = null;
+
+    public static setPerformanceProfiler(
+        profiler:
+            WaterPerformanceProfiler | null,
+    ): void {
+        ScalarFieldTexture.performanceProfiler =
+            profiler;
+    }
+
     private readonly canvas:
         HTMLCanvasElement;
 
@@ -157,6 +172,63 @@ export class ScalarFieldTexture {
     public getSprite():
         Sprite {
         return this.sprite;
+    }
+
+    public getColumnCount():
+        number {
+        return this.definition
+            .columnCount;
+    }
+
+    public getRowCount():
+        number {
+        return this.definition
+            .rowCount;
+    }
+
+    /**
+     * Convenience write for local/bounded scalar textures.
+     */
+    public writeColorByCell(
+        column:
+            number,
+
+        row:
+            number,
+
+        color:
+            number,
+
+        alpha:
+            number,
+    ): void {
+        if (
+            !Number.isInteger(
+                column,
+            ) ||
+            !Number.isInteger(
+                row,
+            ) ||
+            column < 0 ||
+            row < 0 ||
+            column >=
+            this.definition
+                .columnCount ||
+            row >=
+            this.definition
+                .rowCount
+        ) {
+            return;
+        }
+
+        this.writeColorByIndex(
+            row *
+            this.definition
+                .columnCount +
+            column,
+            color,
+            alpha,
+        );
     }
 
     /**
@@ -334,6 +406,14 @@ export class ScalarFieldTexture {
             };
 
         source.update?.();
+
+        // The profiler attributes this upload to the currently measured
+        // presentation scope (standing Water, wet ground, or other).
+        ScalarFieldTexture.performanceProfiler
+            ?.recordTextureCommit(
+                this.definition.columnCount *
+                this.definition.rowCount,
+            );
     }
 
     public clear():
