@@ -91,26 +91,31 @@ export class WaterRuntimeCorrectnessValidation {
     ): void {
         const field = new WaterField();
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             120,
             120,
             0.4,
         );
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             200,
             160,
             0.7,
         );
 
-        const normal =
-            field.getTrackedWaterCells()
-                .map(
-                    (cell) => cell.index,
-                )
-                .sort(
-                    (a, b) => a - b,
+        const normal: number[] = [];
+
+        field.forEachTrackedWaterCell(
+            (cell): void => {
+                normal.push(
+                    cell.index,
                 );
+            },
+        );
+
+        normal.sort(
+            (a, b) => a - b,
+        );
 
         const indexed: number[] = [];
 
@@ -144,36 +149,47 @@ export class WaterRuntimeCorrectnessValidation {
     ): void {
         const field = new WaterField();
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             160,
             160,
             0.55,
         );
 
-        const cells =
-            field.getTrackedWaterCells();
+        let sampledIndex = -1;
+        let sampledDepth = 0;
 
-        const cell =
-            cells[0];
+        field.forEachTrackedWaterCell(
+            (cell): void => {
+                if (sampledIndex >= 0) {
+                    return;
+                }
+
+                sampledIndex =
+                    cell.index;
+
+                sampledDepth =
+                    cell.depth;
+            },
+        );
 
         const indexedDepth =
-            cell
+            sampledIndex >= 0
                 ? field.getDepthByIndex(
-                    cell.index,
+                    sampledIndex,
                 )
                 : 0;
 
         const passed =
-            !!cell &&
+            sampledIndex >= 0 &&
             Math.abs(
-                indexedDepth - cell.depth,
+                indexedDepth - sampledDepth,
             ) <= this.EPSILON;
 
         checks.push({
             name: "Indexed depth access",
             passed,
             detail:
-                `sample=${cell?.depth ?? 0}, indexed=${indexedDepth}`,
+                `sample=${sampledDepth}, indexed=${indexedDepth}`,
         });
     }
 
@@ -182,19 +198,19 @@ export class WaterRuntimeCorrectnessValidation {
     ): void {
         const field = new WaterField();
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             120,
             120,
             0.2,
         );
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             160,
             120,
             0.2,
         );
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             200,
             120,
             0.2,
@@ -213,9 +229,14 @@ export class WaterRuntimeCorrectnessValidation {
             offset < snapshot.length;
             offset += 1
         ) {
+            const index =
+                snapshot[offset];
+
             field.removeWaterByIndex(
-                snapshot[offset],
-                Number.POSITIVE_INFINITY,
+                index,
+                field.getDepthByIndex(
+                    index,
+                ),
             );
         }
 
@@ -235,7 +256,7 @@ export class WaterRuntimeCorrectnessValidation {
     ): void {
         const field = new WaterField();
 
-        field.addWaterAtWorldPosition(
+        field.injectWater(
             120,
             120,
             0.5,
@@ -276,9 +297,9 @@ export class WaterRuntimeCorrectnessValidation {
             name: "Contact wetting + infiltration",
             passed:
                 result.waterAfter <
-                    result.waterBefore &&
+                result.waterBefore &&
                 result.moistureAfter >
-                    result.moistureBefore,
+                result.moistureBefore,
             detail:
                 `water ${result.waterBefore.toFixed(5)} -> ${result.waterAfter.toFixed(5)}, moisture ${result.moistureBefore.toFixed(5)} -> ${result.moistureAfter.toFixed(5)}`,
         });
@@ -386,23 +407,23 @@ export class WaterRuntimeCorrectnessValidation {
         const x = 240;
         const y = 240;
 
-        water.addWaterAtWorldPosition(
+        water.injectWater(
             x,
             y,
             0.6,
         );
 
         const waterBefore =
-            water.sampleAtWorldPosition(
+            water.getDepthAt(
                 x,
                 y,
-            ).depth;
+            );
 
         const moistureBefore =
-            environment.sampleAtWorldPosition(
+            environment.getMoistureAt(
                 x,
                 y,
-            ).moisture;
+            );
 
         const deltaTime =
             1 / fps;
@@ -425,16 +446,16 @@ export class WaterRuntimeCorrectnessValidation {
         return {
             waterBefore,
             waterAfter:
-                water.sampleAtWorldPosition(
+                water.getDepthAt(
                     x,
                     y,
-                ).depth,
+                ),
             moistureBefore,
             moistureAfter:
-                environment.sampleAtWorldPosition(
+                environment.getMoistureAt(
                     x,
                     y,
-                ).moisture,
+                ),
         };
     }
 }

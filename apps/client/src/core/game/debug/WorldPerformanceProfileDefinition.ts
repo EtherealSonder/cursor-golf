@@ -7,11 +7,11 @@ export interface WorldPerformanceProfileDefinition {
 
 export const DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION:
     WorldPerformanceProfileDefinition = {
-        enabled: true,
-        overlayEnabled: true,
-        consoleReportingEnabled: true,
-        consoleReportIntervalSeconds: 2,
-    };
+    enabled: false,
+    overlayEnabled: false,
+    consoleReportingEnabled: false,
+    consoleReportIntervalSeconds: 2,
+};
 
 export function validateWorldPerformanceProfileDefinition(
     definition: WorldPerformanceProfileDefinition,

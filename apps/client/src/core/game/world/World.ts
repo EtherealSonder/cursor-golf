@@ -106,10 +106,6 @@ import {
 } from "../debug/WaterPerformanceOverlay";
 
 import {
-    WaterRuntimeCorrectnessValidation,
-} from "../debug/WaterRuntimeCorrectnessValidation";
-
-import {
     DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
 } from "../debug/WorldPerformanceProfileDefinition";
 
@@ -128,6 +124,10 @@ import {
 import {
     StandingWaterRenderer,
 } from "../water-vfx/StandingWaterRenderer";
+
+import {
+    WaterVfxSystem,
+} from "../water-vfx/WaterVfxSystem";
 
 import {
     WaterDepositDebugController,
@@ -499,6 +499,11 @@ export class World {
     /** Phase 8I-1 production standing-Water presentation. */
     private standingWaterRenderer:
         StandingWaterRenderer | null =
+        null;
+
+    /** Phase 8I-4 shared presentation-only Water VFX foundation. */
+    private waterVfxSystem:
+        WaterVfxSystem | null =
         null;
 
     /** Phase 8C-8A interactive primary-button Water deposit tool. */
@@ -901,6 +906,7 @@ export class World {
 
         this.createStandingWaterRenderer();
 
+        this.createWaterVfxSystem();
 
         this.createWaterDepositDebugController();
 
@@ -922,7 +928,6 @@ export class World {
         this.createWaterGameObjectIntegration();
 
         this.createHoseJetBallForceSystem();
-
 
 
         this.unsubscribeFromBallImpacts =
@@ -1178,6 +1183,15 @@ export class World {
         });
 
         this.airborneWaterVisualizer?.update();
+
+        /*
+         * Phase 8I-4 shared Water presentation foundation.
+         * No gameplay emitter is connected yet.
+         */
+        this.waterVfxSystem
+            ?.update(
+                deltaTime,
+            );
 
         this.waterPerformanceProfiler
             .measure(
@@ -1487,6 +1501,12 @@ export class World {
             ?.destroy();
 
         this.airborneWaterVisualizer =
+            null;
+
+        this.waterVfxSystem
+            ?.destroy();
+
+        this.waterVfxSystem =
             null;
 
         this.ballTrail
@@ -2408,6 +2428,43 @@ export class World {
 
         this.standingWaterRenderer
             .redrawImmediately();
+    }
+
+    // -------------------------------------------------------
+    // Phase 8I-4 Shared Water VFX Foundation
+    // -------------------------------------------------------
+
+    private createWaterVfxSystem():
+        void {
+
+        if (
+            this.waterVfxSystem
+        ) {
+            throw new Error(
+                "World Water VFX system has already been created.",
+            );
+        }
+
+        this.waterVfxSystem =
+            new WaterVfxSystem();
+
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.WaterEffects,
+            )
+            .addChild(
+                this.waterVfxSystem
+                    .getGroundContainer(),
+            );
+
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.AirborneEffects,
+            )
+            .addChild(
+                this.waterVfxSystem
+                    .getAirborneContainer(),
+            );
     }
 
     // -------------------------------------------------------
