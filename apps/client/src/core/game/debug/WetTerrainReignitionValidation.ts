@@ -251,8 +251,13 @@ export class WetTerrainReignitionValidation {
             LifecycleSample | null =
             null;
 
-        const puddleGoneScore =
-            puddleGone.ignitionScore;
+        const partialDryingTargetMoisture =
+            baselineMoisture +
+            (
+                puddleGone.moisture -
+                baselineMoisture
+            ) *
+            0.5;
 
         let dryingSteps = 0;
 
@@ -279,8 +284,8 @@ export class WetTerrainReignitionValidation {
                 );
 
             if (
-                candidate.ignitionScore >
-                puddleGoneScore + 0.05
+                candidate.moisture <=
+                partialDryingTargetMoisture
             ) {
                 partiallyDried =
                     candidate;
@@ -389,6 +394,13 @@ export class WetTerrainReignitionValidation {
                 !puddleGone.actualIgnition,
             ),
             this.check(
+                "Partial drying produces an intermediate moisture state",
+                partiallyDried.moisture <
+                puddleGone.moisture &&
+                partiallyDried.moisture >
+                nearBaseline.moisture,
+            ),
+            this.check(
                 "Partial drying increases ignition susceptibility",
                 partiallyDried.ignitionScore >
                 puddleGone.ignitionScore,
@@ -423,10 +435,9 @@ export class WetTerrainReignitionValidation {
             );
 
         console.log(
-            `[8F-7] Wet-Terrain Ignition + Reignition Resistance: ${
-                passed
-                    ? "PASS"
-                    : "FAIL"
+            `[8F-7] Wet-Terrain Ignition + Reignition Resistance: ${passed
+                ? "PASS"
+                : "FAIL"
             }`,
         );
     }
@@ -436,10 +447,9 @@ export class WetTerrainReignitionValidation {
         condition: boolean,
     ): boolean {
         console.log(
-            `[8F-7] ${label}: ${
-                condition
-                    ? "PASS"
-                    : "FAIL"
+            `[8F-7] ${label}: ${condition
+                ? "PASS"
+                : "FAIL"
             }`,
         );
 

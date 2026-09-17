@@ -156,9 +156,16 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
      * Meaningful standing Water immediately establishes a Wet ground
      * footprint beneath itself. This floor sits just above the categorical
      * Wet threshold used by MoistureSurfaceBridge.
+     *
+     * Phase 8F-7 calibration:
+     * 0.105 was enough to classify terrain as visually Wet, but it left the
+     * coarse Fire ignition footprint at only about 0.10 moisture in the
+     * real Water lifecycle. 0.65 gives meaningful standing Water a genuinely
+     * soaked retained-moisture state. The existing drying lifecycle then
+     * restores Fire susceptibility continuously without a cooldown timer.
      */
     minimumContactWettingDepth: 0.003,
-    contactWetMoistureFloor: 0.105,
+    contactWetMoistureFloor: 0.65,
 
     /*
      * Retain the tuned 8C-2 baseline. Saturation now reduces this rate over
