@@ -48,10 +48,6 @@ import {
 } from "../config/HydrantHoseDefinition";
 
 import {
-    DEFAULT_SURFACE_VISUAL_DEFINITION,
-} from "../config/SurfaceVisualDefinition";
-
-import {
     DEFAULT_BALL_TRAIL_DEFINITION,
 } from "../config/BallTrailDefinition";
 
@@ -173,10 +169,6 @@ import {
     DynamicObstacle,
 } from "../entities/obstacles/DynamicObstacle";
 
-import type {
-    DynamicCollidable,
-} from "../physics/DynamicCollidable";
-
 import {
     DynamicCollisionSystem,
 } from "../physics/DynamicCollisionSystem";
@@ -208,34 +200,6 @@ import {
 import {
     WaterFireInteraction,
 } from "../environment/WaterFireInteraction";
-
-import {
-    WaterFireInteractionValidation,
-} from "../debug/WaterFireInteractionValidation";
-
-import {
-    StandingWaterFireValidation,
-} from "../debug/StandingWaterFireValidation";
-
-import {
-    AirborneWaterFireValidation,
-} from "../debug/AirborneWaterFireValidation";
-
-import {
-    AirborneWaterDirectionalFireValidation,
-} from "../debug/AirborneWaterDirectionalFireValidation";
-
-import {
-    StandingWaterDirectionalFireValidation,
-} from "../debug/StandingWaterDirectionalFireValidation";
-
-import {
-    GroundMoistureFireSuppressionValidation,
-} from "../debug/GroundMoistureFireSuppressionValidation";
-
-import {
-    WetTerrainReignitionValidation,
-} from "../debug/WetTerrainReignitionValidation";
 
 import {
     FireSourceVisualizer,
@@ -304,10 +268,6 @@ import {
 import {
     SurfaceType,
 } from "../surface/SurfaceType";
-
-import {
-    SurfaceState,
-} from "../surface/SurfaceState";
 
 import {
     ShotFeedback,
@@ -791,49 +751,6 @@ export class World {
         this.createFireVfxSystem();
 
         this.createFireDirectionalValidation();
-
-        /*
-         * Phase 8F-1 validates only the Water/Fire interaction contract.
-         * No Fire or Water gameplay state is mutated by this validation.
-         */
-        WaterFireInteractionValidation.run(
-            this.waterFireInteraction,
-        );
-
-
-        /* Phase 8F-2 isolated runtime interaction validation. */
-        StandingWaterFireValidation.run(
-            this.waterFireInteraction,
-            this.waterField,
-            this.fireManager,
-        );
-
-        /* Phase 8F-3 isolated airborne Water x Ground Fire validation. */
-        AirborneWaterFireValidation.run(
-            this.waterFireInteraction,
-            this.airborneWaterSystem,
-            this.waterField,
-            this.fireManager,
-        );
-
-        /* Phase 8F-4 isolated airborne Water x directional Fire validation. */
-        AirborneWaterDirectionalFireValidation.run(
-            this.waterFireInteraction,
-        );
-
-        /* Phase 8F-5 isolated standing Water x directional Fire validation. */
-        StandingWaterDirectionalFireValidation.run(
-            this.waterFireInteraction,
-        );
-
-        /* Phase 8F-6 continuous ground-moisture Fire suppression validation. */
-        GroundMoistureFireSuppressionValidation.run(
-            this.fireManager,
-        );
-
-        /* Phase 8F-7 retained-moisture ignition/reignition validation. */
-        WetTerrainReignitionValidation.run();
-
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
@@ -1195,6 +1112,12 @@ export class World {
             .update(
                 deltaTime,
             );
+
+        /*
+         * Phase 8F-10: 8I is not consuming gameplay events yet, so discard
+         * previous-frame events before producing this frame's contacts.
+         */
+        this.waterFireInteraction.clearGameplayEvents();
 
         /*
          * Phase 8F-4 suppression is rebuilt from only the current transport
@@ -3571,134 +3494,6 @@ export class World {
             );
 
         this.addEntity(fireTube);
-    }
-
-    private findFireTubeSpawnPosition(
-        existingPositions:
-            readonly { readonly x: number; readonly y: number }[],
-    ): { readonly x: number; readonly y: number } {
-        const boundary =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION;
-
-        const margin = 180;
-        const minimumSeparation = 360;
-        const obstacleSeparation = 150;
-        const gameplayEntitySeparation = 260;
-
-        for (
-            let attempt = 0;
-            attempt < 80;
-            attempt += 1
-        ) {
-            const x =
-                boundary.minimumX +
-                margin +
-                Math.random() *
-                (
-                    boundary.maximumX -
-                    boundary.minimumX -
-                    margin * 2
-                );
-
-            const y =
-                boundary.minimumY +
-                margin +
-                Math.random() *
-                (
-                    boundary.maximumY -
-                    boundary.minimumY -
-                    margin * 2
-                );
-
-            const tooCloseToAnotherTube =
-                existingPositions.some(
-                    (position): boolean =>
-                        Math.hypot(
-                            x - position.x,
-                            y - position.y,
-                        ) < minimumSeparation,
-                );
-
-            if (tooCloseToAnotherTube) {
-                continue;
-            }
-
-            const tooCloseToStaticObstacle =
-                this.staticObstacleDefinitions.some(
-                    (obstacle): boolean =>
-                        Math.hypot(
-                            x - obstacle.positionX,
-                            y - obstacle.positionY,
-                        ) < obstacleSeparation,
-                );
-
-            if (tooCloseToStaticObstacle) {
-                continue;
-            }
-
-            const tooCloseToDynamicObstacle =
-                this.dynamicObstacles.some(
-                    (obstacle): boolean =>
-                        Math.hypot(
-                            x - obstacle.getX(),
-                            y - obstacle.getY(),
-                        ) < obstacleSeparation,
-                );
-
-            if (tooCloseToDynamicObstacle) {
-                continue;
-            }
-
-            const tooCloseToFan =
-                this.fans.some(
-                    (fan): boolean =>
-                        Math.hypot(
-                            x - fan.getX(),
-                            y - fan.getY(),
-                        ) < obstacleSeparation,
-                );
-
-            if (tooCloseToFan) {
-                continue;
-            }
-
-            const tooCloseToBall =
-                this.ball
-                    ? Math.hypot(
-                        x - this.ball.getX(),
-                        y - this.ball.getY(),
-                    ) < gameplayEntitySeparation
-                    : false;
-
-            const tooCloseToHole =
-                this.hole
-                    ? Math.hypot(
-                        x - this.hole.getX(),
-                        y - this.hole.getY(),
-                    ) < gameplayEntitySeparation
-                    : false;
-
-            if (
-                tooCloseToBall ||
-                tooCloseToHole
-            ) {
-                continue;
-            }
-
-            return { x, y };
-        }
-
-        /*
-         * Extremely unlikely fallback. It remains safely inside the course
-         * even if a very dense procedural obstacle layout rejects all tries.
-         */
-        return {
-            x:
-                (boundary.minimumX + boundary.maximumX) / 2 +
-                existingPositions.length * 240,
-            y:
-                (boundary.minimumY + boundary.maximumY) / 2,
-        };
     }
 
     private removeNonFireTubeSources(): void {

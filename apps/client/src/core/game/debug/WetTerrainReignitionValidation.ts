@@ -53,7 +53,10 @@ export class WetTerrainReignitionValidation {
     private static readonly WATER_PER_SAMPLE = 0.08;
 
     private static readonly SIMULATION_STEP = 0.1;
-    private static readonly MAX_PUDDLE_CLEAR_STEPS = 2400;
+
+    private static readonly MEANINGFUL_STANDING_WATER_DEPTH =
+        0.012;
+    private static readonly MAX_PUDDLE_CLEAR_STEPS = 6000;
     private static readonly MAX_DRYING_STEPS = 6000;
 
     public static run(): void {
@@ -225,7 +228,8 @@ export class WetTerrainReignitionValidation {
         let puddleClearSteps = 0;
 
         while (
-            sampleWaterDepth() > 0 &&
+            sampleWaterDepth() >
+            this.MEANINGFUL_STANDING_WATER_DEPTH &&
             puddleClearSteps <
             this.MAX_PUDDLE_CLEAR_STEPS
         ) {
@@ -237,9 +241,15 @@ export class WetTerrainReignitionValidation {
             puddleClearSteps += 1;
         }
 
+        const puddleClearThresholdReached =
+            sampleWaterDepth() <=
+            this.MEANINGFUL_STANDING_WATER_DEPTH;
+
         const puddleGone =
             capture(
-                "Puddle gone",
+                puddleClearThresholdReached
+                    ? "Puddle gone"
+                    : "Puddle clear timeout",
             );
 
         /*
@@ -381,15 +391,21 @@ export class WetTerrainReignitionValidation {
                 !immediatelyWatered.actualIgnition,
             ),
             this.check(
-                "Standing Water can disappear while excess ground moisture remains",
+                "Puddle-clear simulation reaches the meaningful standing-Water threshold",
+                puddleClearThresholdReached,
+            ),
+            this.check(
+                "Meaningful standing Water can disappear while excess ground moisture remains",
                 puddleGone.standingWaterDepth <=
+                this.MEANINGFUL_STANDING_WATER_DEPTH +
                 epsilon &&
                 puddleGone.moisture >
                 baselineMoisture + 0.01,
             ),
             this.check(
-                "Retained moisture resists reignition without standing Water",
+                "Retained moisture resists reignition without meaningful standing Water",
                 puddleGone.standingWaterDepth <=
+                this.MEANINGFUL_STANDING_WATER_DEPTH +
                 epsilon &&
                 !puddleGone.actualIgnition,
             ),

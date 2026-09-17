@@ -97,10 +97,6 @@ export class Game {
             .setUpdateCallback(
                 this.update,
             );
-
-        console.log(
-            "Game initialized.",
-        );
     }
 
     public async start():
@@ -181,10 +177,6 @@ export class Game {
             EngineState.Running;
 
         this.engineLoop.start();
-
-        console.log(
-            "Game started.",
-        );
     }
 
     // -------------------------------------------------------------------------
@@ -629,9 +621,5 @@ export class Game {
 
         this.state =
             EngineState.Stopped;
-
-        console.log(
-            "Game stopped.",
-        );
     }
 }

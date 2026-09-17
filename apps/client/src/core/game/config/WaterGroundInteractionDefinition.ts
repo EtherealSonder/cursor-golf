@@ -194,7 +194,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
                 1.5,
 
             dryingRate:
-                0.015,
+                0.035,
         },
         {
             surfaceType:

@@ -27,6 +27,9 @@ import type {
     AirborneWaterSweep,
 } from "./AirborneWaterSystem";
 
+import type { WaterFireContactEvent } from "./WaterFireContactEvent";
+import type { WaterFireExtinguishedEvent } from "./WaterFireExtinguishedEvent";
+
 /** Water state that is participating in a Fire interaction. */
 export enum WaterFireWaterInfluence {
     None = "none",
@@ -122,6 +125,9 @@ export interface AirborneWaterGroundFireResult {
  * authoritative systems.
  */
 export class WaterFireInteraction {
+    private readonly contactEvents: WaterFireContactEvent[] = [];
+    private readonly extinguishedEvents: WaterFireExtinguishedEvent[] = [];
+
     public constructor(
         private readonly definition:
             WaterFireInteractionDefinition =
@@ -135,6 +141,20 @@ export class WaterFireInteraction {
     public getDefinition():
         WaterFireInteractionDefinition {
         return this.definition;
+    }
+
+
+    public consumeContactEvents(): readonly WaterFireContactEvent[] {
+        return this.contactEvents.splice(0, this.contactEvents.length);
+    }
+
+    public consumeExtinguishedEvents(): readonly WaterFireExtinguishedEvent[] {
+        return this.extinguishedEvents.splice(0, this.extinguishedEvents.length);
+    }
+
+    public clearGameplayEvents(): void {
+        this.contactEvents.length = 0;
+        this.extinguishedEvents.length = 0;
     }
 
     public classifyStandingWaterContact(
@@ -278,6 +298,9 @@ export class WaterFireInteraction {
 
         for (const fireCell of activeCells) {
             let shouldExtinguish = false;
+            let eventWaterDepth = 0;
+            let eventX = fireCell.getWorldCenterX();
+            let eventY = fireCell.getWorldCenterY();
 
             waterField.forEachTrackedWaterCell(
                 (waterCell): void => {
@@ -310,18 +333,34 @@ export class WaterFireInteraction {
                     ) {
                         meaningfulWaterSampleCount += 1;
                         shouldExtinguish = true;
+                        eventWaterDepth = waterCell.depth;
+                        eventX = waterCell.worldCenterX;
+                        eventY = waterCell.worldCenterY;
                     }
                 },
             );
 
-            if (
-                shouldExtinguish &&
-                fireManager.extinguishCell(
+            if (shouldExtinguish) {
+                const fireIntensity = fireCell.getIntensity();
+
+                if (fireManager.extinguishCell(
                     fireCell.getGridX(),
                     fireCell.getGridY(),
-                )
-            ) {
-                extinguishedFireCellCount += 1;
+                )) {
+                    extinguishedFireCellCount += 1;
+                    const event: WaterFireExtinguishedEvent = {
+                        positionX: eventX,
+                        positionY: eventY,
+                        interactionType: "standing-water-ground-fire",
+                        waterType: "standing",
+                        fireType: "ground",
+                        waterAmount: eventWaterDepth,
+                        fireIntensity,
+                        extinguished: true,
+                    };
+                    this.contactEvents.push(event);
+                    this.extinguishedEvents.push(event);
+                }
             }
         }
 
@@ -414,6 +453,20 @@ export class WaterFireInteraction {
 
                     extinguishedFireCellCount +=
                         1;
+
+                    const event: WaterFireExtinguishedEvent = {
+                        positionX: fireCell.getWorldCenterX(),
+                        positionY: fireCell.getWorldCenterY(),
+                        interactionType: "airborne-water-ground-fire",
+                        waterType: "airborne",
+                        fireType: "ground",
+                        waterSourceId: sweep.sourceId,
+                        waterAmount: sweep.waterAmount,
+                        fireIntensity: fireCell.getIntensity(),
+                        extinguished: true,
+                    };
+                    this.contactEvents.push(event);
+                    this.extinguishedEvents.push(event);
                 }
             }
         }
@@ -531,6 +584,16 @@ export class WaterFireInteraction {
                         suppressedSourceIds.add(
                             source.getId(),
                         );
+
+                        this.contactEvents.push({
+                            positionX: waterCell.worldCenterX,
+                            positionY: waterCell.worldCenterY,
+                            interactionType: "standing-water-directional-fire",
+                            waterType: "standing",
+                            fireType: "directional",
+                            fireSourceId: source.getId(),
+                            waterAmount: waterCell.depth,
+                        });
                     }
                 }
             },
@@ -722,6 +785,33 @@ export class WaterFireInteraction {
                     suppressedSourceIds.add(
                         source.getId(),
                     );
+
+                    this.contactEvents.push({
+                        positionX:
+                            source.getPositionX() +
+                            Math.cos(
+                                source.getDirectionRadians(),
+                            ) *
+                            suppressionDistance,
+                        positionY:
+                            source.getPositionY() +
+                            Math.sin(
+                                source.getDirectionRadians(),
+                            ) *
+                            suppressionDistance,
+                        interactionType:
+                            "airborne-water-directional-fire",
+                        waterType:
+                            "airborne",
+                        fireType:
+                            "directional",
+                        waterSourceId:
+                            sweep.sourceId,
+                        fireSourceId:
+                            source.getId(),
+                        waterAmount:
+                            sweep.waterAmount,
+                    });
                 }
             }
         }

@@ -52,10 +52,6 @@ export class Renderer {
             .height;
 
     constructor() {
-
-        console.log(
-            "Renderer initialized.",
-        );
     }
 
     // -------------------------------------------------------
@@ -172,20 +168,6 @@ export class Renderer {
             this.viewportWidth,
             this.viewportHeight,
         );
-
-        console.log(
-            "Pixi Renderer ready.",
-            {
-                logicalWidth:
-                    this.viewportWidth,
-
-                logicalHeight:
-                    this.viewportHeight,
-
-                resizeMode:
-                    "Fixed logical resolution with CSS presentation scaling",
-            },
-        );
     }
 
     // -------------------------------------------------------
@@ -264,9 +246,5 @@ export class Renderer {
 
         this.initialized =
             false;
-
-        console.log(
-            "Renderer destroyed.",
-        );
     }
 }

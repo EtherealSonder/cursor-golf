@@ -47,11 +47,6 @@ export class AssetLoader {
         if (this.initialized) {
             return;
         }
-
-        console.log(
-            "========== ASSET LOADER ==========",
-        );
-
         await this.loadTexture(
             "golfClub",
             golfClubTexture,
@@ -186,14 +181,6 @@ export class AssetLoader {
 
         this.initialized =
             true;
-
-        console.log(
-            "All assets loaded.",
-        );
-
-        console.log(
-            "==================================",
-        );
     }
 
     // -------------------------------------------------------
@@ -243,10 +230,6 @@ export class AssetLoader {
         this.textures.set(
             key,
             texture,
-        );
-
-        console.log(
-            `Loaded Texture: ${key} (${texture.width} x ${texture.height})`,
         );
     }
 

@@ -196,20 +196,102 @@ export class WetGroundRenderer {
         this.fieldTexture
             .beginUpdate();
 
+        const columnCount =
+            this.environmentField
+                .getColumnCount();
+
+        const rowCount =
+            this.environmentField
+                .getRowCount();
+
+        const radius =
+            this.definition
+                .smoothingRadiusCells;
+
+        /*
+         * Presentation-only reconstruction.
+         *
+         * EnvironmentField remains authoritative. We expand the sparse set by
+         * a small halo and blend neighbouring excess-moisture samples into a
+         * continuous visual field. This prevents isolated watered cells and
+         * the edges of larger wet regions from exposing obvious square texels.
+         */
+        const candidateIndices =
+            new Set<number>();
+
         for (
-            const index
+            const trackedIndex
             of this.environmentField
                 .getTrackedMoistureIndices()
         ) {
-            const excess =
-                this.environmentField
-                    .getExcessMoistureByIndex(
-                        index,
+            const trackedColumn =
+                trackedIndex %
+                columnCount;
+
+            const trackedRow =
+                Math.floor(
+                    trackedIndex /
+                    columnCount,
+                );
+
+            for (
+                let offsetY =
+                    -radius;
+                offsetY <= radius;
+                offsetY += 1
+            ) {
+                const row =
+                    trackedRow +
+                    offsetY;
+
+                if (
+                    row < 0 ||
+                    row >= rowCount
+                ) {
+                    continue;
+                }
+
+                for (
+                    let offsetX =
+                        -radius;
+                    offsetX <= radius;
+                    offsetX += 1
+                ) {
+                    const column =
+                        trackedColumn +
+                        offsetX;
+
+                    if (
+                        column < 0 ||
+                        column >= columnCount
+                    ) {
+                        continue;
+                    }
+
+                    candidateIndices.add(
+                        row *
+                        columnCount +
+                        column,
                     );
+                }
+            }
+        }
+
+        for (
+            const index
+            of candidateIndices
+        ) {
+            const smoothedExcess =
+                this.getSmoothedExcessByIndex(
+                    index,
+                    columnCount,
+                    rowCount,
+                    radius,
+                );
 
             const alpha =
                 this.getAlphaForExcess(
-                    excess,
+                    smoothedExcess,
                 );
 
             if (
@@ -237,12 +319,8 @@ export class WetGroundRenderer {
                     );
 
             /*
-             * 8C-8B material precedence:
-             * Scorched ground can still contain authoritative moisture and
-             * standing Water can still render above it, but WetGroundRenderer
-             * must not recolor the permanently damaged substrate green/brown.
-             * ScorchRenderer remains visually authoritative after Water
-             * retreats.
+             * ScorchRenderer remains visually authoritative over permanently
+             * damaged substrate. Moisture can still exist there in gameplay.
              */
             if (
                 surface.surfaceState ===
@@ -274,6 +352,142 @@ export class WetGroundRenderer {
 
         this.fieldTexture
             .commit();
+    }
+
+    private getSmoothedExcessByIndex(
+        index:
+            number,
+
+        columnCount:
+            number,
+
+        rowCount:
+            number,
+
+        radius:
+            number,
+    ): number {
+        if (radius <= 0) {
+            return this.environmentField
+                .getExcessMoistureByIndex(
+                    index,
+                );
+        }
+
+        const centerColumn =
+            index %
+            columnCount;
+
+        const centerRow =
+            Math.floor(
+                index /
+                columnCount,
+            );
+
+        let weightedExcess =
+            0;
+
+        let totalWeight =
+            0;
+
+        /*
+         * Compact Gaussian-like kernel. The quadratic falloff softens the
+         * silhouette without spreading the presentation far beyond the
+         * authoritative wet region.
+         */
+        const maximumDistance =
+            radius +
+            1;
+
+        for (
+            let offsetY =
+                -radius;
+            offsetY <= radius;
+            offsetY += 1
+        ) {
+            const row =
+                centerRow +
+                offsetY;
+
+            if (
+                row < 0 ||
+                row >= rowCount
+            ) {
+                continue;
+            }
+
+            for (
+                let offsetX =
+                    -radius;
+                offsetX <= radius;
+                offsetX += 1
+            ) {
+                const column =
+                    centerColumn +
+                    offsetX;
+
+                if (
+                    column < 0 ||
+                    column >= columnCount
+                ) {
+                    continue;
+                }
+
+                const distanceSquared =
+                    offsetX *
+                    offsetX +
+                    offsetY *
+                    offsetY;
+
+                const normalizedDistanceSquared =
+                    distanceSquared /
+                    (
+                        maximumDistance *
+                        maximumDistance
+                    );
+
+                const weight =
+                    Math.max(
+                        0,
+                        1 -
+                        normalizedDistanceSquared,
+                    );
+
+                if (
+                    weight <=
+                    0
+                ) {
+                    continue;
+                }
+
+                const sampleIndex =
+                    row *
+                    columnCount +
+                    column;
+
+                weightedExcess +=
+                    this.environmentField
+                        .getExcessMoistureByIndex(
+                            sampleIndex,
+                        ) *
+                    weight;
+
+                totalWeight +=
+                    weight;
+            }
+        }
+
+        if (
+            totalWeight <=
+            0
+        ) {
+            return 0;
+        }
+
+        return (
+            weightedExcess /
+            totalWeight
+        );
     }
 
     private getAlphaForExcess(

@@ -32,6 +32,14 @@ export interface WetSurfaceVisualDefinition {
     readonly maximumAlpha:
     number;
 
+    /**
+     * Radius, in EnvironmentField cells, used only by WetGroundRenderer when
+     * reconstructing the visual moisture field. Gameplay continues to use
+     * the authoritative unsmoothed EnvironmentField values.
+     */
+    readonly smoothingRadiusCells:
+    number;
+
     readonly materialStyles:
     readonly WetSurfaceMaterialVisualDefinition[];
 }
@@ -63,6 +71,13 @@ export const DEFAULT_WET_SURFACE_VISUAL_DEFINITION:
 
     maximumAlpha:
         0.62,
+
+    /*
+     * A two-cell presentation kernel hides isolated square moisture texels
+     * while retaining the underlying 8 px simulation unchanged.
+     */
+    smoothingRadiusCells:
+        2,
 
     materialStyles: [
         {
@@ -140,6 +155,18 @@ export function validateWetSurfaceVisualDefinition(
     ) {
         throw new Error(
             "Wet-ground maximumAlpha must be finite and between zero and one.",
+        );
+    }
+
+    if (
+        !Number.isInteger(
+            definition.smoothingRadiusCells,
+        ) ||
+        definition.smoothingRadiusCells < 0 ||
+        definition.smoothingRadiusCells > 4
+    ) {
+        throw new Error(
+            "Wet-ground smoothingRadiusCells must be an integer between zero and four.",
         );
     }
 
