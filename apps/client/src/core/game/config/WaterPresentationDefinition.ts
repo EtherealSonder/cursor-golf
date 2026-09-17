@@ -29,6 +29,16 @@ export interface StandingWaterPresentationDefinition {
     readonly shallowAlpha: number;
     readonly deepAlpha: number;
 
+    /**
+     * Phase 8I-2 sparse illustrated surface highlights.
+     * These are deterministic presentation marks, not foam or gameplay state.
+     */
+    readonly highlightsEnabled: boolean;
+    readonly highlightMinimumDepthFactor: number;
+    readonly highlightSpacingCellsX: number;
+    readonly highlightSpacingCellsY: number;
+    readonly highlightStrength: number;
+
     readonly refreshIntervalSeconds: number;
 }
 
@@ -69,6 +79,13 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
         shallowAlpha: 0.95,
         baseAlpha: 0.985,
         deepAlpha: 1.0,
+
+        // Sparse Plucky-Squire-like graphic glints. Large puddles receive only a few marks.
+        highlightsEnabled: true,
+        highlightMinimumDepthFactor: 0.32,
+        highlightSpacingCellsX: 20,
+        highlightSpacingCellsY: 16,
+        highlightStrength: 0.78,
 
         refreshIntervalSeconds: 1 / 30,
     },

@@ -21,6 +21,7 @@ import {
 import {
     getStandingWaterAlpha,
     getStandingWaterDepthFactor,
+    getStandingWaterHighlightStrength,
 } from "./StandingWaterShader";
 
 /**
@@ -34,6 +35,7 @@ export class StandingWaterRenderer {
     private readonly container: Container;
     private readonly fieldTexture: ScalarFieldTexture;
     private readonly cellCount: number;
+    private readonly columnCount: number;
 
     private readonly directAlpha: Float32Array;
     private readonly directDepth: Float32Array;
@@ -50,6 +52,7 @@ export class StandingWaterRenderer {
     ) {
         this.container = new Container();
         this.cellCount = waterField.getCellCount();
+        this.columnCount = waterField.getColumnCount();
 
         this.directAlpha = new Float32Array(this.cellCount);
         this.directDepth = new Float32Array(this.cellCount);
@@ -199,11 +202,34 @@ export class StandingWaterRenderer {
                 Math.min(1, (depthFactor - 0.55) / 0.45),
             ) * 0.32;
 
-            const color = mixRgb(
+            const bodyColor = mixRgb(
                 this.definition.palette.baseWater,
                 this.definition.palette.deepWater,
                 deepMix,
             );
+
+            let color = bodyColor;
+
+            if (standingWater.highlightsEnabled) {
+                const highlightPattern =
+                    getStandingWaterHighlightStrength(
+                        index,
+                        this.columnCount,
+                        depthFactor,
+                        standingWater.highlightMinimumDepthFactor,
+                        standingWater.highlightSpacingCellsX,
+                        standingWater.highlightSpacingCellsY,
+                    );
+
+                if (highlightPattern > 0) {
+                    color = mixRgb(
+                        bodyColor,
+                        this.definition.palette.waterHighlight,
+                        highlightPattern *
+                            standingWater.highlightStrength,
+                    );
+                }
+            }
 
             this.fieldTexture.writeColorByIndex(
                 index,

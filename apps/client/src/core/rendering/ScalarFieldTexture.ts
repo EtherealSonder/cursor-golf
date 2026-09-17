@@ -5,19 +5,19 @@ import {
 
 export interface ScalarFieldTextureDefinition {
     readonly columnCount:
-        number;
+    number;
 
     readonly rowCount:
-        number;
+    number;
 
     readonly cellSize:
-        number;
+    number;
 
     readonly minimumWorldX:
-        number;
+    number;
 
     readonly minimumWorldY:
-        number;
+    number;
 }
 
 /**
@@ -121,11 +121,11 @@ export class ScalarFieldTexture {
         const source =
             this.texture.source as unknown as {
                 scaleMode?:
-                    "linear" |
-                    "nearest";
+                "linear" |
+                "nearest";
 
                 update?:
-                    () => void;
+                () => void;
             };
 
         source.scaleMode =
@@ -230,9 +230,9 @@ export class ScalarFieldTexture {
                 index,
             ) ||
             index <
-                0 ||
+            0 ||
             index >=
-                this.touchedFlags.length
+            this.touchedFlags.length
         ) {
             return;
         }
@@ -255,7 +255,7 @@ export class ScalarFieldTexture {
 
         if (
             this.touchedFlags[
-                index
+            index
             ] ===
             0
         ) {
@@ -287,7 +287,7 @@ export class ScalarFieldTexture {
 
         pixels[
             offset +
-                1
+            1
         ] =
             (
                 color >>>
@@ -297,14 +297,14 @@ export class ScalarFieldTexture {
 
         pixels[
             offset +
-                2
+            2
         ] =
             color &
             0xff;
 
         pixels[
             offset +
-                3
+            3
         ] =
             Math.round(
                 clampedAlpha *
@@ -330,7 +330,7 @@ export class ScalarFieldTexture {
         const source =
             this.texture.source as unknown as {
                 update?:
-                    () => void;
+                () => void;
             };
 
         source.update?.();
@@ -382,12 +382,12 @@ export class ScalarFieldTexture {
                 definition.columnCount,
             ) ||
             definition.columnCount <=
-                0 ||
+            0 ||
             !Number.isInteger(
                 definition.rowCount,
             ) ||
             definition.rowCount <=
-                0
+            0
         ) {
             throw new Error(
                 "ScalarFieldTexture dimensions must be positive integers.",
@@ -399,7 +399,7 @@ export class ScalarFieldTexture {
                 definition.cellSize,
             ) ||
             definition.cellSize <=
-                0
+            0
         ) {
             throw new Error(
                 "ScalarFieldTexture cellSize must be finite and positive.",
