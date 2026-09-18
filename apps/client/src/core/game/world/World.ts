@@ -134,6 +134,10 @@ import {
 } from "../water-vfx/SprinklerWaterVfx";
 
 import {
+    HoseWaterVfx,
+} from "../water-vfx/HoseWaterVfx";
+
+import {
     WaterDepositDebugController,
 } from "../debug/WaterDepositDebugController";
 
@@ -513,6 +517,11 @@ export class World {
     /** Phase 8I-5 production Sprinkler Water presentation. */
     private sprinklerWaterVfx:
         SprinklerWaterVfx | null =
+        null;
+
+    /** Phase 8I-6A production Hose Water body presentation. */
+    private hoseWaterVfx:
+        HoseWaterVfx | null =
         null;
 
     /** Phase 8C-8A interactive primary-button Water deposit tool. */
@@ -926,6 +935,8 @@ export class World {
 
         this.createHydrantHoseEntity();
 
+        this.createHoseWaterVfx();
+
         /*
          * Phase 8D-7:
          * Create the deterministic Fire Tube before registering live gameplay
@@ -1195,6 +1206,9 @@ export class World {
         this.airborneWaterVisualizer?.update();
 
         this.sprinklerWaterVfx
+            ?.update(deltaTime);
+
+        this.hoseWaterVfx
             ?.update(deltaTime);
 
         /*
@@ -1514,6 +1528,11 @@ export class World {
             ?.destroy();
 
         this.sprinklerWaterVfx = null;
+
+        this.hoseWaterVfx
+            ?.destroy();
+
+        this.hoseWaterVfx = null;
 
         this.airborneWaterVisualizer
             ?.destroy();
@@ -2483,6 +2502,21 @@ export class World {
                 this.waterVfxSystem
                     .getAirborneContainer(),
             );
+
+        /*
+         * 8I-6A.1: continuous stream geometry belongs below physical Hose
+         * artwork/nozzles. Reparent only the shared stream renderer; airborne
+         * droplets and other secondary VFX remain in AirborneEffects.
+         */
+        this.presentationLayers
+            .getLayer(
+                WorldRenderLayer.WaterEffects,
+            )
+            .addChild(
+                this.waterVfxSystem
+                    .getStreamRenderer()
+                    .getContainer(),
+            );
     }
 
     // -------------------------------------------------------
@@ -2568,6 +2602,46 @@ export class World {
             this.airborneWaterVisualizer?.setSourceHidden(sprinkler.getSourceId(), true);
         }
     }
+
+    // -------------------------------------------------------
+    // Phase 8I-6A Production Hose Water Body VFX
+    // -------------------------------------------------------
+
+    private createHoseWaterVfx(): void {
+        if (!this.waterVfxSystem) {
+            throw new Error(
+                "World requires WaterVfxSystem before Hose Water VFX.",
+            );
+        }
+
+        if (!this.hydrantHose) {
+            throw new Error(
+                "World requires HydrantHose before Hose Water VFX.",
+            );
+        }
+
+        this.hoseWaterVfx =
+            new HoseWaterVfx(
+                this.hydrantHose,
+                this.airborneWaterSystem,
+                this.waterVfxSystem,
+                this.waterVfxSystem
+                    .getDefinition()
+                    .hose,
+            );
+
+        /*
+         * The production Hose body replaces the old packet-circle debug
+         * presentation for this source only.
+         */
+        this.airborneWaterVisualizer
+            ?.setSourceHidden(
+                this.hydrantHose
+                    .getWaterSourceId(),
+                true,
+            );
+    }
+
 
     // -------------------------------------------------------
     // Phase 8D-7 Actual Game Object Integration
@@ -2874,6 +2948,9 @@ export class World {
             entity ===
             this.hydrantHose
         ) {
+            this.hoseWaterVfx
+                ?.reset();
+
             this.hydrantHose =
                 null;
             this.hoseCollisionSystem =
