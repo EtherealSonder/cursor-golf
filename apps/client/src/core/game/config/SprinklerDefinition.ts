@@ -53,7 +53,7 @@ export const DEFAULT_SPRINKLER_DEFINITION: SprinklerDefinition = {
     nozzleCount: 4,
 
     emissionInterval: 0.12,
-    flowRate: 0.4,
+    flowRate: 0.2,
     launchSpeed: 420,
     launchElevationRadians: Math.PI / 4,
     windResponse: 0.8,
