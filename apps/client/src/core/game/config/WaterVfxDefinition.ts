@@ -105,6 +105,25 @@ export interface HoseWaterVfxDefinition {
     /** Seconds for residual broadening to settle after movement decreases. */
     readonly motionWidthRecoverySeconds: number;
 
+    /** 8I-6C.4 motion intensity required before breakup can appear. */
+    readonly breakupThreshold: number;
+
+    /** Hard presentation-only fragment limit. */
+    readonly breakupMaximumFragments: number;
+
+    /** Lifetime range for detached downstream lobes. */
+    readonly breakupMinimumLifetimeSeconds: number;
+    readonly breakupMaximumLifetimeSeconds: number;
+
+    /** Fragment dimensions relative to the terminal Hose body width. */
+    readonly breakupMinimumSizeFraction: number;
+    readonly breakupMaximumSizeFraction: number;
+
+    /** Initial separation and downstream travel speed. */
+    readonly breakupMinimumSeparation: number;
+    readonly breakupMaximumSeparation: number;
+    readonly breakupTravelSpeed: number;
+
     /** Contrast applied while converting grayscale mask values to Water colour. */
     readonly flowTextureContrast: number;
 
@@ -285,6 +304,17 @@ export const DEFAULT_WATER_VFX_DEFINITION: WaterVfxDefinition = {
         motionMaximumWidthBonus: 10,
         motionWidthRampExponent: 1.65,
         motionWidthRecoverySeconds: 0.25,
+
+        // 8I-6C.4: breakup is reserved for genuinely violent Hose motion.
+        breakupThreshold: 0.88,
+        breakupMaximumFragments: 3,
+        breakupMinimumLifetimeSeconds: 0.10,
+        breakupMaximumLifetimeSeconds: 0.22,
+        breakupMinimumSizeFraction: 0.12,
+        breakupMaximumSizeFraction: 0.24,
+        breakupMinimumSeparation: 5,
+        breakupMaximumSeparation: 16,
+        breakupTravelSpeed: 95,
 
         flowTextureContrast: 1.10,
         flowTextureStrength: 1.0,

@@ -40,6 +40,9 @@ export class HoseWaterVfx {
     /** 8I-6C.3 smoothed presentation-only width response. */
     private motionBroadeningIntensity = 0;
 
+    /** 8I-6C.4 filtered extreme-motion signal, presentation only. */
+    private breakupIntensity = 0;
+
     public constructor(
         private readonly hose: HydrantHose,
         private readonly airborneWaterSystem: AirborneWaterSystem,
@@ -85,6 +88,11 @@ export class HoseWaterVfx {
             );
 
         this.updateMotionBroadening(
+            motionIntensity,
+            deltaTime,
+        );
+
+        this.updateBreakupIntensity(
             motionIntensity,
             deltaTime,
         );
@@ -424,6 +432,27 @@ export class HoseWaterVfx {
                     this.definition.motionMaximumWidthBonus,
                 motionWidthRampExponent:
                     this.definition.motionWidthRampExponent,
+
+                breakupIntensity:
+                    this.breakupIntensity,
+                breakupThreshold:
+                    this.definition.breakupThreshold,
+                breakupMaximumFragments:
+                    this.definition.breakupMaximumFragments,
+                breakupMinimumLifetimeSeconds:
+                    this.definition.breakupMinimumLifetimeSeconds,
+                breakupMaximumLifetimeSeconds:
+                    this.definition.breakupMaximumLifetimeSeconds,
+                breakupMinimumSizeFraction:
+                    this.definition.breakupMinimumSizeFraction,
+                breakupMaximumSizeFraction:
+                    this.definition.breakupMaximumSizeFraction,
+                breakupMinimumSeparation:
+                    this.definition.breakupMinimumSeparation,
+                breakupMaximumSeparation:
+                    this.definition.breakupMaximumSeparation,
+                breakupTravelSpeed:
+                    this.definition.breakupTravelSpeed,
                 bodyColor:
                     this.definition.bodyColor,
                 bodyAlpha:
@@ -541,6 +570,7 @@ export class HoseWaterVfx {
         this.previousNozzleY = null;
         this.previousNozzleDirectionRadians = null;
         this.motionBroadeningIntensity = 0;
+        this.breakupIntensity = 0;
 
         this.waterVfxSystem
             .getStreamRenderer()
@@ -551,6 +581,49 @@ export class HoseWaterVfx {
 
     public destroy(): void {
         this.reset();
+    }
+
+    private updateBreakupIntensity(
+        targetIntensity: number,
+        deltaTime: number,
+    ): void {
+        const target =
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    targetIntensity,
+                ),
+            );
+
+        /*
+         * Extreme breakup should react to a real whip, not a one-frame
+         * transform spike. A fast attack keeps violent sweeps responsive,
+         * while the faster release allows the threshold to be crossed again
+         * only after motion has genuinely settled.
+         */
+        const rate =
+            target >
+                this.breakupIntensity
+                ? 20
+                : 12;
+        const blend =
+            1 -
+            Math.exp(
+                -rate *
+                Math.max(0, deltaTime),
+            );
+
+        this.breakupIntensity +=
+            (
+                target -
+                this.breakupIntensity
+            ) *
+            blend;
+
+        if (this.breakupIntensity < 0.001) {
+            this.breakupIntensity = 0;
+        }
     }
 
     private updateMotionBroadening(

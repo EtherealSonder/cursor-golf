@@ -6,6 +6,9 @@ import {
 } from "pixi.js";
 import type { WaterVfxStreamDefinition } from "../config/WaterVfxDefinition";
 import { HoseWaterShader } from "./HoseWaterShader";
+import {
+    HoseWaterBreakupRenderer,
+} from "./HoseWaterBreakupRenderer";
 
 export interface WaterStreamPoint {
     readonly x: number;
@@ -34,6 +37,19 @@ export interface WaterStreamPresentation {
 
     /** Controls how strongly broadening is concentrated downstream. */
     readonly motionWidthRampExponent?: number;
+
+    /** 8I-6C.4 normalized extreme-motion breakup strength. */
+    readonly breakupIntensity?: number;
+
+    readonly breakupThreshold?: number;
+    readonly breakupMaximumFragments?: number;
+    readonly breakupMinimumLifetimeSeconds?: number;
+    readonly breakupMaximumLifetimeSeconds?: number;
+    readonly breakupMinimumSizeFraction?: number;
+    readonly breakupMaximumSizeFraction?: number;
+    readonly breakupMinimumSeparation?: number;
+    readonly breakupMaximumSeparation?: number;
+    readonly breakupTravelSpeed?: number;
     readonly bodyColor?: number;
     readonly highlightColor?: number;
     readonly bodyAlpha?: number;
@@ -108,6 +124,8 @@ interface Slot {
     material: HoseWaterShader | null;
     materialKey: string;
     presentation: WaterStreamPresentation | null;
+    breakupRenderer: HoseWaterBreakupRenderer | null;
+    breakupWasExtreme: boolean;
 }
 
 /**
@@ -158,6 +176,10 @@ export class WaterStreamRenderer {
             if (slot.container.visible && slot.presentation) {
                 this.draw(slot);
             }
+
+            if (slot.breakupRenderer) {
+                slot.breakupRenderer.update(deltaTime);
+            }
         });
     }
 
@@ -171,6 +193,7 @@ export class WaterStreamRenderer {
         slot.presentation = null;
         slot.body.clear();
         slot.highlight.clear();
+        slot.breakupWasExtreme = false;
 
         if (slot.mesh) {
             slot.mesh.visible = false;
@@ -199,6 +222,10 @@ export class WaterStreamRenderer {
 
             if (slot.material) {
                 slot.material.destroy();
+            }
+
+            if (slot.breakupRenderer) {
+                slot.breakupRenderer.destroy();
             }
 
             slot.body.destroy();
@@ -551,6 +578,12 @@ export class WaterStreamRenderer {
             });
         }
 
+        this.updateExtremeMotionBreakup(
+            slot,
+            s,
+            samples,
+        );
+
         if (s.useFlowTexture) {
             const rendered = this.drawTexturedBody(
                 slot,
@@ -586,6 +619,128 @@ export class WaterStreamRenderer {
             smoothedTotal,
             phase,
         );
+    }
+
+    private updateExtremeMotionBreakup(
+        slot: Slot,
+        s: WaterStreamPresentation,
+        samples: readonly Sample[],
+    ): void {
+        if (samples.length < 2) {
+            return;
+        }
+
+        const threshold =
+            Math.max(
+                0,
+                Math.min(
+                    0.999,
+                    s.breakupThreshold ?? 0.88,
+                ),
+            );
+        const rawIntensity =
+            this.clamp01(
+                s.breakupIntensity ?? 0,
+            );
+        const isExtreme =
+            rawIntensity >= threshold;
+
+        /*
+         * Spawn only on entry into the extreme-motion band. Sustained violent
+         * motion therefore produces a few readable lobes rather than a
+         * continuous particle fountain.
+         */
+        if (
+            !isExtreme ||
+            slot.breakupWasExtreme
+        ) {
+            slot.breakupWasExtreme =
+                isExtreme;
+            return;
+        }
+
+        slot.breakupWasExtreme = true;
+
+        const last =
+            samples[samples.length - 1];
+        const beforeLast =
+            samples[samples.length - 2];
+        const dx =
+            last.x - beforeLast.x;
+        const dy =
+            last.y - beforeLast.y;
+        const length =
+            Math.max(
+                0.0001,
+                Math.hypot(dx, dy),
+            );
+
+        if (!slot.breakupRenderer) {
+            slot.breakupRenderer =
+                new HoseWaterBreakupRenderer({
+                    bodyColor:
+                        s.bodyColor ??
+                        this.definition.bodyColor,
+                    midColor:
+                        s.toonMidColor ??
+                        s.bodyColor ??
+                        this.definition.bodyColor,
+                    highlightColor:
+                        s.highlightColor ??
+                        this.definition.highlightColor,
+                    bodyAlpha:
+                        this.clamp01(
+                            s.bodyAlpha ??
+                            this.definition.bodyAlpha,
+                        ),
+                    maximumFragments:
+                        s.breakupMaximumFragments ?? 3,
+                    minimumLifetimeSeconds:
+                        s.breakupMinimumLifetimeSeconds ?? 0.10,
+                    maximumLifetimeSeconds:
+                        s.breakupMaximumLifetimeSeconds ?? 0.22,
+                    minimumSizeFraction:
+                        s.breakupMinimumSizeFraction ?? 0.12,
+                    maximumSizeFraction:
+                        s.breakupMaximumSizeFraction ?? 0.24,
+                    minimumSeparation:
+                        s.breakupMinimumSeparation ?? 5,
+                    maximumSeparation:
+                        s.breakupMaximumSeparation ?? 16,
+                    travelSpeed:
+                        s.breakupTravelSpeed ?? 95,
+                });
+
+            slot.container.addChild(
+                slot.breakupRenderer.getContainer(),
+            );
+        }
+
+        const normalizedExtreme =
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    (rawIntensity - threshold) /
+                    Math.max(
+                        0.0001,
+                        1 - threshold,
+                    ),
+                ),
+            );
+
+        slot.breakupRenderer.spawn({
+            x: last.x,
+            y: last.y,
+            directionX: dx / length,
+            directionY: dy / length,
+            terminalWidth:
+                this.clampWidth(s.endWidth),
+            intensity:
+                normalizedExtreme,
+            phase:
+                s.phaseOffset ?? 0,
+        });
     }
 
     private drawTexturedBody(
@@ -1245,6 +1400,8 @@ export class WaterStreamRenderer {
             material: null,
             materialKey: "",
             presentation: null,
+            breakupRenderer: null,
+            breakupWasExtreme: false,
         };
 
         this.slots.set(id, slot);
