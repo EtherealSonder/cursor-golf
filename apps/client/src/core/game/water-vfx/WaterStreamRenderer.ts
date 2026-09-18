@@ -19,6 +19,21 @@ export interface WaterStreamPresentation {
     readonly endWidth: number;
     readonly minimumBodyWidth?: number;
     readonly downstreamDisturbanceMultiplier?: number;
+
+    /** 8I-6C.2 normalized current nozzle movement intensity. */
+    readonly motionIntensity?: number;
+
+    /** Extra downstream edge disturbance at full movement intensity. */
+    readonly motionDisturbanceBoost?: number;
+
+    /** 8I-6C.3 smoothed movement response used only for body broadening. */
+    readonly motionBroadeningIntensity?: number;
+
+    /** Maximum additional width near the downstream end. */
+    readonly motionMaximumWidthBonus?: number;
+
+    /** Controls how strongly broadening is concentrated downstream. */
+    readonly motionWidthRampExponent?: number;
     readonly bodyColor?: number;
     readonly highlightColor?: number;
     readonly bodyAlpha?: number;
@@ -60,6 +75,9 @@ export interface WaterStreamPresentation {
     readonly flowTextureWorldLength?: number;
     readonly flowTextureSpeed?: number;
     readonly centerlineSmoothingPasses?: number;
+
+    /** 8I-6C.1 bend-preserving smoothing of authoritative packet history. */
+    readonly trajectorySmoothingPasses?: number;
     readonly flowTextureContrast?: number;
     readonly flowTextureStrength?: number;
 
@@ -219,12 +237,21 @@ export class WaterStreamRenderer {
          * No previous-frame positions are retained, so Hose rotation cannot
          * create trailing geometry or the old "spider-leg" behaviour.
          */
+        /*
+         * 8I-6C.1: the packet chain already contains trajectory memory.
+         * Use a bend-preserving corner-cutting pass so C/S curves remain
+         * visible instead of being averaged back toward a rigid ribbon.
+         *
+         * Stationary streams remain visually equivalent because collinear
+         * samples are unchanged by this operation.
+         */
         const samples =
-            this.smoothCurrentCenterline(
+            this.smoothTrajectoryCenterline(
                 rawSamples,
                 Math.max(
                     0,
                     Math.floor(
+                        s.trajectorySmoothingPasses ??
                         s.centerlineSmoothingPasses ??
                         0,
                     ),
@@ -276,7 +303,33 @@ export class WaterStreamRenderer {
                     this.definition.minimumWidth,
                     s.minimumBodyWidth ?? s.startWidth,
                 );
-            nominalBase = Math.max(minimumBodyWidth, nominalBase)
+            nominalBase = Math.max(minimumBodyWidth, nominalBase);
+
+            /*
+             * 8I-6C.3 motion broadening is deliberately separate from
+             * trajectory bending and edge disturbance. The source receives
+             * effectively no bonus; the full configured bonus is approached
+             * only near the downstream end.
+             */
+            const broadeningRamp =
+                Math.pow(
+                    t,
+                    Math.max(
+                        0.25,
+                        s.motionWidthRampExponent ?? 1.5,
+                    ),
+                );
+            const motionWidthBonus =
+                this.clamp01(
+                    s.motionBroadeningIntensity ?? 0,
+                ) *
+                Math.max(
+                    0,
+                    s.motionMaximumWidthBonus ?? 0,
+                ) *
+                broadeningRamp;
+
+            nominalBase += motionWidthBonus;
 
             /*
              * Broad "squish" changes the Water body's thickness slowly along
@@ -345,7 +398,7 @@ export class WaterStreamRenderer {
              * The nozzle stays tight. Edge disturbance grows progressively
              * downstream without reducing the coherent body width.
              */
-            const downstreamDisturbance =
+            const baselineDownstreamDisturbance =
                 1 +
                 t *
                 (
@@ -356,6 +409,35 @@ export class WaterStreamRenderer {
                     1
                 );
 
+            /*
+             * 8I-6C.2 motion affects edge instability only.
+             * The t^2 ramp keeps the nozzle coherent and concentrates the
+             * additional disturbance toward older downstream Water.
+             * Width profile, centerline trajectory and material stay frozen.
+             */
+            const motionIntensity =
+                this.clamp01(
+                    s.motionIntensity ?? 0,
+                );
+            const motionDisturbance =
+                1 +
+                motionIntensity *
+                Math.max(
+                    0,
+                    s.motionDisturbanceBoost ?? 0,
+                ) *
+                t *
+                t;
+
+            const downstreamDisturbance =
+                baselineDownstreamDisturbance *
+                motionDisturbance;
+
+            /*
+             * 8I-6B.5E: edge motion is distance-weighted with t^2.
+             * The nozzle remains coherent while broad asymmetric disturbance
+             * becomes progressively more visible downstream.
+             */
             const edgeA =
                 Math.sin(
                     p.distance * (s.edgeWaveFrequency ?? 0) -
@@ -363,6 +445,7 @@ export class WaterStreamRenderer {
                     phase * 1.37,
                 ) *
                 Math.max(0, s.edgeWaveAmplitude ?? 0) *
+                (t * t) *
                 downstreamDisturbance;
             const edgeB =
                 Math.sin(
@@ -371,6 +454,7 @@ export class WaterStreamRenderer {
                     phase * 2.11,
                 ) *
                 Math.max(0, s.edgeWaveAmplitude ?? 0) *
+                (t * t) *
                 downstreamDisturbance;
 
             /*
@@ -390,6 +474,7 @@ export class WaterStreamRenderer {
                     0,
                     s.edgeIrregularityAmplitude ?? 0,
                 ) *
+                (t * t) *
                 downstreamDisturbance;
             const irregularB =
                 Math.sin(
@@ -405,6 +490,7 @@ export class WaterStreamRenderer {
                     0,
                     s.edgeIrregularityAmplitude ?? 0,
                 ) *
+                (t * t) *
                 downstreamDisturbance;
 
             const cx = p.x + p.nx * center;
@@ -895,7 +981,7 @@ export class WaterStreamRenderer {
         }
     }
 
-    private smoothCurrentCenterline(
+    private smoothTrajectoryCenterline(
         input: readonly Sample[],
         passes: number,
     ): Sample[] {
@@ -942,12 +1028,12 @@ export class WaterStreamRenderer {
                 const b = points[index + 1];
 
                 const q = {
-                    x: a.x * 0.75 + b.x * 0.25,
-                    y: a.y * 0.75 + b.y * 0.25,
+                    x: a.x * 0.85 + b.x * 0.15,
+                    y: a.y * 0.85 + b.y * 0.15,
                 };
                 const r = {
-                    x: a.x * 0.25 + b.x * 0.75,
-                    y: a.y * 0.25 + b.y * 0.75,
+                    x: a.x * 0.15 + b.x * 0.85,
+                    y: a.y * 0.15 + b.y * 0.85,
                 };
 
                 if (index > 0) {

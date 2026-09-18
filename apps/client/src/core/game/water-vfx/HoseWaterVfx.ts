@@ -33,6 +33,13 @@ export class HoseWaterVfx {
     private readonly streamId:
         string;
 
+    private previousNozzleX: number | null = null;
+    private previousNozzleY: number | null = null;
+    private previousNozzleDirectionRadians: number | null = null;
+
+    /** 8I-6C.3 smoothed presentation-only width response. */
+    private motionBroadeningIntensity = 0;
+
     public constructor(
         private readonly hose: HydrantHose,
         private readonly airborneWaterSystem: AirborneWaterSystem,
@@ -63,6 +70,24 @@ export class HoseWaterVfx {
 
         const sourceId =
             this.hose.getWaterSourceId();
+
+        const nozzle =
+            this.hose.getNozzlePosition();
+        const nozzleDirection =
+            this.hose.getNozzleDirectionRadians();
+
+        const motionIntensity =
+            this.calculateMotionIntensity(
+                nozzle.x,
+                nozzle.y,
+                nozzleDirection,
+                deltaTime,
+            );
+
+        this.updateMotionBroadening(
+            motionIntensity,
+            deltaTime,
+        );
 
         const packetSamples:
             HosePacketSample[] = [];
@@ -147,9 +172,6 @@ export class HoseWaterVfx {
         if (
             this.hose.isWaterEnabled()
         ) {
-            const nozzle =
-                this.hose.getNozzlePosition();
-
             points.push({
                 x:
                     nozzle.x,
@@ -157,6 +179,21 @@ export class HoseWaterVfx {
                     nozzle.y,
             });
         }
+
+        /*
+         * 8I-6C.1 trajectory memory comes from CURRENT authoritative packets.
+         * Each packet keeps travelling along the direction it had when emitted.
+         * During a Hose sweep, age therefore becomes a natural history axis:
+         * newest Water follows the new nozzle direction while older Water
+         * remains on the previous trajectory.
+         *
+         * Keep enough age-separated samples to expose that history. Also keep
+         * meaningful turns even when samples are temporally close. No fake
+         * previous-frame path is stored here.
+         */
+        let lastAcceptedPacket:
+            HosePacketSample | null =
+            null;
 
         for (
             let index = 0;
@@ -166,45 +203,105 @@ export class HoseWaterVfx {
             const sample =
                 packetSamples[index];
 
-
-            /*
-             * After Hose shutoff there is deliberately no nozzle anchor.
-             * The first remaining authoritative packet becomes the start
-             * of the draining visual body.
-             */
             if (
-                points.length ===
-                0
+                lastAcceptedPacket !== null
             ) {
-                points.push({
-                    x:
-                        sample.x,
-                    y:
-                        sample.y,
-                });
+                const ageDelta =
+                    sample.ageSeconds -
+                    lastAcceptedPacket.ageSeconds;
 
-                continue;
+                let shouldRetain =
+                    ageDelta >=
+                    this.definition
+                        .trajectoryMinimumAgeStepSeconds;
+
+                if (
+                    !shouldRetain &&
+                    index > 0 &&
+                    index <
+                    packetSamples.length - 1
+                ) {
+                    const previous =
+                        packetSamples[index - 1];
+                    const next =
+                        packetSamples[index + 1];
+
+                    const ax =
+                        sample.x - previous.x;
+                    const ay =
+                        sample.y - previous.y;
+                    const bx =
+                        next.x - sample.x;
+                    const by =
+                        next.y - sample.y;
+
+                    const aLength =
+                        Math.hypot(ax, ay);
+                    const bLength =
+                        Math.hypot(bx, by);
+
+                    if (
+                        aLength > 0.0001 &&
+                        bLength > 0.0001
+                    ) {
+                        const dot =
+                            Math.max(
+                                -1,
+                                Math.min(
+                                    1,
+                                    (
+                                        ax * bx +
+                                        ay * by
+                                    ) /
+                                    (
+                                        aLength *
+                                        bLength
+                                    ),
+                                ),
+                            );
+
+                        shouldRetain =
+                            Math.acos(dot) >=
+                            this.definition
+                                .trajectoryTurnRetentionRadians;
+                    }
+                }
+
+                /*
+                 * Always retain the oldest packet so the visible trajectory
+                 * reaches the true downstream authoritative body.
+                 */
+                if (
+                    !shouldRetain &&
+                    index !==
+                    packetSamples.length - 1
+                ) {
+                    continue;
+                }
             }
 
-            const previous =
-                points[
-                points.length - 1
-                ];
-
-            /*
-             * Ignore effectively duplicate points. This prevents zero-length
-             * segments while retaining every meaningful authoritative sample.
-             */
             if (
-                Math.hypot(
-                    sample.x -
-                    previous.x,
-                    sample.y -
-                    previous.y,
-                ) <
-                0.25
+                points.length >
+                0
             ) {
-                continue;
+                const previousPoint =
+                    points[
+                    points.length - 1
+                    ];
+
+                if (
+                    Math.hypot(
+                        sample.x -
+                        previousPoint.x,
+                        sample.y -
+                        previousPoint.y,
+                    ) <
+                    0.25
+                ) {
+                    lastAcceptedPacket =
+                        sample;
+                    continue;
+                }
             }
 
             points.push({
@@ -213,6 +310,9 @@ export class HoseWaterVfx {
                 y:
                     sample.y,
             });
+
+            lastAcceptedPacket =
+                sample;
         }
 
         /*
@@ -315,6 +415,15 @@ export class HoseWaterVfx {
                     this.definition.minimumBodyWidth,
                 downstreamDisturbanceMultiplier:
                     this.definition.downstreamDisturbanceMultiplier,
+                motionIntensity,
+                motionDisturbanceBoost:
+                    this.definition.motionDisturbanceBoost,
+                motionBroadeningIntensity:
+                    this.motionBroadeningIntensity,
+                motionMaximumWidthBonus:
+                    this.definition.motionMaximumWidthBonus,
+                motionWidthRampExponent:
+                    this.definition.motionWidthRampExponent,
                 bodyColor:
                     this.definition.bodyColor,
                 bodyAlpha:
@@ -328,6 +437,8 @@ export class HoseWaterVfx {
                     ),
                 centerlineSmoothingPasses:
                     this.definition.centerlineSmoothingPasses,
+                trajectorySmoothingPasses:
+                    this.definition.trajectorySmoothingPasses,
                 flowTextureContrast:
                     this.definition.flowTextureContrast,
                 flowTextureStrength:
@@ -426,6 +537,11 @@ export class HoseWaterVfx {
     }
 
     public reset(): void {
+        this.previousNozzleX = null;
+        this.previousNozzleY = null;
+        this.previousNozzleDirectionRadians = null;
+        this.motionBroadeningIntensity = 0;
+
         this.waterVfxSystem
             .getStreamRenderer()
             .hideStream(
@@ -435,6 +551,163 @@ export class HoseWaterVfx {
 
     public destroy(): void {
         this.reset();
+    }
+
+    private updateMotionBroadening(
+        targetIntensity: number,
+        deltaTime: number,
+    ): void {
+        const target =
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    targetIntensity,
+                ),
+            );
+
+        /*
+         * 8I-6C.3 reacts quickly while movement increases, but residual
+         * broadening decays over the configured recovery window.
+         */
+        if (
+            target >=
+            this.motionBroadeningIntensity
+        ) {
+            const attackRate = 14;
+            const blend =
+                1 -
+                Math.exp(
+                    -attackRate *
+                    deltaTime,
+                );
+
+            this.motionBroadeningIntensity +=
+                (
+                    target -
+                    this.motionBroadeningIntensity
+                ) *
+                blend;
+
+            return;
+        }
+
+        const recoverySeconds =
+            Math.max(
+                0.01,
+                this.definition.motionWidthRecoverySeconds,
+            );
+        const recoveryRate =
+            4.6 /
+            recoverySeconds;
+        const blend =
+            1 -
+            Math.exp(
+                -recoveryRate *
+                deltaTime,
+            );
+
+        this.motionBroadeningIntensity +=
+            (
+                target -
+                this.motionBroadeningIntensity
+            ) *
+            blend;
+
+        if (
+            this.motionBroadeningIntensity <
+            0.001
+        ) {
+            this.motionBroadeningIntensity = 0;
+        }
+    }
+
+    private calculateMotionIntensity(
+        nozzleX: number,
+        nozzleY: number,
+        directionRadians: number,
+        deltaTime: number,
+    ): number {
+        if (
+            this.previousNozzleX === null ||
+            this.previousNozzleY === null ||
+            this.previousNozzleDirectionRadians === null ||
+            !Number.isFinite(deltaTime) ||
+            deltaTime <= 0
+        ) {
+            this.previousNozzleX = nozzleX;
+            this.previousNozzleY = nozzleY;
+            this.previousNozzleDirectionRadians = directionRadians;
+            return 0;
+        }
+
+        const linearSpeed =
+            Math.hypot(
+                nozzleX - this.previousNozzleX,
+                nozzleY - this.previousNozzleY,
+            ) /
+            deltaTime;
+
+        let angularDelta =
+            directionRadians -
+            this.previousNozzleDirectionRadians;
+
+        while (angularDelta > Math.PI) {
+            angularDelta -= Math.PI * 2;
+        }
+
+        while (angularDelta < -Math.PI) {
+            angularDelta += Math.PI * 2;
+        }
+
+        const angularSpeed =
+            Math.abs(angularDelta) /
+            deltaTime;
+
+        this.previousNozzleX = nozzleX;
+        this.previousNozzleY = nozzleY;
+        this.previousNozzleDirectionRadians = directionRadians;
+
+        const angularIntensity =
+            Math.min(
+                1,
+                angularSpeed /
+                Math.max(
+                    0.0001,
+                    this.definition.motionAngularVelocityForFullIntensity,
+                ),
+            );
+
+        const linearIntensity =
+            Math.min(
+                1,
+                linearSpeed /
+                Math.max(
+                    0.0001,
+                    this.definition.motionLinearVelocityForFullIntensity,
+                ),
+            );
+
+        const weightTotal =
+            Math.max(
+                0.0001,
+                this.definition.motionAngularWeight +
+                this.definition.motionLinearWeight,
+            );
+
+        return Math.max(
+            0,
+            Math.min(
+                1,
+                (
+                    angularIntensity *
+                    this.definition.motionAngularWeight +
+                    linearIntensity *
+                    this.definition.motionLinearWeight
+                ) /
+                weightTotal,
+            ),
+        );
     }
 
     private estimateTransportSpeed(

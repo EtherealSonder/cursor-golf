@@ -62,6 +62,49 @@ export interface HoseWaterVfxDefinition {
     /** Current-frame-only centerline smoothing passes. Endpoints stay fixed. */
     readonly centerlineSmoothingPasses: number;
 
+    /**
+     * 8I-6C.1 trajectory reconstruction.
+     * Minimum age separation between retained authoritative packet samples.
+     * This prevents over-dense near-identical packets from flattening bends.
+     */
+    readonly trajectoryMinimumAgeStepSeconds: number;
+
+    /**
+     * Minimum directional change worth retaining as a trajectory control point.
+     * Expressed in radians and used only by presentation reconstruction.
+     */
+    readonly trajectoryTurnRetentionRadians: number;
+
+    /**
+     * Number of bend-preserving centerline smoothing passes.
+     * This smoothing never changes authoritative packet state.
+     */
+    readonly trajectorySmoothingPasses: number;
+
+    /** 8I-6C.2 angular nozzle velocity is the primary disturbance driver. */
+    readonly motionAngularVelocityForFullIntensity: number;
+
+    /** Linear nozzle velocity contributes secondarily to disturbance. */
+    readonly motionLinearVelocityForFullIntensity: number;
+
+    /** Relative weight of angular movement in the combined motion signal. */
+    readonly motionAngularWeight: number;
+
+    /** Relative weight of linear movement in the combined motion signal. */
+    readonly motionLinearWeight: number;
+
+    /** Maximum extra multiplier applied to downstream edge disturbance. */
+    readonly motionDisturbanceBoost: number;
+
+    /** 8I-6C.3 maximum extra downstream body width at full motion. */
+    readonly motionMaximumWidthBonus: number;
+
+    /** Downstream ramp exponent for presentation-only motion broadening. */
+    readonly motionWidthRampExponent: number;
+
+    /** Seconds for residual broadening to settle after movement decreases. */
+    readonly motionWidthRecoverySeconds: number;
+
     /** Contrast applied while converting grayscale mask values to Water colour. */
     readonly flowTextureContrast: number;
 
@@ -224,6 +267,25 @@ export const DEFAULT_WATER_VFX_DEFINITION: WaterVfxDefinition = {
         minimumFlowTextureSpeed: 300,
         maximumFlowTextureSpeed: 900,
         centerlineSmoothingPasses: 2,
+
+        // 8I-6C.1: preserve packet-history bends instead of flattening them.
+        trajectoryMinimumAgeStepSeconds: 0.025,
+        trajectoryTurnRetentionRadians: 0.035,
+        trajectorySmoothingPasses: 1,
+
+        // 8I-6C.2: rotation dominates; translation is deliberately secondary.
+        motionAngularVelocityForFullIntensity: 5.5,
+        motionLinearVelocityForFullIntensity: 650,
+        motionAngularWeight: 0.82,
+        motionLinearWeight: 0.18,
+        motionDisturbanceBoost: 1.35,
+
+        // 8I-6C.3: source stays tight; full movement adds at most 10 px
+        // near the downstream end, then settles smoothly back to baseline.
+        motionMaximumWidthBonus: 10,
+        motionWidthRampExponent: 1.65,
+        motionWidthRecoverySeconds: 0.25,
+
         flowTextureContrast: 1.10,
         flowTextureStrength: 1.0,
 
@@ -251,9 +313,9 @@ export const DEFAULT_WATER_VFX_DEFINITION: WaterVfxDefinition = {
         centerWaveFrequency: 0.022,
         centerWaveSpeed: 1.55,
 
-        edgeWaveAmplitude: 0,
-        edgeWaveFrequency: 0.022,
-        edgeWaveSpeed: 1.35,
+        edgeWaveAmplitude: 1.8,
+        edgeWaveFrequency: 0.018,
+        edgeWaveSpeed: 1.15,
 
         // 8I-6B.5A: stronger, slower body-volume changes at gameplay zoom.
         widthSquishAmplitude: 0,
@@ -261,9 +323,9 @@ export const DEFAULT_WATER_VFX_DEFINITION: WaterVfxDefinition = {
         widthSquishSpeed: 0.95,
 
         // Lower frequency and stronger asymmetry prevents parallel ribbon edges.
-        edgeIrregularityAmplitude: 0,
-        edgeIrregularityFrequency: 0.031,
-        edgeIrregularitySpeed: 1.55,
+        edgeIrregularityAmplitude: 0.65,
+        edgeIrregularityFrequency: 0.014,
+        edgeIrregularitySpeed: 0.95,
 
         movementSpreadScale: 18,
         maximumMovementSpread: 10,
