@@ -30,6 +30,7 @@ import {
  */
 export class AirborneWaterVisualizer {
     private readonly graphics = new Graphics();
+    private readonly hiddenSourceIds = new Set<string>();
 
     public constructor(
         private readonly airborneWaterSystem: AirborneWaterSystem,
@@ -43,6 +44,11 @@ export class AirborneWaterVisualizer {
 
     public getGraphics(): Graphics {
         return this.graphics;
+    }
+
+    public setSourceHidden(sourceId: string, hidden: boolean): void {
+        if (hidden) this.hiddenSourceIds.add(sourceId);
+        else this.hiddenSourceIds.delete(sourceId);
     }
 
     public update(): void {
@@ -66,6 +72,10 @@ export class AirborneWaterVisualizer {
                     packet:
                         Readonly<AirborneWaterPacket>,
                 ): void => {
+                    if (this.hiddenSourceIds.has(packet.getSourceId())) {
+                        return;
+                    }
+
                     if (
                         visibleCount >=
                         this.definition

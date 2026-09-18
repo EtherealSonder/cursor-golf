@@ -31,11 +31,16 @@ import {
     WaterStreamRenderer,
 } from "./WaterStreamRenderer";
 
+import {
+    SprinklerDropletRenderer,
+} from "./SprinklerDropletRenderer";
+
 /**
  * 8I-4 presentation-only composition root for shared Water VFX.
  *
- * 8I-4 intentionally has no gameplay emitter. Sprinkler, Hose, Ball splash,
- * ripple and Water/Fire presentation are connected in later 8I steps.
+ * 8I-5 keeps this composition root presentation-only. Sprinkler fluid ribbons,
+ * later Hose geometry, Ball splash, ripples and Water/Fire effects consume
+ * authoritative state without becoming simulation authority.
  */
 export class WaterVfxSystem {
     private readonly groundContainer = new Container();
@@ -44,6 +49,7 @@ export class WaterVfxSystem {
     private readonly textures: WaterVfxTextures;
     private readonly pool: WaterVfxPool;
     private readonly streamRenderer: WaterStreamRenderer;
+    private readonly sprinklerDropletRenderer: SprinklerDropletRenderer;
 
     private readonly definition: WaterVfxDefinition;
     private destroyed = false;
@@ -68,12 +74,18 @@ export class WaterVfxSystem {
                 definition.stream,
             );
 
+        this.sprinklerDropletRenderer =
+            new SprinklerDropletRenderer(
+                definition.sprinkler,
+            );
+
         /*
          * Continuous airborne Water geometry and secondary Water particles
          * share one presentation composition root, but remain independent.
          */
         this.airborneContainer.addChild(
             this.streamRenderer.getContainer(),
+            this.sprinklerDropletRenderer.getContainer(),
             this.pool.getContainer(),
         );
 
@@ -94,6 +106,14 @@ export class WaterVfxSystem {
 
     public getStreamRenderer(): WaterStreamRenderer {
         return this.streamRenderer;
+    }
+
+    public getSprinklerDropletRenderer(): SprinklerDropletRenderer {
+        return this.sprinklerDropletRenderer;
+    }
+
+    public getDefinition(): WaterVfxDefinition {
+        return this.definition;
     }
 
     public emitDroplet(
@@ -133,6 +153,8 @@ export class WaterVfxSystem {
             return;
         }
 
+        this.streamRenderer.update(deltaTime);
+        this.sprinklerDropletRenderer.update(deltaTime);
         this.pool.update(deltaTime);
     }
 
@@ -142,6 +164,7 @@ export class WaterVfxSystem {
         }
 
         this.streamRenderer.reset();
+        this.sprinklerDropletRenderer.reset();
         this.pool.reset();
     }
 
@@ -169,6 +192,7 @@ export class WaterVfxSystem {
         this.destroyed = true;
 
         this.streamRenderer.destroy();
+        this.sprinklerDropletRenderer.destroy();
         this.pool.destroy();
 
         WaterVfxTextureFactory.destroy(

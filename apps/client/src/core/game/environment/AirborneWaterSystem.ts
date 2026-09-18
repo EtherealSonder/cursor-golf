@@ -65,6 +65,30 @@ export interface AirborneWaterSweep {
     readonly endHeight: number;
 }
 
+
+/**
+ * Short-lived read-only presentation record for an authoritative airborne
+ * Water termination. It lets continuous Water VFX retain a stable endpoint
+ * even though the authoritative packet is removed immediately after impact.
+ */
+export interface AirborneWaterPresentationImpact {
+    readonly sourceId: string;
+    readonly emissionOrdinal: number;
+    readonly positionX: number;
+    readonly positionY: number;
+    readonly isStaticCollision: boolean;
+    readonly ageSeconds: number;
+}
+
+interface MutableAirborneWaterPresentationImpact {
+    readonly sourceId: string;
+    readonly emissionOrdinal: number;
+    readonly positionX: number;
+    readonly positionY: number;
+    readonly isStaticCollision: boolean;
+    ageSeconds: number;
+}
+
 /**
  * Authoritative transport system for Water that has left a source but has not
  * yet become standing Water.
@@ -94,6 +118,19 @@ export class AirborneWaterSystem {
      */
     private readonly impactMomentumRetentionByPacket =
         new WeakMap<AirborneWaterPacket, number>();
+
+    /** Presentation-only emission ordinal within one source pulse/sequence. */
+    private readonly emissionOrdinalByPacket =
+        new WeakMap<AirborneWaterPacket, number>();
+
+    /**
+     * Short-lived impact endpoints for presentation only. Authoritative packet
+     * removal, deposition and collision behavior remain unchanged.
+     */
+    private readonly recentPresentationImpacts:
+        MutableAirborneWaterPresentationImpact[] = [];
+
+    private static readonly PRESENTATION_IMPACT_RETENTION_SECONDS = 0.35;
 
     private simulationAccumulator = 0;
     private lastSubstepCount = 0;
@@ -139,10 +176,14 @@ export class AirborneWaterSystem {
         requests:
             readonly WaterEmissionRequest[],
     ): void {
+        const ordinalByPulse = new Map<string, number>();
         for (
             const request
             of requests
         ) {
+            const pulseKey = `${request.sourceId}:${request.sequence}`;
+            const emissionOrdinal = ordinalByPulse.get(pulseKey) ?? 0;
+            ordinalByPulse.set(pulseKey, emissionOrdinal + 1);
             this.totalRequestedWaterAmount +=
                 Math.max(
                     0,
@@ -227,6 +268,11 @@ export class AirborneWaterSystem {
                 impactMomentumRetention,
             );
 
+            this.emissionOrdinalByPacket.set(
+                packet,
+                emissionOrdinal,
+            );
+
             this.activePackets.push(
                 packet,
             );
@@ -244,6 +290,29 @@ export class AirborneWaterSystem {
     ): void {
         this.lastSubstepCount = 0;
         this.lastMovementSweeps.length = 0;
+
+        if (Number.isFinite(deltaTime) && deltaTime > 0) {
+            for (
+                let impactIndex = this.recentPresentationImpacts.length - 1;
+                impactIndex >= 0;
+                impactIndex -= 1
+            ) {
+                const presentationImpact =
+                    this.recentPresentationImpacts[impactIndex];
+
+                presentationImpact.ageSeconds += deltaTime;
+
+                if (
+                    presentationImpact.ageSeconds >
+                    AirborneWaterSystem.PRESENTATION_IMPACT_RETENTION_SECONDS
+                ) {
+                    this.recentPresentationImpacts.splice(
+                        impactIndex,
+                        1,
+                    );
+                }
+            }
+        }
 
         if (
             this.activePackets.length === 0 ||
@@ -415,6 +484,13 @@ export class AirborneWaterSystem {
                     staticHit,
                 );
 
+                this.recordPresentationImpact(
+                    packet,
+                    staticHit.positionX,
+                    staticHit.positionY,
+                    true,
+                );
+
                 this.activePackets.splice(
                     index,
                     1,
@@ -444,6 +520,13 @@ export class AirborneWaterSystem {
                 this.depositImpact(
                     packet,
                     impact,
+                );
+
+                this.recordPresentationImpact(
+                    packet,
+                    impact.positionX,
+                    impact.positionY,
+                    false,
                 );
 
                 this.activePackets.splice(
@@ -718,6 +801,62 @@ export class AirborneWaterSystem {
         }
     }
 
+    /**
+     * Read-only presentation traversal preserving which emission within a
+     * multi-nozzle pulse created each CURRENT packet. 8I-5 uses this only to
+     * associate Water with the correct Sprinkler nozzle. No VFX trajectory
+     * history is stored here, and this metadata never affects transport,
+     * collision, deposition, or Water quantity.
+     */
+    public forEachActivePacketWithEmissionOrdinal(
+        callback: (
+            packet: Readonly<AirborneWaterPacket>,
+            emissionOrdinal: number,
+        ) => void,
+    ): void {
+        for (const packet of this.activePackets) {
+            callback(
+                packet,
+                this.emissionOrdinalByPacket.get(packet) ?? 0,
+            );
+        }
+    }
+
+
+    /**
+     * Read-only recent authoritative endpoints for one source.
+     * Consumers must treat these records as transient presentation data.
+     */
+    public forEachRecentPresentationImpact(
+        sourceId: string,
+        callback: (
+            impact: Readonly<AirborneWaterPresentationImpact>,
+        ) => void,
+    ): void {
+        for (const impact of this.recentPresentationImpacts) {
+            if (impact.sourceId === sourceId) {
+                callback(impact);
+            }
+        }
+    }
+
+    private recordPresentationImpact(
+        packet: AirborneWaterPacket,
+        positionX: number,
+        positionY: number,
+        isStaticCollision: boolean,
+    ): void {
+        this.recentPresentationImpacts.push({
+            sourceId: packet.getSourceId(),
+            emissionOrdinal:
+                this.emissionOrdinalByPacket.get(packet) ?? 0,
+            positionX,
+            positionY,
+            isStaticCollision,
+            ageSeconds: 0,
+        });
+    }
+
     public getActivePacketCount(): number {
         return this.activePackets.length;
     }
@@ -765,6 +904,7 @@ export class AirborneWaterSystem {
     public reset(): void {
         this.activePackets.length = 0;
         this.lastMovementSweeps.length = 0;
+        this.recentPresentationImpacts.length = 0;
         this.simulationAccumulator = 0;
         this.lastSubstepCount = 0;
 

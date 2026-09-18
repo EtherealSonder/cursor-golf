@@ -130,6 +130,10 @@ import {
 } from "../water-vfx/WaterVfxSystem";
 
 import {
+    SprinklerWaterVfx,
+} from "../water-vfx/SprinklerWaterVfx";
+
+import {
     WaterDepositDebugController,
 } from "../debug/WaterDepositDebugController";
 
@@ -504,6 +508,11 @@ export class World {
     /** Phase 8I-4 shared presentation-only Water VFX foundation. */
     private waterVfxSystem:
         WaterVfxSystem | null =
+        null;
+
+    /** Phase 8I-5 production Sprinkler Water presentation. */
+    private sprinklerWaterVfx:
+        SprinklerWaterVfx | null =
         null;
 
     /** Phase 8C-8A interactive primary-button Water deposit tool. */
@@ -914,6 +923,8 @@ export class World {
 
         this.createSprinklerEntities();
 
+        this.createSprinklerWaterVfx();
+
         this.createHydrantHoseEntity();
 
         /*
@@ -1184,9 +1195,12 @@ export class World {
 
         this.airborneWaterVisualizer?.update();
 
+        this.sprinklerWaterVfx
+            ?.update(deltaTime);
+
         /*
-         * Phase 8I-4 shared Water presentation foundation.
-         * No gameplay emitter is connected yet.
+         * Phase 8I-5: advance presentation-only Water particles and the
+         * stable downstream material animation used by current-state Sprinkler ribbons.
          */
         this.waterVfxSystem
             ?.update(
@@ -1496,6 +1510,11 @@ export class World {
 
     public destroy():
         void {
+
+        this.sprinklerWaterVfx
+            ?.destroy();
+
+        this.sprinklerWaterVfx = null;
 
         this.airborneWaterVisualizer
             ?.destroy();
@@ -2528,6 +2547,26 @@ export class World {
                 );
 
             this.addEntity(sprinkler);
+        }
+    }
+
+
+    // -------------------------------------------------------
+    // Phase 8I-5 Production Sprinkler Water VFX
+    // -------------------------------------------------------
+
+    private createSprinklerWaterVfx(): void {
+        if (!this.waterVfxSystem) {
+            throw new Error("World requires WaterVfxSystem before Sprinkler Water VFX.");
+        }
+        this.sprinklerWaterVfx = new SprinklerWaterVfx(
+            this.sprinklers,
+            this.airborneWaterSystem,
+            this.waterVfxSystem,
+            this.waterVfxSystem.getDefinition().sprinkler,
+        );
+        for (const sprinkler of this.sprinklers) {
+            this.airborneWaterVisualizer?.setSourceHidden(sprinkler.getSourceId(), true);
         }
     }
 
