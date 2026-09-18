@@ -33,20 +33,22 @@ export interface WetSurfaceVisualDefinition {
     number;
 
     /**
-     * Radius, in EnvironmentField cells, used only for presentation smoothing.
-     * Gameplay continues to use authoritative unsmoothed moisture values.
+     * Radius, in EnvironmentField cells, used only by WetGroundRenderer when
+     * reconstructing the visual moisture field. Gameplay continues to use
+     * the authoritative unsmoothed EnvironmentField values.
      */
     readonly smoothingRadiusCells:
     number;
 
     /**
-     * Normalized alpha threshold used by the presentation-only GPU edge filter.
+     * Alpha threshold used by WetGroundShader to suppress very weak edge
+     * fragments after the CPU-side moisture reconstruction.
      */
     readonly edgeThreshold:
     number;
 
     /**
-     * Width of the smooth GPU transition around the wet-ground boundary.
+     * Soft transition width above edgeThreshold.
      */
     readonly edgeSoftness:
     number;
@@ -55,6 +57,14 @@ export interface WetSurfaceVisualDefinition {
     readonly WetSurfaceMaterialVisualDefinition[];
 }
 
+/*
+ * 8I-5B.1 wet-ground visual response recalibration.
+ *
+ * Simulation moisture remains authoritative and unchanged. Presentation uses
+ * a larger dead zone and response range, lower opacity, and a smaller
+ * reconstruction neighbourhood so low-level moisture does not immediately
+ * read as a dark painted patch.
+ */
 export const DEFAULT_WET_SURFACE_VISUAL_DEFINITION:
     WetSurfaceVisualDefinition = {
     enabled:
@@ -64,16 +74,16 @@ export const DEFAULT_WET_SURFACE_VISUAL_DEFINITION:
         1 / 10,
 
     minimumVisibleMoistureExcess:
-        0.0015,
+        0.015,
 
     fullVisualMoistureExcess:
-        0.025,
+        0.25,
 
     maximumAlpha:
-        0.62,
+        0.30,
 
     smoothingRadiusCells:
-        2,
+        1,
 
     edgeThreshold:
         0.08,
@@ -116,7 +126,8 @@ export function validateWetSurfaceVisualDefinition(
         !Number.isFinite(
             definition.refreshIntervalSeconds,
         ) ||
-        definition.refreshIntervalSeconds <= 0
+        definition.refreshIntervalSeconds <=
+        0
     ) {
         throw new Error(
             "Wet-ground refreshIntervalSeconds must be finite and positive.",
@@ -127,7 +138,8 @@ export function validateWetSurfaceVisualDefinition(
         !Number.isFinite(
             definition.minimumVisibleMoistureExcess,
         ) ||
-        definition.minimumVisibleMoistureExcess < 0
+        definition.minimumVisibleMoistureExcess <
+        0
     ) {
         throw new Error(
             "Wet-ground minimumVisibleMoistureExcess must be finite and non-negative.",
@@ -175,10 +187,10 @@ export function validateWetSurfaceVisualDefinition(
             definition.edgeThreshold,
         ) ||
         definition.edgeThreshold < 0 ||
-        definition.edgeThreshold >= 1
+        definition.edgeThreshold > 1
     ) {
         throw new Error(
-            "Wet-ground edgeThreshold must be finite and between zero inclusive and one exclusive.",
+            "Wet-ground edgeThreshold must be finite and between zero and one.",
         );
     }
 
@@ -190,7 +202,7 @@ export function validateWetSurfaceVisualDefinition(
         definition.edgeSoftness > 1
     ) {
         throw new Error(
-            "Wet-ground edgeSoftness must be finite, positive, and no greater than one.",
+            "Wet-ground edgeSoftness must be finite, positive, and at most one.",
         );
     }
 
@@ -219,8 +231,10 @@ export function validateWetSurfaceVisualDefinition(
             !Number.isInteger(
                 style.color,
             ) ||
-            style.color < 0x000000 ||
-            style.color > 0xFFFFFF
+            style.color <
+            0x000000 ||
+            style.color >
+            0xFFFFFF
         ) {
             throw new Error(
                 `Wet-ground visual color for '${style.surfaceType}' must be a valid 24-bit RGB integer.`,

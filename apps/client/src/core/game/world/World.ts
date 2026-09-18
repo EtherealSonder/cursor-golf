@@ -757,7 +757,6 @@ export class World {
         this.createCourse();
 
         this.createWetGroundRenderer();
-
         if (
             DEFAULT_FIRE_TEST_DEFINITION
                 .enabled
