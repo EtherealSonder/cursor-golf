@@ -30,6 +30,12 @@ export interface ScalarFieldContourBuildOptions {
     readonly maximumRow: number;
 
     readonly sampleValueByIndex: (index: number) => number;
+
+    /**
+     * Optional endpoint matching tolerance used while assembling closed loops.
+     * Existing callers keep the original cell-relative default.
+     */
+    readonly endpointQuantizationWorldUnits?: number;
 }
 
 /**
@@ -298,6 +304,7 @@ export class ScalarFieldContourBuilder {
         const quantization =
             Math.max(
                 1e-4,
+                options.endpointQuantizationWorldUnits ??
                 options.cellSize *
                 1e-4,
             );

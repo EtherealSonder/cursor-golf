@@ -35,6 +35,15 @@ export interface StandingWaterPresentationDefinition {
     readonly highlightSpacingCellsY: number;
     readonly highlightStrength: number;
 
+    /** 8I-8B.1 illustrated standing-Water contour controls. */
+    readonly contourThreshold: number;
+    readonly accentContourThreshold: number;
+    readonly contourSimplificationTolerance: number;
+    readonly contourSmoothingPasses: number;
+    readonly minimumContourArea: number;
+    readonly illustratedBodyAlpha: number;
+    readonly illustratedAccentAlpha: number;
+
     /**
      * Presentation refresh cadence only. Water simulation timing is unchanged.
      * 20 Hz is sufficient for standing Water while reducing CPU texture work.
@@ -64,9 +73,9 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
     enabled: true,
 
     palette: {
-        deepWater: 0x43a8d2,
-        baseWater: 0x55c3df,
-        lightWater: 0x79d7e9,
+        deepWater: 0x49c9ee,
+        baseWater: 0x49c9ee,
+        lightWater: 0x8fe7fa,
         waterHighlight: 0xeafbff,
         waterEdge: 0x47b5d5,
         waterFoam: 0xf5ffff,
@@ -81,17 +90,26 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
 
         minimumVisibleDepth: 0.0005,
         fullScaleDepth: 0.12,
-        edgeTransitionDepth: 0.003,
+        edgeTransitionDepth: 0.0015,
 
-        shallowAlpha: 0.95,
-        baseAlpha: 0.985,
-        deepAlpha: 1.0,
+        shallowAlpha: 0.92,
+        baseAlpha: 0.92,
+        deepAlpha: 0.92,
 
-        highlightsEnabled: true,
+        highlightsEnabled: false,
         highlightMinimumDepthFactor: 0.32,
         highlightSpacingCellsX: 20,
         highlightSpacingCellsY: 16,
         highlightStrength: 0.78,
+
+        // 8I-8B.1: Hose/Sprinkler material family, calm filled contours.
+        contourThreshold: 0.0015,
+        accentContourThreshold: 0.010,
+        contourSimplificationTolerance: 1.75,
+        contourSmoothingPasses: 2,
+        minimumContourArea: 28,
+        illustratedBodyAlpha: 0.99,
+        illustratedAccentAlpha: 0.22,
 
         refreshIntervalSeconds: 1 / 20,
 

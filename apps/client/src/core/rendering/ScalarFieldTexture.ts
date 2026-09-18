@@ -22,6 +22,15 @@ export interface ScalarFieldTextureDefinition {
 
     readonly minimumWorldY:
     number;
+
+    /**
+     * Presentation sampling policy. Existing users remain linear by default.
+     * Standing Water passes this explicitly so puddle edge behaviour is local
+     * and future phases can tune it without changing wet-ground rendering.
+     */
+    readonly scaleMode?:
+    "linear" |
+    "nearest";
 }
 
 /**
@@ -144,6 +153,7 @@ export class ScalarFieldTexture {
             };
 
         source.scaleMode =
+            definition.scaleMode ??
             "linear";
 
         this.sprite =

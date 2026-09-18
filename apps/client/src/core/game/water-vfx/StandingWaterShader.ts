@@ -11,45 +11,59 @@ export function getStandingWaterAlpha(
     depth: number,
     minimumVisibleDepth: number,
     edgeTransitionDepth: number,
-    fullScaleDepth: number,
+    _fullScaleDepth: number,
     shallowAlpha: number,
     baseAlpha: number,
     deepAlpha: number,
 ): number {
-    if (!Number.isFinite(depth) || depth <= minimumVisibleDepth) {
+    if (
+        !Number.isFinite(depth) ||
+        depth <= minimumVisibleDepth
+    ) {
         return 0;
     }
 
-    const minimum = Math.max(0, minimumVisibleDepth);
-    const bodyStartDepth = Math.max(minimum + 1e-6, edgeTransitionDepth);
-    const fullDepth = Math.max(bodyStartDepth + 1e-6, fullScaleDepth);
-
-    const shallow = clamp01(shallowAlpha);
-    const base = clamp01(baseAlpha);
-    const deep = clamp01(deepAlpha);
-
-    // Only the very narrow reconstructed boundary uses meaningful translucency.
-    if (depth < bodyStartDepth) {
-        const t = smooth01(
-            (depth - minimum) /
-            (bodyStartDepth - minimum),
+    const minimum =
+        Math.max(
+            0,
+            minimumVisibleDepth,
         );
 
-        return shallow * t;
+    const edgeEnd =
+        Math.max(
+            minimum + 1e-6,
+            edgeTransitionDepth,
+        );
+
+    /*
+     * 8I-8B illustrated puddle body.
+     *
+     * Depth no longer drives a long transparency ramp. Only the very narrow
+     * visibility transition is antialiased. Once Water is established, the
+     * body immediately settles to one stable near-opaque alpha.
+     */
+    const bodyAlpha =
+        clamp01(
+            (
+                clamp01(shallowAlpha) +
+                clamp01(baseAlpha) +
+                clamp01(deepAlpha)
+            ) /
+            3,
+        );
+
+    if (depth >= edgeEnd) {
+        return bodyAlpha;
     }
 
-    // The actual puddle body is already near opaque. Extra depth only makes
-    // the final approach to full opacity subtle.
-    const depthT = smooth01(
-        (depth - bodyStartDepth) /
-        (fullDepth - bodyStartDepth),
-    );
+    const coverage =
+        smooth01(
+            (depth - minimum) /
+            (edgeEnd - minimum),
+        );
 
-    if (depthT <= 0.5) {
-        return shallow + (base - shallow) * (depthT * 2);
-    }
-
-    return base + (deep - base) * ((depthT - 0.5) * 2);
+    return bodyAlpha *
+        coverage;
 }
 
 /**
