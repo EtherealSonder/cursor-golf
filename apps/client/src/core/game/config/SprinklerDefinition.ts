@@ -52,9 +52,10 @@ export const DEFAULT_SPRINKLER_DEFINITION: SprinklerDefinition = {
     nozzleRadius: 3.5,
     nozzleCount: 4,
 
-    emissionInterval: 0.12,
+    // 8I-7A: denser, faster fragmented jets while total Water/s stays fixed.
+    emissionInterval: 0.08,
     flowRate: 0.2,
-    launchSpeed: 420,
+    launchSpeed: 520,
     launchElevationRadians: Math.PI / 4,
     windResponse: 0.8,
     impactMomentumRetention:

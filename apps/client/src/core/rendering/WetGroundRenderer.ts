@@ -344,9 +344,24 @@ export class WetGroundRenderer {
                     radius,
                 );
 
-            const alpha =
+            const rawAlpha =
                 this.getAlphaForExcess(
                     smoothedExcess,
+                );
+
+            /*
+             * 8I-8A halo removal.
+             *
+             * Very weak colored texels are visually misleading once the
+             * scalar texture is linearly sampled: during drying they can read
+             * as a bright cyan perimeter around the darker wet interior.
+             * Remove only that presentation fringe. Moisture simulation,
+             * smoothing radius, wet/dry thresholds and SurfaceState remain
+             * untouched.
+             */
+            const alpha =
+                this.getHaloSafeAlpha(
+                    rawAlpha,
                 );
 
             if (
@@ -539,6 +554,37 @@ export class WetGroundRenderer {
             weightedExcess /
             totalWeight
         );
+    }
+
+    private getHaloSafeAlpha(
+        alpha:
+            number,
+    ): number {
+        if (
+            !Number.isFinite(alpha) ||
+            alpha <= 0
+        ) {
+            return 0;
+        }
+
+        const threshold =
+            Math.max(
+                0,
+                Math.min(
+                    this.definition.maximumAlpha,
+                    this.definition.edgeThreshold,
+                ),
+            );
+
+        if (alpha <= threshold) {
+            return 0;
+        }
+
+        /*
+         * Keep the established interior alpha unchanged. Only the tiny
+         * low-alpha tail below the visual edge threshold is removed.
+         */
+        return alpha;
     }
 
     private getAlphaForExcess(

@@ -85,11 +85,13 @@ export const DEFAULT_WET_SURFACE_VISUAL_DEFINITION:
     smoothingRadiusCells:
         1,
 
+    // 8I-8A: suppress the low-alpha fringe created by linear texture
+    // interpolation without changing the authoritative moisture footprint.
     edgeThreshold:
-        0.08,
+        0.055,
 
     edgeSoftness:
-        0.10,
+        0.025,
 
     materialStyles: [
         {

@@ -200,9 +200,28 @@ export interface HoseWaterVfxDefinition {
 export interface SprinklerWaterVfxDefinition {
     readonly enabled: boolean;
 
-    /** Production segmented spray mark. */
-    readonly dropletLength: number;
-    readonly dropletWidth: number;
+    /** 8I-7A fragmented-jet dimensions across authoritative packet flight. */
+    readonly nearDropletLength: number;
+    readonly middleDropletLength: number;
+    readonly farDropletLength: number;
+    readonly nearDropletWidth: number;
+    readonly middleDropletWidth: number;
+    readonly farDropletWidth: number;
+
+    /** Age boundaries for coherent jet -> broken segment -> terminal droplet. */
+    readonly nearStageEndAgeSeconds: number;
+    readonly middleStageEndAgeSeconds: number;
+    readonly terminalDropletStartAgeSeconds: number;
+
+    /** Taper and downstream breakup keep marks directional rather than capsule-like. */
+    readonly tailWidthFraction: number;
+    readonly noseWidthFraction: number;
+    readonly downstreamVariationMultiplier: number;
+
+    /** 8I-7A.1 deterministic per-packet variation without lateral jitter. */
+    readonly packetLengthVariation: number;
+    readonly packetWidthVariation: number;
+    readonly packetSpacingVariation: number;
     readonly bodyColor: number;
     readonly bodyAlpha: number;
     readonly highlightColor: number;
@@ -379,9 +398,27 @@ export const DEFAULT_WATER_VFX_DEFINITION: WaterVfxDefinition = {
     sprinkler: {
         enabled: true,
 
-        // Segmented sprinkler spray. These are independent marks, never a ribbon.
-        dropletLength: 13,
-        dropletWidth: 6.2,
+        // 8I-7A fragmented sprinkler jet. Independent authoritative packets
+        // read as coherent segments near the nozzle and progressively break up.
+        nearDropletLength: 25,
+        middleDropletLength: 19,
+        farDropletLength: 12,
+        nearDropletWidth: 6.4,
+        middleDropletWidth: 5.5,
+        farDropletWidth: 4.2,
+
+        nearStageEndAgeSeconds: 0.20,
+        middleStageEndAgeSeconds: 0.48,
+        terminalDropletStartAgeSeconds: 0.68,
+
+        tailWidthFraction: 0.58,
+        noseWidthFraction: 0.22,
+        downstreamVariationMultiplier: 1.65,
+
+        // 8I-7A.1: break stamped repetition while preserving radial precision.
+        packetLengthVariation: 0.13,
+        packetWidthVariation: 0.11,
+        packetSpacingVariation: 0.12,
         bodyColor: 0x49c9ee,
         bodyAlpha: 0.96,
         highlightColor: 0xe8fbff,

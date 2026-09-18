@@ -86,7 +86,7 @@ export class SprinklerWaterVfx {
 
                     if (
                         Math.abs(sequence) %
-                            stride !==
+                        stride !==
                         0
                     ) {
                         return;
@@ -95,26 +95,59 @@ export class SprinklerWaterVfx {
                     const sourceId =
                         packet.getSourceId();
 
+                    const packetSeed =
+                        this.hashSeed(
+                            sourceId,
+                            sequence,
+                            emissionOrdinal,
+                        );
+
+                    const velocityX =
+                        packet.getVelocityX();
+                    const velocityY =
+                        packet.getVelocityY();
+                    const speed =
+                        Math.hypot(
+                            velocityX,
+                            velocityY,
+                        );
+
+                    const directionX =
+                        speed > 0.0001
+                            ? velocityX / speed
+                            : 0;
+                    const directionY =
+                        speed > 0.0001
+                            ? velocityY / speed
+                            : 0;
+
+                    const spacingOffset =
+                        this.getSpacingOffset(
+                            packetSeed,
+                        );
+
                     renderer.setDroplet({
                         id:
                             `sprinkler:${sourceId}:` +
                             `${sequence}:${emissionOrdinal}`,
                         x:
-                            packet.getPositionX(),
+                            packet.getPositionX() +
+                            directionX *
+                            spacingOffset,
                         y:
-                            packet.getPositionY(),
-                        velocityX:
-                            packet.getVelocityX(),
-                        velocityY:
-                            packet.getVelocityY(),
+                            packet.getPositionY() +
+                            directionY *
+                            spacingOffset,
+                        velocityX,
+                        velocityY,
                         ageSeconds:
                             packet.getAge(),
-                        seed:
-                            this.hashSeed(
-                                sourceId,
-                                sequence,
-                                emissionOrdinal,
+                        flightProgress:
+                            this.getFlightProgress(
+                                packet.getAge(),
                             ),
+                        seed:
+                            packetSeed,
                     });
                 },
             );
@@ -154,6 +187,53 @@ export class SprinklerWaterVfx {
                     `sprinkler:${sprinkler.getSourceId()}:`,
                 );
         }
+    }
+
+    private getSpacingOffset(
+        seed: number,
+    ): number {
+        /*
+         * Presentation-only longitudinal spacing variation. No lateral
+         * displacement, angular jitter, packet timing, collision, or Water
+         * deposition is changed.
+         */
+        const raw =
+            Math.sin(
+                seed * 12.9898 +
+                78.233,
+            ) *
+            43758.5453;
+        const fractional =
+            raw -
+            Math.floor(raw);
+        const signed =
+            fractional * 2 - 1;
+
+        // 8I-7A uses 520 px/s and 0.08 s between pulses: ~41.6 px.
+        const nominalSpacing = 41.6;
+
+        return signed *
+            nominalSpacing *
+            this.definition.packetSpacingVariation;
+    }
+
+    private getFlightProgress(
+        ageSeconds: number,
+    ): number {
+        const terminalAge =
+            Math.max(
+                0.001,
+                this.definition
+                    .terminalDropletStartAgeSeconds,
+            );
+
+        return Math.max(
+            0,
+            Math.min(
+                1,
+                ageSeconds / terminalAge,
+            ),
+        );
     }
 
     private hashSeed(

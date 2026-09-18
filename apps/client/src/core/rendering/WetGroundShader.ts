@@ -43,7 +43,15 @@ export class WetGroundShader extends Filter {
                         uEdgeSoftness
                     );
 
-                float shaped =
+                /*
+                 * 8I-8A halo removal.
+                 *
+                 * Linear sampling is retained so the 8 px field grid stays
+                 * hidden, but weak interpolated alpha below the wet boundary
+                 * is discarded. The transition is intentionally narrow, and
+                 * fully covered pixels preserve their original source alpha.
+                 */
+                float coverage =
                     smoothstep(
                         lower,
                         upper,
@@ -52,11 +60,40 @@ export class WetGroundShader extends Filter {
 
                 float outputAlpha =
                     sourceAlpha *
-                    shaped;
+                    coverage;
+
+                if (
+                    sourceAlpha <= lower
+                ) {
+                    outputAlpha = 0.0;
+                }
+
+                /*
+                 * 8I-8A.1 premultiplied-alpha edge fix.
+                 *
+                 * Pixi's filter pipeline composites premultiplied color.
+                 * The previous shader reduced alpha with coverage while
+                 * leaving RGB untouched. At partially covered edge pixels
+                 * that makes RGB too strong for the new alpha and produces
+                 * the bright wet-ground rim visible while footprints shrink.
+                 *
+                 * Scale RGB by the same coverage used for alpha so the edge
+                 * remains correctly premultiplied.
+                 */
+                vec3 outputRgb =
+                    sampleColor.rgb *
+                    coverage;
+
+                if (
+                    sourceAlpha <= lower
+                ) {
+                    outputRgb =
+                        vec3(0.0);
+                }
 
                 gl_FragColor =
                     vec4(
-                        sampleColor.rgb,
+                        outputRgb,
                         outputAlpha
                     );
             }

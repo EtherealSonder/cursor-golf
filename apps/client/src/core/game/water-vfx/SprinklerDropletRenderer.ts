@@ -14,6 +14,7 @@ export interface SprinklerDropletPresentation {
     readonly velocityX: number;
     readonly velocityY: number;
     readonly ageSeconds: number;
+    readonly flightProgress: number;
     readonly seed: number;
 }
 
@@ -84,6 +85,11 @@ export class SprinklerDropletRenderer {
                 );
         }
 
+        this.drawSlot(
+            slot,
+            presentation,
+        );
+
         const fadeAlpha =
             this.getAgeAlpha(
                 presentation.ageSeconds,
@@ -93,15 +99,15 @@ export class SprinklerDropletRenderer {
             1 +
             Math.sin(
                 this.animationTime *
-                    this.definition.pulseSpeed +
+                this.definition.pulseSpeed +
                 presentation.seed * 0.731,
             ) *
-                this.definition.pulseAmplitude;
+            this.definition.pulseAmplitude;
 
         slot.container.alpha =
             this.clamp01(
                 fadeAlpha *
-                    this.definition.bodyAlpha,
+                this.definition.bodyAlpha,
             );
 
         slot.container.scale.set(
@@ -184,7 +190,6 @@ export class SprinklerDropletRenderer {
             seed,
         };
 
-        this.drawSlot(slot);
         this.slots.set(id, slot);
 
         return slot;
@@ -192,49 +197,198 @@ export class SprinklerDropletRenderer {
 
     private drawSlot(
         slot: DropletSlot,
+        presentation: SprinklerDropletPresentation,
     ): void {
+        const age =
+            Math.max(
+                0,
+                presentation.ageSeconds,
+            );
+
+        const nearEnd =
+            Math.max(
+                0.001,
+                this.definition.nearStageEndAgeSeconds,
+            );
+        const middleEnd =
+            Math.max(
+                nearEnd + 0.001,
+                this.definition.middleStageEndAgeSeconds,
+            );
+        const terminalStart =
+            Math.max(
+                middleEnd + 0.001,
+                this.definition.terminalDropletStartAgeSeconds,
+            );
+
+        let baseLength: number;
+        let baseWidth: number;
+        let downstreamProgress: number;
+
+        if (age <= nearEnd) {
+            const t =
+                this.clamp01(age / nearEnd);
+
+            baseLength =
+                this.lerp(
+                    this.definition.nearDropletLength,
+                    this.definition.middleDropletLength,
+                    t,
+                );
+            baseWidth =
+                this.lerp(
+                    this.definition.nearDropletWidth,
+                    this.definition.middleDropletWidth,
+                    t,
+                );
+            downstreamProgress = t * 0.33;
+        } else if (age <= middleEnd) {
+            const t =
+                this.clamp01(
+                    (age - nearEnd) /
+                    (middleEnd - nearEnd),
+                );
+
+            baseLength =
+                this.lerp(
+                    this.definition.middleDropletLength,
+                    this.definition.farDropletLength,
+                    t,
+                );
+            baseWidth =
+                this.lerp(
+                    this.definition.middleDropletWidth,
+                    this.definition.farDropletWidth,
+                    t,
+                );
+            downstreamProgress =
+                0.33 + t * 0.42;
+        } else {
+            const t =
+                this.clamp01(
+                    (age - middleEnd) /
+                    (terminalStart - middleEnd),
+                );
+
+            /*
+             * Far packets collapse toward compact droplets. They remain
+             * velocity-aligned until the final stage, preserving the sense
+             * of a fragmented pressurised jet rather than floating dots.
+             */
+            baseLength =
+                this.lerp(
+                    this.definition.farDropletLength,
+                    this.definition.farDropletWidth,
+                    t,
+                );
+            baseWidth =
+                this.lerp(
+                    this.definition.farDropletWidth,
+                    this.definition.farDropletWidth * 0.88,
+                    t,
+                );
+            downstreamProgress =
+                0.75 + t * 0.25;
+        }
+
+        const variationMultiplier =
+            this.lerp(
+                1,
+                this.definition.downstreamVariationMultiplier,
+                this.clamp01(downstreamProgress),
+            );
+
+        /*
+         * 8I-7A.1 gives each packet restrained deterministic individuality.
+         * The downstream stage progression remains authoritative and there
+         * is no positional or angular jitter in this renderer.
+         */
         const lengthScale =
             1 +
             this.signedVariation(
                 slot.seed + 11,
-                this.definition.lengthVariation,
+                this.definition.packetLengthVariation *
+                this.lerp(
+                    0.85,
+                    1,
+                    downstreamProgress,
+                ),
             );
 
         const widthScale =
             1 +
             this.signedVariation(
                 slot.seed + 19,
-                this.definition.widthVariation,
+                this.definition.packetWidthVariation *
+                this.lerp(
+                    0.85,
+                    1,
+                    downstreamProgress,
+                ),
             );
 
         const length =
             Math.max(
                 3,
-                this.definition.dropletLength *
-                    lengthScale,
+                baseLength * lengthScale,
             );
-
         const width =
             Math.max(
                 2,
-                this.definition.dropletWidth *
-                    widthScale,
+                baseWidth * widthScale,
+            );
+
+        const halfLength =
+            length * 0.5;
+        const tailHalfWidth =
+            width *
+            0.5 *
+            Math.max(
+                0.15,
+                this.definition.tailWidthFraction,
+            );
+        const shoulderHalfWidth =
+            width * 0.5;
+        const noseHalfWidth =
+            width *
+            0.5 *
+            Math.max(
+                0.05,
+                this.definition.noseWidthFraction,
             );
 
         /*
-         * The mark points along +X. Container rotation aligns it to the
-         * authoritative packet velocity. A rounded capsule reads as a small
-         * pressurised Water segment rather than the old debug circle.
+         * A tapered five-point silhouette replaces the old rounded capsule.
+         * The leading point faces +X and the Container rotates +X onto the
+         * authoritative packet velocity.
          */
         slot.body
             .clear()
-            .roundRect(
-                -length * 0.5,
-                -width * 0.5,
-                length,
-                width,
-                width * 0.5,
+            .moveTo(
+                -halfLength,
+                -tailHalfWidth,
             )
+            .lineTo(
+                halfLength * 0.42,
+                -shoulderHalfWidth,
+            )
+            .lineTo(
+                halfLength,
+                -noseHalfWidth,
+            )
+            .lineTo(
+                halfLength,
+                noseHalfWidth,
+            )
+            .lineTo(
+                halfLength * 0.42,
+                shoulderHalfWidth,
+            )
+            .lineTo(
+                -halfLength,
+                tailHalfWidth,
+            )
+            .closePath()
             .fill({
                 color:
                     this.definition.bodyColor,
@@ -245,27 +399,22 @@ export class SprinklerDropletRenderer {
             Math.max(
                 2,
                 length *
-                    this.definition
-                        .highlightLengthFraction,
+                this.definition
+                    .highlightLengthFraction,
             );
 
         const highlightWidth =
             Math.max(
                 1,
                 width *
-                    this.definition
-                        .highlightWidthFraction,
+                this.definition
+                    .highlightWidthFraction,
             );
 
-        /*
-         * Highlight sits toward the leading half of the moving mark. Because
-         * the whole droplet travels outward, flow direction remains obvious
-         * without needing a continuous animated stripe.
-         */
         slot.highlight
             .clear()
             .roundRect(
-                length * 0.05,
+                length * 0.02,
                 -highlightWidth * 0.5,
                 highlightLength,
                 highlightWidth,
@@ -277,6 +426,14 @@ export class SprinklerDropletRenderer {
                 alpha:
                     this.definition.highlightAlpha,
             });
+    }
+
+    private lerp(
+        a: number,
+        b: number,
+        t: number,
+    ): number {
+        return a + (b - a) * t;
     }
 
     private getAgeAlpha(
@@ -297,11 +454,11 @@ export class SprinklerDropletRenderer {
 
         return this.clamp01(
             1 -
-                (
-                    ageSeconds -
-                    this.definition.fadeStartAgeSeconds
-                ) /
-                    duration,
+            (
+                ageSeconds -
+                this.definition.fadeStartAgeSeconds
+            ) /
+            duration,
         );
     }
 
