@@ -946,6 +946,30 @@ export class WaterField {
         };
     }
 
+    /**
+     * Allocation-free public coordinate bridge for aligned query systems.
+     * Returns null when the world point lies outside the authoritative field.
+     */
+    public getGridIndexAtWorldPosition(
+        worldX: number,
+        worldY: number,
+    ): number | null {
+        const gridPosition =
+            this.worldToGrid(
+                worldX,
+                worldY,
+            );
+
+        if (!gridPosition) {
+            return null;
+        }
+
+        return this.gridToIndex(
+            gridPosition.gridX,
+            gridPosition.gridY,
+        );
+    }
+
     public getDepthAt(
         worldX: number,
         worldY: number,

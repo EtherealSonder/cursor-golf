@@ -44,8 +44,10 @@ import {
 } from "./WaterImpactVfxSystem";
 import { SprinklerImpactVfx } from "./SprinklerImpactVfx";
 import { HoseGroundImpactVfx } from "./HoseGroundImpactVfx";
-import { HoseGroundImpactVfxValidation } from "../debug/HoseGroundImpactVfxValidation";
-import { HoseObstacleImpactVfxValidation } from "../debug/HoseObstacleImpactVfxValidation";
+import { BallSplashVfx } from "./BallSplashVfx";
+import { BallWaterTraversalVfx } from "./BallWaterTraversalVfx";
+import type { Ball } from "../entities/Ball";
+import type { BallWaterSplashEvent } from "../physics/water/BallWaterSplashEvent";
 import type { Sprinkler } from "../entities/mechanisms/Sprinkler";
 import type { AirborneWaterSystem } from "../environment/AirborneWaterSystem";
 import type { HydrantHose } from "../entities/mechanisms/HydrantHose";
@@ -68,6 +70,8 @@ export class WaterVfxSystem {
     private readonly impactVfxSystem: WaterImpactVfxSystem;
     private readonly sprinklerImpactVfx: SprinklerImpactVfx;
     private readonly hoseGroundImpactVfx: HoseGroundImpactVfx;
+    private readonly ballSplashVfx: BallSplashVfx;
+    private readonly ballWaterTraversalVfx: BallWaterTraversalVfx;
 
     private readonly definition: WaterVfxDefinition;
     private destroyed = false;
@@ -110,8 +114,15 @@ export class WaterVfxSystem {
                 DEFAULT_WATER_IMPACT_VFX_DEFINITION,
             );
 
-        new HoseGroundImpactVfxValidation().run();
-        new HoseObstacleImpactVfxValidation().run();
+        this.ballSplashVfx =
+            new BallSplashVfx(
+                this.impactVfxSystem,
+            );
+
+        this.ballWaterTraversalVfx =
+            new BallWaterTraversalVfx(
+                this.impactVfxSystem,
+            );
 
         /*
          * Continuous airborne Water geometry and secondary Water particles
@@ -182,6 +193,46 @@ export class WaterVfxSystem {
         );
     }
 
+    public handleBallSplash(
+        event: Readonly<BallWaterSplashEvent>,
+    ): void {
+        if (
+            this.destroyed ||
+            !this.definition.enabled
+        ) {
+            return;
+        }
+
+        this.ballSplashVfx.consume(event);
+    }
+
+    public updateBallTraversal(ball: Ball): void {
+        if (
+            this.destroyed ||
+            !this.definition.enabled
+        ) {
+            return;
+        }
+
+        this.ballWaterTraversalVfx.update({
+            x: ball.getX(),
+            y: ball.getY(),
+            velocityX: ball.getVelocityX(),
+            velocityY: ball.getVelocityY(),
+            speed: ball.getSpeed(),
+            contactProfile:
+                ball.getWaterContactProfile(),
+        });
+    }
+
+    public resetBallWaterTraversal(): void {
+        if(!this.destroyed)this.ballWaterTraversalVfx.reset();
+    }
+
+    public getBallSplashVfx(): BallSplashVfx {
+        return this.ballSplashVfx;
+    }
+
     public getDefinition(): WaterVfxDefinition {
         return this.definition;
     }
@@ -227,6 +278,7 @@ export class WaterVfxSystem {
         this.sprinklerDropletRenderer.update(deltaTime);
         this.pool.update(deltaTime);
         this.impactVfxSystem.update(deltaTime);
+
     }
 
     public reset(): void {
@@ -240,6 +292,8 @@ export class WaterVfxSystem {
         this.impactVfxSystem.reset();
         this.sprinklerImpactVfx.reset();
         this.hoseGroundImpactVfx.reset();
+        this.ballSplashVfx.reset();
+        this.ballWaterTraversalVfx.reset();
     }
 
     public getActiveParticleCount(): number {

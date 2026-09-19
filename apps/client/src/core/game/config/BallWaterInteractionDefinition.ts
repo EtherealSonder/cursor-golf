@@ -11,8 +11,23 @@ export interface BallWaterInteractionDefinition {
      * Tuned in 8E-5 against the normal gameplay puddle range. */
     readonly fullEffectDepth: number;
 
-    /** Curve applied after depth normalization. Values > 1 soften shallow Water. */
+    /**
+     * Nonlinear depth-resistance exponent.
+     * Values > 1 soften shallow Water while deep Water ramps strongly.
+     */
     readonly depthExponent: number;
+
+    /**
+     * Nonlinear Ball-footprint coverage exponent.
+     * Values below 1 keep partial immersion mechanically noticeable.
+     */
+    readonly coverageExponent: number;
+
+    /** Semantic boundary between Shallow and Moderate normalized Water depth. */
+    readonly shallowUpperNormalizedDepth: number;
+
+    /** Semantic boundary between Moderate and Deep normalized Water depth. */
+    readonly moderateUpperNormalizedDepth: number;
 
     /** Maximum additive rolling-resistance contribution produced by Water. */
     readonly maximumAdditionalResistance: number;
@@ -28,8 +43,11 @@ export const DEFAULT_BALL_WATER_INTERACTION_DEFINITION:
     BallWaterInteractionDefinition = {
     minimumMeaningfulDepth: 0.012,
     fullEffectDepth: 0.12,
-    depthExponent: 1.15,
-    maximumAdditionalResistance: 1.10,
+    depthExponent: 1.20,
+    coverageExponent: 0.85,
+    shallowUpperNormalizedDepth: 0.25,
+    moderateUpperNormalizedDepth: 0.60,
+    maximumAdditionalResistance: 9.00,
     entrySmoothingRate: 18,
     exitSmoothingRate: 12,
 };
@@ -41,6 +59,9 @@ export function validateBallWaterInteractionDefinition(
         definition.minimumMeaningfulDepth,
         definition.fullEffectDepth,
         definition.depthExponent,
+        definition.coverageExponent,
+        definition.shallowUpperNormalizedDepth,
+        definition.moderateUpperNormalizedDepth,
         definition.maximumAdditionalResistance,
         definition.entrySmoothingRate,
         definition.exitSmoothingRate,
@@ -67,6 +88,25 @@ export function validateBallWaterInteractionDefinition(
     if (definition.depthExponent <= 0) {
         throw new Error(
             "BallWaterInteraction depthExponent must be greater than zero.",
+        );
+    }
+
+    if (definition.coverageExponent <= 0) {
+        throw new Error(
+            "BallWaterInteraction coverageExponent must be greater than zero.",
+        );
+    }
+
+    if (
+        definition.shallowUpperNormalizedDepth <= 0 ||
+        definition.shallowUpperNormalizedDepth >= 1 ||
+        definition.moderateUpperNormalizedDepth <= 0 ||
+        definition.moderateUpperNormalizedDepth >= 1 ||
+        definition.shallowUpperNormalizedDepth >=
+            definition.moderateUpperNormalizedDepth
+    ) {
+        throw new Error(
+            "BallWaterInteraction severity thresholds must satisfy 0 < shallow < moderate < 1.",
         );
     }
 

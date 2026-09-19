@@ -49,6 +49,38 @@ export interface WaterImpactVfxDefinition {
     readonly impactGravityY: number;
     readonly impactDragPerSecond: number;
 
+    /** 8I-7I deterministic, bounded organic variation. */
+    readonly fineLobeCountMin: number;
+    readonly fineLobeCountMax: number;
+    readonly fineDropletCountMin: number;
+    readonly fineDropletCountMax: number;
+    readonly mediumLobeCountMin: number;
+    readonly mediumLobeCountMax: number;
+    readonly mediumDropletCountMin: number;
+    readonly mediumDropletCountMax: number;
+    readonly heavyLobeCountMin: number;
+    readonly heavyLobeCountMax: number;
+    readonly heavyDropletCountMin: number;
+    readonly heavyDropletCountMax: number;
+    readonly lobeSpeedMin: number;
+    readonly lobeSpeedMax: number;
+    readonly dropletSpeedMin: number;
+    readonly dropletSpeedMax: number;
+    readonly lobeLifetimeMin: number;
+    readonly lobeLifetimeMax: number;
+    readonly dropletLifetimeMin: number;
+    readonly dropletLifetimeMax: number;
+    readonly impactPositionJitterX: number;
+    readonly impactPositionJitterY: number;
+    readonly rippleScaleVariation: number;
+    readonly disturbanceScaleVariation: number;
+
+    /** 8I-7J shared presentation-only emission safety budget. */
+    readonly impactMaximumCompositionsPerSecond: number;
+    readonly impactMaximumRipplesPerSecond: number;
+    readonly impactMinimumPresentationIntensity: number;
+    readonly impactEmissionBudgetWindowSeconds: number;
+
     /** Temporary isolated Fine/Medium/Heavy motion demo. */
     readonly debugShowImpactRuntimeDemo: boolean;
 
@@ -112,6 +144,45 @@ export const DEFAULT_WATER_IMPACT_VFX_DEFINITION:
     impactAirborneMaximumCapacity: 96,
     impactGravityY: 310,
     impactDragPerSecond: 1.4,
+
+    /*
+     * 8I-7I: variation is deliberately narrow. It removes visible repetition
+     * without changing the authored identity of Fine, Medium, or Heavy impacts.
+     */
+    fineLobeCountMin: 1,
+    fineLobeCountMax: 1,
+    fineDropletCountMin: 0,
+    fineDropletCountMax: 1,
+    mediumLobeCountMin: 2,
+    mediumLobeCountMax: 3,
+    mediumDropletCountMin: 2,
+    mediumDropletCountMax: 3,
+    heavyLobeCountMin: 4,
+    heavyLobeCountMax: 6,
+    heavyDropletCountMin: 3,
+    heavyDropletCountMax: 6,
+    lobeSpeedMin: 55,
+    lobeSpeedMax: 125,
+    dropletSpeedMin: 80,
+    dropletSpeedMax: 185,
+    lobeLifetimeMin: 0.28,
+    lobeLifetimeMax: 0.48,
+    dropletLifetimeMin: 0.22,
+    dropletLifetimeMax: 0.42,
+    impactPositionJitterX: 4,
+    impactPositionJitterY: 3,
+    rippleScaleVariation: 0.08,
+    disturbanceScaleVariation: 0.06,
+
+    /*
+     * Final presentation-only safety net after source-specific aggregation.
+     * These limits never alter authoritative impacts, deposition, or packets.
+     */
+    impactMaximumCompositionsPerSecond: 24,
+    impactMaximumRipplesPerSecond: 18,
+    impactMinimumPresentationIntensity: 0.04,
+    impactEmissionBudgetWindowSeconds: 1.0,
+
     debugShowImpactRuntimeDemo: false,
     sprinklerGroundEmissionCooldownSeconds: 0.12,
     sprinklerObstacleEmissionCooldownSeconds: 0.07,
@@ -206,6 +277,75 @@ export function validateWaterImpactVfxDefinition(
     }
     if (!Number.isFinite(definition.impactGravityY) || !Number.isFinite(definition.impactDragPerSecond) || definition.impactDragPerSecond < 0) {
         throw new Error("Water impact VFX motion tuning is invalid.");
+    }
+
+    const variationRanges = [
+        [definition.fineLobeCountMin, definition.fineLobeCountMax],
+        [definition.fineDropletCountMin, definition.fineDropletCountMax],
+        [definition.mediumLobeCountMin, definition.mediumLobeCountMax],
+        [definition.mediumDropletCountMin, definition.mediumDropletCountMax],
+        [definition.heavyLobeCountMin, definition.heavyLobeCountMax],
+        [definition.heavyDropletCountMin, definition.heavyDropletCountMax],
+        [definition.lobeSpeedMin, definition.lobeSpeedMax],
+        [definition.dropletSpeedMin, definition.dropletSpeedMax],
+        [definition.lobeLifetimeMin, definition.lobeLifetimeMax],
+        [definition.dropletLifetimeMin, definition.dropletLifetimeMax],
+    ] as const;
+    if (variationRanges.some(([minimum, maximum]) =>
+        !Number.isFinite(minimum) ||
+        !Number.isFinite(maximum) ||
+        minimum < 0 ||
+        maximum < minimum
+    )) {
+        throw new Error("Water impact VFX variation ranges are invalid.");
+    }
+
+    const countValues = [
+        definition.fineLobeCountMin,
+        definition.fineLobeCountMax,
+        definition.fineDropletCountMin,
+        definition.fineDropletCountMax,
+        definition.mediumLobeCountMin,
+        definition.mediumLobeCountMax,
+        definition.mediumDropletCountMin,
+        definition.mediumDropletCountMax,
+        definition.heavyLobeCountMin,
+        definition.heavyLobeCountMax,
+        definition.heavyDropletCountMin,
+        definition.heavyDropletCountMax,
+    ];
+    if (countValues.some((value) => !Number.isInteger(value))) {
+        throw new Error("Water impact VFX particle-count variation must use integers.");
+    }
+
+    const variationScalars = [
+        definition.impactPositionJitterX,
+        definition.impactPositionJitterY,
+        definition.rippleScaleVariation,
+        definition.disturbanceScaleVariation,
+    ];
+    if (variationScalars.some((value) => !Number.isFinite(value) || value < 0)) {
+        throw new Error("Water impact VFX variation scalars must be finite and >= 0.");
+    }
+
+    const budgetValues = [
+        definition.impactMaximumCompositionsPerSecond,
+        definition.impactMaximumRipplesPerSecond,
+        definition.impactMinimumPresentationIntensity,
+        definition.impactEmissionBudgetWindowSeconds,
+    ];
+    if (budgetValues.some((value) => !Number.isFinite(value) || value < 0)) {
+        throw new Error("Water impact VFX emission-budget tuning must be finite and >= 0.");
+    }
+    if (
+        !Number.isInteger(definition.impactMaximumCompositionsPerSecond) ||
+        !Number.isInteger(definition.impactMaximumRipplesPerSecond) ||
+        definition.impactMaximumCompositionsPerSecond <= 0 ||
+        definition.impactMaximumRipplesPerSecond <= 0 ||
+        definition.impactMinimumPresentationIntensity > 1 ||
+        definition.impactEmissionBudgetWindowSeconds <= 0
+    ) {
+        throw new Error("Water impact VFX emission-budget tuning is invalid.");
     }
 
     const sprinklerValues = [definition.sprinklerGroundEmissionCooldownSeconds, definition.sprinklerObstacleEmissionCooldownSeconds, definition.sprinklerGroundMinimumIntensity, definition.sprinklerGroundMaximumIntensity, definition.sprinklerObstacleMinimumIntensity, definition.sprinklerObstacleMaximumIntensity, definition.sprinklerGroundDirectionalBias, definition.sprinklerObstacleDirectionalBias];

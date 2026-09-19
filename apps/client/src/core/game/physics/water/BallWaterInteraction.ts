@@ -11,6 +11,11 @@ import type {
     BallWaterSample,
 } from "./BallWaterSampler";
 
+import {
+    BallWaterDepthSeverity,
+    classifyBallWaterDepthSeverity,
+} from "./BallWaterDepthSeverity";
+
 
 export type BallWaterTransitionState =
     | "dry"
@@ -46,6 +51,9 @@ export interface BallWaterInteractionState {
 
     readonly coveredFraction: number;
     readonly isMeaningfullyWet: boolean;
+
+    /** Shared semantic depth vocabulary for gameplay/presentation consumers. */
+    readonly depthSeverity: BallWaterDepthSeverity;
 
     /** Phase 8E-6 temporal state used by diagnostics and validation only. */
     readonly transitionState: BallWaterTransitionState;
@@ -149,9 +157,29 @@ export class BallWaterInteraction {
             this.definition.depthExponent,
         );
 
-        const targetExposure = this.clamp01(
-            curvedDepth * coveredFraction,
+        const coverageResponse = Math.pow(
+            coveredFraction,
+            this.definition.coverageExponent,
         );
+
+        const targetExposure = this.clamp01(
+            curvedDepth * coverageResponse,
+        );
+
+        const isMeaningfullyWet =
+            targetExposure > 0;
+
+        const depthSeverity =
+            classifyBallWaterDepthSeverity(
+                normalizedDepth,
+                isMeaningfullyWet,
+                {
+                    shallowUpperNormalizedDepth:
+                        this.definition.shallowUpperNormalizedDepth,
+                    moderateUpperNormalizedDepth:
+                        this.definition.moderateUpperNormalizedDepth,
+                },
+            );
 
         return {
             representativeWetDepth,
@@ -159,7 +187,8 @@ export class BallWaterInteraction {
             curvedDepth,
             targetExposure,
             coveredFraction,
-            isMeaningfullyWet: targetExposure > 0,
+            isMeaningfullyWet,
+            depthSeverity,
         };
     }
 

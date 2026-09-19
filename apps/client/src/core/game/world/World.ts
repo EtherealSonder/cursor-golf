@@ -101,6 +101,7 @@ import {
     WaterPerformanceProfiler,
 } from "../debug/WaterPerformanceProfiler";
 
+
 import {
     DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
 } from "../debug/WorldPerformanceProfileDefinition";
@@ -270,31 +271,6 @@ import {
 } from "../environment/WaterSourceSystem";
 
 import {
-    WaterImpactPresentationValidation,
-} from "../debug/WaterImpactPresentationValidation";
-
-import {
-    WaterImpactIntensityValidation,
-} from "../debug/WaterImpactIntensityValidation";
-
-import {
-    WaterImpactTextureValidation,
-} from "../debug/WaterImpactTextureValidation";
-
-import {
-    WaterImpactPrimitiveGallery,
-} from "../debug/WaterImpactPrimitiveGallery";
-
-import {
-    WaterImpactVfxRuntimeValidation,
-} from "../debug/WaterImpactVfxRuntimeValidation";
-import { SprinklerImpactVfxValidation } from "../debug/SprinklerImpactVfxValidation";
-
-import {
-    DEFAULT_WATER_IMPACT_VFX_DEFINITION,
-} from "../config/WaterImpactVfxDefinition";
-
-import {
     AirborneWaterSystem,
 } from "../environment/AirborneWaterSystem";
 
@@ -362,15 +338,6 @@ export class World {
     private performanceDebugOverlay:
         PerformanceDebugOverlay | null =
         null;
-
-    /** Phase 8I-7C.1 temporary screen-space primitive inspection gallery. */
-    private waterImpactPrimitiveGallery:
-        WaterImpactPrimitiveGallery | null =
-        null;
-
-    /** Phase 8I-7D isolated runtime/pool validation and temporary motion demo. */
-    private readonly waterImpactVfxRuntimeValidation =
-        new WaterImpactVfxRuntimeValidation();
     private readonly performanceMetrics:
         PerformanceMetrics =
         new PerformanceMetrics();
@@ -545,6 +512,11 @@ export class World {
     /** Phase 8I-4 shared presentation-only Water VFX foundation. */
     private waterVfxSystem:
         WaterVfxSystem | null =
+        null;
+
+    /** 8I-8A unsubscribe handle for the authoritative Ball splash event bridge. */
+    private ballWaterSplashVfxUnsubscribe:
+        (() => void) | null =
         null;
 
     /** Phase 8I-5 production Sprinkler Water presentation. */
@@ -748,19 +720,6 @@ export class World {
                 this.localWindSystem,
                 this.airborneWaterCollisionField,
             );
-
-        // Phase 8I-7A: isolated authoritative impact-contract validation.
-        new WaterImpactPresentationValidation()
-            .run();
-
-        // Phase 8I-7B: isolated shared impact-intensity validation.
-        new WaterImpactIntensityValidation()
-            .run();
-
-        // Phase 8I-7C: generated/cached shared Water impact primitive validation.
-        new WaterImpactTextureValidation()
-            .run();
-
         this.fireSourceSystem =
             new FireSourceSystem(
                 this.environmentField,
@@ -807,17 +766,8 @@ export class World {
         this.app.stage.addChild(
             this.screenOverlayContainer,
         );
-
-        if (DEFAULT_WATER_IMPACT_VFX_DEFINITION.debugShowPrimitiveGallery) {
-            this.waterImpactPrimitiveGallery =
-                new WaterImpactPrimitiveGallery();
-
-            this.screenOverlayContainer.addChild(
-                this.waterImpactPrimitiveGallery.getContainer(),
-            );
-        }
-
         this.createCourse();
+
 
         this.createWetGroundRenderer();
         if (
@@ -971,17 +921,7 @@ export class World {
         this.createStandingWaterRenderer();
 
         this.createWaterVfxSystem();
-
-        if (this.waterVfxSystem) {
-            this.waterImpactVfxRuntimeValidation.run(
-                this.waterVfxSystem.getImpactVfxSystem(),
-            );
-        }
-
-        // Phase 8I-7E: validate the real Sprinkler impact integration beside
-        // the shared impact runtime validation so its console block is visible.
-        new SprinklerImpactVfxValidation().run();
-
+        this.connectBallWaterSplashVfx();
         this.createWaterDepositDebugController();
 
         this.createAirborneWaterVisualizer();
@@ -1281,19 +1221,6 @@ export class World {
             ?.update(
                 deltaTime,
             );
-
-        if (
-            DEFAULT_WATER_IMPACT_VFX_DEFINITION.debugShowImpactRuntimeDemo &&
-            this.waterVfxSystem
-        ) {
-            this.waterImpactVfxRuntimeValidation.update(
-                deltaTime,
-                this.waterVfxSystem.getImpactVfxSystem(),
-                this.app.screen.width,
-                this.app.screen.height,
-            );
-        }
-
         this.waterPerformanceProfiler
             .measure(
                 "waterSimulation",
@@ -1399,6 +1326,16 @@ export class World {
                 this.entities[entityIndex]?.update(deltaTime);
             }
         });
+
+        if (
+            this.ball &&
+            this.waterVfxSystem
+        ) {
+            this.waterVfxSystem
+                .updateBallTraversal(
+                    this.ball,
+                );
+        }
         /*
                  * Phase 8B-12:
                  * HydrantHose has now advanced rope/nozzle physics and synchronized
@@ -1597,12 +1534,6 @@ export class World {
 
     public destroy():
         void {
-
-        this.waterImpactPrimitiveGallery
-            ?.destroy();
-
-        this.waterImpactPrimitiveGallery = null;
-
         this.sprinklerWaterVfx
             ?.destroy();
 
@@ -1617,6 +1548,12 @@ export class World {
             ?.destroy();
 
         this.airborneWaterVisualizer =
+            null;
+
+        this.ballWaterSplashVfxUnsubscribe
+            ?.();
+
+        this.ballWaterSplashVfxUnsubscribe =
             null;
 
         this.waterVfxSystem
@@ -1870,6 +1807,9 @@ export class World {
 
         this.ballTrail
             ?.reset();
+
+        this.waterVfxSystem
+            ?.resetBallWaterTraversal();
 
         this.hole
             ?.resetEntryState();
@@ -2590,6 +2530,26 @@ export class World {
                 this.waterVfxSystem
                     .getStreamRenderer()
                     .getContainer(),
+            );
+    }
+
+    private connectBallWaterSplashVfx():
+        void {
+
+        if (
+            this.ballWaterSplashVfxUnsubscribe
+        ) {
+            throw new Error(
+                "World Ball Water splash VFX listener is already connected.",
+            );
+        }
+
+        this.ballWaterSplashVfxUnsubscribe =
+            this.ball.addWaterSplashListener(
+                (event): void => {
+                    this.waterVfxSystem
+                        ?.handleBallSplash(event);
+                },
             );
     }
 

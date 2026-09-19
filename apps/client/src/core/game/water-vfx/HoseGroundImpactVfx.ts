@@ -150,7 +150,8 @@ export class HoseGroundImpactVfx {
                 this.definition.hoseGroundMaximumIntensity,
             );
 
-        impactVfxSystem.emitImpact({
+        const emitted =
+            impactVfxSystem.emitImpact({
             x: sample.x,
             y: sample.y,
             normalizedIntensity: intensity,
@@ -167,6 +168,14 @@ export class HoseGroundImpactVfx {
                     `hose-ground:${this.emissionSequence}`,
                 ),
         });
+
+        /*
+         * 8I-7J: if the shared presentation budget is saturated, retain the
+         * accumulated contact so a later visual emission can represent it.
+         */
+        if (emitted <= 0) {
+            return;
+        }
 
         this.emissionSequence += 1;
         this.emissionCooldownRemaining =
@@ -208,23 +217,28 @@ export class HoseGroundImpactVfx {
                 this.definition.hoseObstacleMaximumIntensity,
             );
 
-        impactVfxSystem.emitImpact({
-            x: sample.x,
-            y: sample.y,
-            normalizedIntensity: intensity,
-            tier: WaterImpactTier.Heavy,
-            directionX: motion.directionX,
-            directionY: motion.directionY,
-            speed: motion.speed,
-            directionalBias:
-                this.definition
-                    .hoseObstacleDirectionalBias,
-            seed:
-                this.makeSeed(
-                    sourceId,
-                    `hose-obstacle:${this.obstacleEmissionSequence}`,
-                ),
-        });
+        const emitted =
+            impactVfxSystem.emitImpact({
+                x: sample.x,
+                y: sample.y,
+                normalizedIntensity: intensity,
+                tier: WaterImpactTier.Heavy,
+                directionX: motion.directionX,
+                directionY: motion.directionY,
+                speed: motion.speed,
+                directionalBias:
+                    this.definition
+                        .hoseObstacleDirectionalBias,
+                seed:
+                    this.makeSeed(
+                        sourceId,
+                        `hose-obstacle:${this.obstacleEmissionSequence}`,
+                    ),
+            });
+
+        if (emitted <= 0) {
+            return;
+        }
 
         this.obstacleEmissionSequence += 1;
         this.obstacleEmissionCooldownRemaining =
@@ -235,7 +249,12 @@ export class HoseGroundImpactVfx {
             .consumeAccumulatedWater();
     }
 
-    public reset(): void {
+        /*
+     * 8I-7K lifecycle contract: reset clears deduplication, both independent
+     * contact accumulators, both cooldowns, and both deterministic emission
+     * sequences so no impact point survives a source/world lifecycle reset.
+     */
+public reset(): void {
         this.processedImpactKeys.clear();
         this.contactState.reset();
         this.obstacleContactState.reset();
@@ -342,6 +361,10 @@ export class HoseGroundImpactVfx {
         discriminator: string,
     ): number {
         let hash = 2166136261;
+        /*
+         * 8I-7I: source + contact kind + contact emission ordinal forms a
+         * stable deterministic seed for ground and obstacle compositions.
+         */
         const text =
             `${sourceId}:${discriminator}`;
 

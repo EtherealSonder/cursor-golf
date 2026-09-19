@@ -101,7 +101,7 @@ export const WET_GRASS_STATE_DEFINITION:
      * clearly perceptible during testing.
      */
     rollingResistanceMultiplier:
-        1.55,
+        4.00,
 
     durationSeconds:
         SURFACE_STATE_TIMERS_ENABLED

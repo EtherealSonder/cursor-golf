@@ -36,6 +36,13 @@ export class WaterImpactVfxPool {
     public getActiveCount(): number { return this.particles.reduce((n, p) => n + (p.isActive() ? 1 : 0), 0); }
     public getCapacity(): number { return this.particles.length; }
     public getMaximumCapacity(): number { return this.maximumCapacity; }
+    public getInactiveCount(): number { return this.particles.reduce((n,p)=>n+(!p.isActive()?1:0),0); }
+    public getAvailableCapacity(): number {
+        return this.getInactiveCount()+Math.max(0,this.maximumCapacity-this.particles.length);
+    }
+    public getActiveFraction(): number {
+        return this.maximumCapacity>0?this.getActiveCount()/this.maximumCapacity:0;
+    }
 
     public destroy(): void {
         for (const particle of this.particles) particle.destroy();

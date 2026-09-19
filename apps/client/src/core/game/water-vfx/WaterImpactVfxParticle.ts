@@ -25,6 +25,7 @@ export interface WaterImpactParticleActivation {
     readonly fadeStartFraction?: number;
     readonly rotation?: number;
     readonly angularVelocity?: number;
+    readonly tint?: number;
 }
 
 /** Presentation-only pooled primitive used by shared Water impact VFX. */
@@ -78,6 +79,7 @@ export class WaterImpactVfxParticle {
         this.sprite.rotation = a.rotation ?? 0;
         this.sprite.scale.set(this.startScaleX, this.startScaleY);
         this.sprite.alpha = this.maximumAlpha;
+        this.sprite.tint = a.tint ?? 0xffffff;
         this.sprite.visible = true;
     }
 
@@ -91,13 +93,15 @@ export class WaterImpactVfxParticle {
             return false;
         }
 
-        this.velocityY += this.gravityY * dt;
-        const drag = Math.exp(-this.dragPerSecond * dt);
-        this.velocityX *= drag;
-        this.velocityY *= drag;
-        this.sprite.x += this.velocityX * dt;
-        this.sprite.y += this.velocityY * dt;
-        this.sprite.rotation += this.angularVelocity * dt;
+        if (this.gravityY !== 0) this.velocityY += this.gravityY * dt;
+        if (this.dragPerSecond > 0) {
+            const drag = Math.exp(-this.dragPerSecond * dt);
+            this.velocityX *= drag; this.velocityY *= drag;
+        }
+        if (this.velocityX !== 0 || this.velocityY !== 0) {
+            this.sprite.x += this.velocityX * dt; this.sprite.y += this.velocityY * dt;
+        }
+        if (this.angularVelocity !== 0) this.sprite.rotation += this.angularVelocity * dt;
 
         const t = this.clamp01(this.age / this.lifetime);
         this.sprite.scale.set(
@@ -113,6 +117,7 @@ export class WaterImpactVfxParticle {
         this.active = false;
         this.sprite.visible = false;
         this.sprite.alpha = 0;
+        this.sprite.tint = 0xffffff;
         this.sprite.scale.set(0.001);
         this.velocityX = 0;
         this.velocityY = 0;

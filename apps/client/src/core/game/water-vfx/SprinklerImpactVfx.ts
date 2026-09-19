@@ -85,7 +85,12 @@ export class SprinklerImpactVfx {
         }
     }
 
-    public reset(): void {
+        /*
+     * 8I-7K lifecycle contract: reset is the hard cleanup boundary for all
+     * retained Sprinkler presentation state. No authoritative Water state is
+     * owned or modified here.
+     */
+public reset(): void {
         this.processedImpactKeys.clear();
         this.lastObstacleEmissionTimeBySource.clear();
         this.elapsedSeconds = 0;
@@ -174,6 +179,11 @@ export class SprinklerImpactVfx {
                     ? WaterImpactTier.Medium
                     : WaterImpactTier.Fine;
 
+        /*
+         * 8I-7J: the per-source obstacle cooldown remains the primary
+         * Sprinkler aggregator. The shared composer applies the final global
+         * presentation budget after this point.
+         */
         impactVfxSystem.emitImpact({
             x: impact.positionX,
             y: impact.positionY,
@@ -202,6 +212,10 @@ export class SprinklerImpactVfx {
     ): number {
         let hash = 2166136261;
 
+        /*
+         * 8I-7I: authoritative impact identity is the stable seed. This keeps
+         * replay/reset output deterministic while still varying each impact.
+         */
         const text =
             `${impact.sourceId}:${impact.sequence}:${impact.emissionOrdinal}`;
 

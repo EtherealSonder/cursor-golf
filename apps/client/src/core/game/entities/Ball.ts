@@ -96,6 +96,14 @@ import type {
     BallWaterSplashListener,
 } from "../physics/water/BallWaterSplashEvent";
 
+import type {
+    BallWaterContactProfile,
+} from "../physics/water/BallWaterContactProfile";
+
+import {
+    createBallWaterContactProfile,
+} from "../physics/water/BallWaterContactProfile";
+
 import {
     AssetLoader,
 } from "../../rendering/AssetLoader";
@@ -278,6 +286,14 @@ export class Ball extends Entity {
 
     private lastWaterInteractionState:
         BallWaterInteractionState | null = null;
+
+    /** 8I-8B.1/2 reusable authoritative standing-Water gameplay snapshot. */
+    private lastWaterContactProfile:
+        BallWaterContactProfile | null =
+        null;
+
+    /** Continuous meaningful Water contact for future hazard/gameplay consumers. */
+    private currentStandingWaterContactTime = 0;
 
     private lastWaterSample:
         BallWaterSample | null = null;
@@ -1650,6 +1666,8 @@ export class Ball extends Entity {
         if (!this.ballWaterSampler || !this.ballWaterInteraction) {
             this.lastWaterSample = null;
             this.lastWaterInteractionState = null;
+            this.lastWaterContactProfile = null;
+            this.currentStandingWaterContactTime = 0;
             this.lastStandingWaterDebugSnapshot = null;
             return null;
         }
@@ -1684,7 +1702,20 @@ export class Ball extends Entity {
 
         if (state.targetExposure > 0 && sample.coveredFraction > 0) {
             this.standingWaterContactTime += deltaTime;
+            this.currentStandingWaterContactTime += deltaTime;
+        } else {
+            this.currentStandingWaterContactTime = 0;
         }
+
+        this.lastWaterContactProfile =
+            createBallWaterContactProfile(
+                state.representativeWetDepth,
+                state.normalizedDepth,
+                state.coveredFraction,
+                state.smoothedExposure,
+                state.depthSeverity,
+                this.currentStandingWaterContactTime,
+            );
 
         this.peakWaterAverageDepth = Math.max(this.peakWaterAverageDepth, sample.averageDepth);
         this.peakWaterMaximumDepth = Math.max(this.peakWaterMaximumDepth, sample.maximumDepth);
@@ -1743,6 +1774,8 @@ export class Ball extends Entity {
         this.lastSplashEvent = null;
         this.lastWaterSample = null;
         this.lastWaterInteractionState = null;
+        this.lastWaterContactProfile = null;
+        this.currentStandingWaterContactTime = 0;
         this.lastStandingWaterDebugSnapshot = null;
         this.peakWaterAverageDepth = 0;
         this.peakWaterMaximumDepth = 0;
@@ -1770,6 +1803,10 @@ export class Ball extends Entity {
 
     public getStandingWaterInteractionState(): BallWaterInteractionState | null {
         return this.lastWaterInteractionState;
+    }
+
+    public getWaterContactProfile(): BallWaterContactProfile | null {
+        return this.lastWaterContactProfile;
     }
 
     public getStandingWaterDebugSnapshot(): BallStandingWaterDebugSnapshot | null {
@@ -3164,7 +3201,7 @@ export class Ball extends Entity {
                 .toFixed(
                     2,
                 ),
-            "px/s²",
+            "px/sÂ²",
         );
 
         console.log(
