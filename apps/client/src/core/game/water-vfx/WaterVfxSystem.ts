@@ -35,6 +35,21 @@ import {
     SprinklerDropletRenderer,
 } from "./SprinklerDropletRenderer";
 
+import {
+    DEFAULT_WATER_IMPACT_VFX_DEFINITION,
+} from "../config/WaterImpactVfxDefinition";
+
+import {
+    WaterImpactVfxSystem,
+} from "./WaterImpactVfxSystem";
+import { SprinklerImpactVfx } from "./SprinklerImpactVfx";
+import { HoseGroundImpactVfx } from "./HoseGroundImpactVfx";
+import { HoseGroundImpactVfxValidation } from "../debug/HoseGroundImpactVfxValidation";
+import { HoseObstacleImpactVfxValidation } from "../debug/HoseObstacleImpactVfxValidation";
+import type { Sprinkler } from "../entities/mechanisms/Sprinkler";
+import type { AirborneWaterSystem } from "../environment/AirborneWaterSystem";
+import type { HydrantHose } from "../entities/mechanisms/HydrantHose";
+
 /**
  * 8I-4 presentation-only composition root for shared Water VFX.
  *
@@ -50,6 +65,9 @@ export class WaterVfxSystem {
     private readonly pool: WaterVfxPool;
     private readonly streamRenderer: WaterStreamRenderer;
     private readonly sprinklerDropletRenderer: SprinklerDropletRenderer;
+    private readonly impactVfxSystem: WaterImpactVfxSystem;
+    private readonly sprinklerImpactVfx: SprinklerImpactVfx;
+    private readonly hoseGroundImpactVfx: HoseGroundImpactVfx;
 
     private readonly definition: WaterVfxDefinition;
     private destroyed = false;
@@ -79,14 +97,35 @@ export class WaterVfxSystem {
                 definition.sprinkler,
             );
 
+        this.impactVfxSystem =
+            new WaterImpactVfxSystem(
+                WaterVfxTextureFactory.getImpactTextureSet(
+                    DEFAULT_WATER_IMPACT_VFX_DEFINITION,
+                ),
+                DEFAULT_WATER_IMPACT_VFX_DEFINITION,
+            );
+        this.sprinklerImpactVfx = new SprinklerImpactVfx(DEFAULT_WATER_IMPACT_VFX_DEFINITION);
+        this.hoseGroundImpactVfx =
+            new HoseGroundImpactVfx(
+                DEFAULT_WATER_IMPACT_VFX_DEFINITION,
+            );
+
+        new HoseGroundImpactVfxValidation().run();
+        new HoseObstacleImpactVfxValidation().run();
+
         /*
          * Continuous airborne Water geometry and secondary Water particles
          * share one presentation composition root, but remain independent.
          */
+        this.groundContainer.addChild(
+            this.impactVfxSystem.getGroundContainer(),
+        );
+
         this.airborneContainer.addChild(
             this.streamRenderer.getContainer(),
             this.sprinklerDropletRenderer.getContainer(),
             this.pool.getContainer(),
+            this.impactVfxSystem.getAirborneContainer(),
         );
 
         this.groundContainer.visible =
@@ -110,6 +149,37 @@ export class WaterVfxSystem {
 
     public getSprinklerDropletRenderer(): SprinklerDropletRenderer {
         return this.sprinklerDropletRenderer;
+    }
+
+    public getImpactVfxSystem(): WaterImpactVfxSystem {
+        return this.impactVfxSystem;
+    }
+
+    public updateSprinklerImpacts(dt: number, sprinklers: readonly Sprinkler[], airborne: AirborneWaterSystem): void {
+        if (this.destroyed || !this.definition.enabled) return;
+        this.sprinklerImpactVfx.update(dt, sprinklers, airborne, this.impactVfxSystem);
+    }
+
+    public getSprinklerImpactVfx(): SprinklerImpactVfx { return this.sprinklerImpactVfx; }
+
+    public updateHoseGroundImpact(
+        dt: number,
+        hose: HydrantHose,
+        airborne: AirborneWaterSystem,
+    ): void {
+        if (
+            this.destroyed ||
+            !this.definition.enabled
+        ) {
+            return;
+        }
+
+        this.hoseGroundImpactVfx.update(
+            dt,
+            hose,
+            airborne,
+            this.impactVfxSystem,
+        );
     }
 
     public getDefinition(): WaterVfxDefinition {
@@ -156,6 +226,7 @@ export class WaterVfxSystem {
         this.streamRenderer.update(deltaTime);
         this.sprinklerDropletRenderer.update(deltaTime);
         this.pool.update(deltaTime);
+        this.impactVfxSystem.update(deltaTime);
     }
 
     public reset(): void {
@@ -166,6 +237,9 @@ export class WaterVfxSystem {
         this.streamRenderer.reset();
         this.sprinklerDropletRenderer.reset();
         this.pool.reset();
+        this.impactVfxSystem.reset();
+        this.sprinklerImpactVfx.reset();
+        this.hoseGroundImpactVfx.reset();
     }
 
     public getActiveParticleCount(): number {
@@ -194,6 +268,7 @@ export class WaterVfxSystem {
         this.streamRenderer.destroy();
         this.sprinklerDropletRenderer.destroy();
         this.pool.destroy();
+        this.impactVfxSystem.destroy();
 
         WaterVfxTextureFactory.destroy(
             this.textures,

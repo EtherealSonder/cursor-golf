@@ -270,6 +270,31 @@ import {
 } from "../environment/WaterSourceSystem";
 
 import {
+    WaterImpactPresentationValidation,
+} from "../debug/WaterImpactPresentationValidation";
+
+import {
+    WaterImpactIntensityValidation,
+} from "../debug/WaterImpactIntensityValidation";
+
+import {
+    WaterImpactTextureValidation,
+} from "../debug/WaterImpactTextureValidation";
+
+import {
+    WaterImpactPrimitiveGallery,
+} from "../debug/WaterImpactPrimitiveGallery";
+
+import {
+    WaterImpactVfxRuntimeValidation,
+} from "../debug/WaterImpactVfxRuntimeValidation";
+import { SprinklerImpactVfxValidation } from "../debug/SprinklerImpactVfxValidation";
+
+import {
+    DEFAULT_WATER_IMPACT_VFX_DEFINITION,
+} from "../config/WaterImpactVfxDefinition";
+
+import {
     AirborneWaterSystem,
 } from "../environment/AirborneWaterSystem";
 
@@ -337,6 +362,15 @@ export class World {
     private performanceDebugOverlay:
         PerformanceDebugOverlay | null =
         null;
+
+    /** Phase 8I-7C.1 temporary screen-space primitive inspection gallery. */
+    private waterImpactPrimitiveGallery:
+        WaterImpactPrimitiveGallery | null =
+        null;
+
+    /** Phase 8I-7D isolated runtime/pool validation and temporary motion demo. */
+    private readonly waterImpactVfxRuntimeValidation =
+        new WaterImpactVfxRuntimeValidation();
     private readonly performanceMetrics:
         PerformanceMetrics =
         new PerformanceMetrics();
@@ -715,6 +749,18 @@ export class World {
                 this.airborneWaterCollisionField,
             );
 
+        // Phase 8I-7A: isolated authoritative impact-contract validation.
+        new WaterImpactPresentationValidation()
+            .run();
+
+        // Phase 8I-7B: isolated shared impact-intensity validation.
+        new WaterImpactIntensityValidation()
+            .run();
+
+        // Phase 8I-7C: generated/cached shared Water impact primitive validation.
+        new WaterImpactTextureValidation()
+            .run();
+
         this.fireSourceSystem =
             new FireSourceSystem(
                 this.environmentField,
@@ -761,6 +807,15 @@ export class World {
         this.app.stage.addChild(
             this.screenOverlayContainer,
         );
+
+        if (DEFAULT_WATER_IMPACT_VFX_DEFINITION.debugShowPrimitiveGallery) {
+            this.waterImpactPrimitiveGallery =
+                new WaterImpactPrimitiveGallery();
+
+            this.screenOverlayContainer.addChild(
+                this.waterImpactPrimitiveGallery.getContainer(),
+            );
+        }
 
         this.createCourse();
 
@@ -916,6 +971,16 @@ export class World {
         this.createStandingWaterRenderer();
 
         this.createWaterVfxSystem();
+
+        if (this.waterVfxSystem) {
+            this.waterImpactVfxRuntimeValidation.run(
+                this.waterVfxSystem.getImpactVfxSystem(),
+            );
+        }
+
+        // Phase 8I-7E: validate the real Sprinkler impact integration beside
+        // the shared impact runtime validation so its console block is visible.
+        new SprinklerImpactVfxValidation().run();
 
         this.createWaterDepositDebugController();
 
@@ -1197,6 +1262,7 @@ export class World {
         this.waterPerformanceProfiler.measure("sprinklerWaterVfx", (): void => {
             this.sprinklerWaterVfx?.update(deltaTime);
         });
+        this.waterVfxSystem?.updateSprinklerImpacts(deltaTime, this.sprinklers, this.airborneWaterSystem);
         if (this.sprinklerWaterVfx) {
             this.waterPerformanceProfiler.recordSprinklerDeepProfileDetails(
                 this.sprinklerWaterVfx.getPerformanceDetails(),
@@ -1215,6 +1281,18 @@ export class World {
             ?.update(
                 deltaTime,
             );
+
+        if (
+            DEFAULT_WATER_IMPACT_VFX_DEFINITION.debugShowImpactRuntimeDemo &&
+            this.waterVfxSystem
+        ) {
+            this.waterImpactVfxRuntimeValidation.update(
+                deltaTime,
+                this.waterVfxSystem.getImpactVfxSystem(),
+                this.app.screen.width,
+                this.app.screen.height,
+            );
+        }
 
         this.waterPerformanceProfiler
             .measure(
@@ -1519,6 +1597,11 @@ export class World {
 
     public destroy():
         void {
+
+        this.waterImpactPrimitiveGallery
+            ?.destroy();
+
+        this.waterImpactPrimitiveGallery = null;
 
         this.sprinklerWaterVfx
             ?.destroy();

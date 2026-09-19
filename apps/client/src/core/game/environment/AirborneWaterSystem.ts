@@ -74,8 +74,12 @@ export interface AirborneWaterSweep {
 export interface AirborneWaterPresentationImpact {
     readonly sourceId: string;
     readonly emissionOrdinal: number;
+    readonly sequence: number;
     readonly positionX: number;
     readonly positionY: number;
+    readonly velocityX: number;
+    readonly velocityY: number;
+    readonly waterAmount: number;
     readonly isStaticCollision: boolean;
     readonly ageSeconds: number;
 }
@@ -83,8 +87,12 @@ export interface AirborneWaterPresentationImpact {
 interface MutableAirborneWaterPresentationImpact {
     readonly sourceId: string;
     readonly emissionOrdinal: number;
+    readonly sequence: number;
     readonly positionX: number;
     readonly positionY: number;
+    readonly velocityX: number;
+    readonly velocityY: number;
+    readonly waterAmount: number;
     readonly isStaticCollision: boolean;
     ageSeconds: number;
 }
@@ -850,8 +858,12 @@ export class AirborneWaterSystem {
             sourceId: packet.getSourceId(),
             emissionOrdinal:
                 this.emissionOrdinalByPacket.get(packet) ?? 0,
+            sequence: packet.getSequence(),
             positionX,
             positionY,
+            velocityX: packet.getVelocityX(),
+            velocityY: packet.getVelocityY(),
+            waterAmount: packet.getWaterAmount(),
             isStaticCollision,
             ageSeconds: 0,
         });

@@ -51,6 +51,18 @@ export class HoseWaterVfx {
                 .getStreamRenderer();
 
         if (
+            Number.isFinite(deltaTime) &&
+            deltaTime > 0
+        ) {
+            this.waterVfxSystem
+                .updateHoseGroundImpact(
+                    deltaTime,
+                    this.hose,
+                    this.airborneWaterSystem,
+                );
+        }
+
+        if (
             !this.definition.enabled ||
             !Number.isFinite(deltaTime) ||
             deltaTime <= 0
