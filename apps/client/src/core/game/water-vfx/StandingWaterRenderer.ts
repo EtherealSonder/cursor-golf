@@ -24,7 +24,7 @@ import {
 } from "./StandingWaterContourBuilder";
 
 /**
- * 8I-8B.1 production illustrated standing-Water renderer.
+ * 8I-8B.2A production illustrated standing-Water renderer.
  *
  * WaterField remains authoritative. The renderer reconstructs smooth closed
  * presentation contours from the sparse depth field and fills those contours
@@ -379,18 +379,49 @@ export class StandingWaterRenderer {
                         ),
         };
 
-        const contourOptions = {
-            simplificationTolerance:
-                standingWater
-                    .contourSimplificationTolerance,
+        const bodyContourOptions = {
+            simplificationTolerance: standingWater.contourSimplificationTolerance,
+            smoothingPasses: standingWater.contourSmoothingPasses,
+            smoothingStrength: standingWater.contourSmoothingStrength,
+            cornerPreservation: standingWater.contourCornerPreservation,
+            minimumArea: standingWater.minimumContourArea,
 
-            smoothingPasses:
-                standingWater
-                    .contourSmoothingPasses,
+            lobeDeformation: {
+                enabled: standingWater.organicLobesEnabled,
+                primaryLobeCount: standingWater.bodyLobeCount,
+                primaryAmplitudeWorldUnits:
+                    standingWater.bodyLobeAmplitudeCells *
+                    this.cellSize,
+                secondaryAmplitudeWorldUnits:
+                    standingWater.bodySecondaryLobeAmplitudeCells *
+                    this.cellSize,
+                seedOffset: 0.73,
+            },
+        };
 
-            minimumArea:
-                standingWater
-                    .minimumContourArea,
+        // Independently reconstructed from its own depth threshold.
+        const accentContourOptions = {
+            simplificationTolerance: standingWater.accentContourSimplificationTolerance,
+            smoothingPasses: standingWater.accentContourSmoothingPasses,
+            smoothingStrength: standingWater.accentContourSmoothingStrength,
+            cornerPreservation: standingWater.accentContourCornerPreservation,
+            minimumArea: standingWater.minimumAccentContourArea,
+
+            /*
+             * Deliberately different frequency/amplitude/phase from the body.
+             * The light region therefore cannot read as a scaled inset copy.
+             */
+            lobeDeformation: {
+                enabled: standingWater.organicLobesEnabled,
+                primaryLobeCount: standingWater.accentLobeCount,
+                primaryAmplitudeWorldUnits:
+                    standingWater.accentLobeAmplitudeCells *
+                    this.cellSize,
+                secondaryAmplitudeWorldUnits:
+                    standingWater.accentSecondaryLobeAmplitudeCells *
+                    this.cellSize,
+                seedOffset: 2.41,
+            },
         };
 
         const bodyContours =
@@ -402,7 +433,7 @@ export class StandingWaterRenderer {
                             standingWater
                                 .contourThreshold,
                     },
-                    contourOptions,
+                    bodyContourOptions,
                 );
 
         const accentContours =
@@ -414,34 +445,101 @@ export class StandingWaterRenderer {
                             standingWater
                                 .accentContourThreshold,
                     },
-                    {
-                        ...contourOptions,
-
-                        /*
-                         * Small accent islands are intentionally suppressed.
-                         * The light layer should read as broad calm Water mass,
-                         * not depth speckles.
-                         */
-                        minimumArea:
-                            standingWater
-                                .minimumContourArea *
-                            2.5,
-                    },
+                    accentContourOptions,
                 );
 
-        this.drawContours(
-            this.bodyGraphics,
-            bodyContours,
-            this.definition
-                .palette
-                .baseWater,
-            standingWater
-                .illustratedBodyAlpha,
-        );
+        /*
+         * 8I-8B.3 presentation hierarchy.
+         *
+         * Trace regions remain invisible as standing-Water geometry so the
+         * existing wet-ground presentation can carry those tiny deposits.
+         * Small/shallow regions receive a restrained body only. Full body
+         * opacity and the secondary light-water region are reserved for
+         * established connected puddles.
+         */
+        const visibleBodyContours =
+            bodyContours.filter(
+                (contour) =>
+                    contour.area >
+                    standingWater.traceMaximumArea,
+            );
+
+        for (
+            let contourIndex = 0;
+            contourIndex < visibleBodyContours.length;
+            contourIndex += 1
+        ) {
+            const contour =
+                visibleBodyContours[contourIndex];
+
+            const established =
+                contour.area >=
+                standingWater.establishedPuddleMinimumArea &&
+                contour.peakDepth >=
+                standingWater.establishedPuddleMinimumPeakDepth;
+
+            const bodyAlpha =
+                established
+                    ? standingWater.illustratedBodyAlpha
+                    : standingWater.smallPuddleAlpha;
+
+            this.drawContours(
+                this.bodyGraphics,
+                [contour],
+                this.definition.palette.baseWater,
+                bodyAlpha,
+            );
+        }
+
+        /*
+         * Accent contours are independently reconstructed, but they may only
+         * appear when they sit inside a substantial/deep established body.
+         * This prevents tiny deposits from becoming two-tone cyan markers.
+         */
+        const eligibleAccentContours =
+            accentContours.filter(
+                (accentContour) => {
+                    if (
+                        accentContour.area <
+                        standingWater.minimumAccentContourArea
+                    ) {
+                        return false;
+                    }
+
+                    for (
+                        let bodyIndex = 0;
+                        bodyIndex < bodyContours.length;
+                        bodyIndex += 1
+                    ) {
+                        const bodyContour =
+                            bodyContours[bodyIndex];
+
+                        if (
+                            bodyContour.area <
+                            standingWater.accentMinimumBodyArea ||
+                            bodyContour.peakDepth <
+                            standingWater.accentMinimumPeakDepth
+                        ) {
+                            continue;
+                        }
+
+                        if (
+                            this.isContourCentroidInside(
+                                accentContour.points,
+                                bodyContour.points,
+                            )
+                        ) {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                },
+            );
 
         this.drawContours(
             this.accentGraphics,
-            accentContours,
+            eligibleAccentContours,
             this.definition
                 .palette
                 .lightWater,
@@ -458,6 +556,72 @@ export class StandingWaterRenderer {
             );
     }
 
+    private isContourCentroidInside(
+        innerPoints:
+            readonly {
+                readonly x: number;
+                readonly y: number;
+            }[],
+
+        outerPoints:
+            readonly {
+                readonly x: number;
+                readonly y: number;
+            }[],
+    ): boolean {
+        if (
+            innerPoints.length < 3 ||
+            outerPoints.length < 3
+        ) {
+            return false;
+        }
+
+        let x = 0;
+        let y = 0;
+
+        for (
+            let index = 0;
+            index < innerPoints.length;
+            index += 1
+        ) {
+            x += innerPoints[index].x;
+            y += innerPoints[index].y;
+        }
+
+        x /= innerPoints.length;
+        y /= innerPoints.length;
+
+        let inside = false;
+
+        for (
+            let currentIndex = 0, previousIndex = outerPoints.length - 1;
+            currentIndex < outerPoints.length;
+            previousIndex = currentIndex, currentIndex += 1
+        ) {
+            const current =
+                outerPoints[currentIndex];
+            const previous =
+                outerPoints[previousIndex];
+
+            const crosses =
+                (current.y > y) !==
+                (previous.y > y) &&
+                x <
+                (
+                    (previous.x - current.x) *
+                    (y - current.y) /
+                    (previous.y - current.y) +
+                    current.x
+                );
+
+            if (crosses) {
+                inside = !inside;
+            }
+        }
+
+        return inside;
+    }
+
     private drawContours(
         graphics:
             Graphics,
@@ -465,12 +629,12 @@ export class StandingWaterRenderer {
         contours:
             readonly {
                 readonly points:
-                    readonly {
-                        readonly x:
-                            number;
-                        readonly y:
-                            number;
-                    }[];
+                readonly {
+                    readonly x:
+                    number;
+                    readonly y:
+                    number;
+                }[];
             }[],
 
         color:
