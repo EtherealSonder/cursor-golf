@@ -102,10 +102,6 @@ import {
 } from "../debug/WaterPerformanceProfiler";
 
 import {
-    WaterPerformanceOverlay,
-} from "../debug/WaterPerformanceOverlay";
-
-import {
     DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
 } from "../debug/WorldPerformanceProfileDefinition";
 
@@ -317,6 +313,10 @@ import {
     WetGroundRenderer,
 } from "../../rendering/WetGroundRenderer";
 
+import {
+    ContourRefreshScheduler,
+} from "../../rendering/ContourRefreshScheduler";
+
 export class World {
 
     private readonly app:
@@ -347,9 +347,8 @@ export class World {
             DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
         );
 
-    private waterPerformanceOverlay:
-        WaterPerformanceOverlay | null =
-        null;
+    private readonly contourRefreshScheduler =
+        new ContourRefreshScheduler();
 
     private activePerformanceBenchmark:
         PerformanceBenchmarkDefinition | null =
@@ -803,13 +802,6 @@ export class World {
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
-        if (
-            this.waterPerformanceProfiler
-                .isOverlayEnabled()
-        ) {
-            this.createWaterPerformanceOverlay();
-        }
-
         ScalarFieldTexture
             .setPerformanceProfiler(
                 this.waterPerformanceProfiler,
@@ -1125,12 +1117,6 @@ export class World {
                 viewportHeight,
             );
 
-        this.waterPerformanceOverlay
-            ?.setViewportSize(
-                viewportWidth,
-                viewportHeight,
-            );
-
     }
 
     public updateCamera(
@@ -1155,6 +1141,9 @@ export class World {
     ): void {
 
         this.waterPerformanceProfiler
+            .beginFrame();
+
+        this.contourRefreshScheduler
             .beginFrame();
 
         this.waterPerformanceProfiler.measure("surface", (): void => {
@@ -1205,11 +1194,18 @@ export class World {
 
         this.airborneWaterVisualizer?.update();
 
-        this.sprinklerWaterVfx
-            ?.update(deltaTime);
+        this.waterPerformanceProfiler.measure("sprinklerWaterVfx", (): void => {
+            this.sprinklerWaterVfx?.update(deltaTime);
+        });
+        if (this.sprinklerWaterVfx) {
+            this.waterPerformanceProfiler.recordSprinklerDeepProfileDetails(
+                this.sprinklerWaterVfx.getPerformanceDetails(),
+            );
+        }
 
-        this.hoseWaterVfx
-            ?.update(deltaTime);
+        this.waterPerformanceProfiler.measure("hoseWaterVfx", (): void => {
+            this.hoseWaterVfx?.update(deltaTime);
+        });
 
         /*
          * Phase 8I-5: advance presentation-only Water particles and the
@@ -1509,16 +1505,16 @@ export class World {
                 );
         });
 
+        this.waterPerformanceProfiler.setGlobalWaterCounts(
+            this.airborneWaterSystem.getActivePacketCount(),
+            this.environmentField.getTrackedMoistureIndices().length,
+        );
+
         this.waterPerformanceProfiler
             .endFrame(
                 deltaTime,
             );
 
-        this.waterPerformanceOverlay
-            ?.update(
-                this.waterPerformanceProfiler
-                    .getSnapshot(),
-            );
     }
 
     public destroy():
@@ -1705,12 +1701,6 @@ export class World {
             ?.destroy();
 
         this.performanceDebugOverlay =
-            null;
-
-        this.waterPerformanceOverlay
-            ?.destroy();
-
-        this.waterPerformanceOverlay =
             null;
 
         ScalarFieldTexture
@@ -2452,6 +2442,7 @@ export class World {
                 this.waterField,
                 undefined,
                 this.waterPerformanceProfiler,
+                this.contourRefreshScheduler,
             );
 
         this.presentationLayers
@@ -3826,6 +3817,9 @@ export class World {
             new WetGroundRenderer(
                 this.environmentField,
                 this.surfaceSystem,
+                undefined,
+                this.waterPerformanceProfiler,
+                this.contourRefreshScheduler,
             );
 
         /*
@@ -3907,35 +3901,6 @@ export class World {
         this.screenOverlayContainer
             .addChild(
                 this.performanceDebugOverlay
-                    .getContainer(),
-            );
-    }
-
-    private createWaterPerformanceOverlay():
-        void {
-
-        if (
-            this.waterPerformanceOverlay
-        ) {
-            throw new Error(
-                "World Water performance overlay has already been created.",
-            );
-        }
-
-        this.waterPerformanceOverlay =
-            new WaterPerformanceOverlay();
-
-        this.waterPerformanceOverlay
-            .setViewportSize(
-                this.camera
-                    .getViewportWidth(),
-                this.camera
-                    .getViewportHeight(),
-            );
-
-        this.screenOverlayContainer
-            .addChild(
-                this.waterPerformanceOverlay
                     .getContainer(),
             );
     }

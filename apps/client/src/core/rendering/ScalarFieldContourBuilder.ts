@@ -1,3 +1,4 @@
+import { ScalarFieldActiveBounds } from "./ScalarFieldActiveBounds";
 export interface ScalarFieldPoint {
     readonly x: number;
     readonly y: number;
@@ -10,6 +11,33 @@ export interface ScalarFieldSegment {
 
 export interface ScalarFieldContourLoop {
     readonly points: readonly ScalarFieldPoint[];
+}
+
+
+export interface StandingContourPostDeepProfile {
+    readonly totalMilliseconds:number; readonly scalarMilliseconds:number;
+    readonly postProcessMilliseconds:number; readonly peakDepthMilliseconds:number;
+    readonly rawLoops:number; readonly acceptedLoops:number;
+    readonly rawVertices:number; readonly finalVertices:number;
+}
+export interface WetContourPostDeepProfile {
+    readonly totalMilliseconds:number; readonly scalarMilliseconds:number;
+    readonly postProcessMilliseconds:number; readonly rawLoops:number;
+    readonly acceptedLoops:number; readonly rawVertices:number; readonly finalVertices:number;
+}
+export interface ScalarFieldContourDeepProfile {
+    readonly totalMilliseconds: number;
+    readonly segmentBuildMilliseconds: number;
+    readonly keyAndAdjacencyMilliseconds: number;
+    readonly stitchingMilliseconds: number;
+    readonly candidateCells: number;
+    readonly cellsScanned: number;
+    readonly scanReductionPercent: number;
+    readonly activeSamples: number;
+    readonly activeContourCells: number;
+    readonly segmentsGenerated: number;
+    readonly loopsGenerated: number;
+    readonly rawVertices: number;
 }
 
 export interface ScalarFieldContourBuildOptions {
@@ -50,32 +78,71 @@ export interface ScalarFieldContourBuildOptions {
  * depth-based alpha and use these interpolated contours as the smooth edge.
  */
 export class ScalarFieldContourBuilder {
+    private static lastDeepProfile: ScalarFieldContourDeepProfile = {
+        totalMilliseconds: 0,
+        segmentBuildMilliseconds: 0,
+        keyAndAdjacencyMilliseconds: 0,
+        stitchingMilliseconds: 0,
+        candidateCells: 0,
+        cellsScanned: 0,
+        scanReductionPercent: 0,
+        activeSamples: 0,
+        activeContourCells: 0,
+        segmentsGenerated: 0,
+        loopsGenerated: 0,
+        rawVertices: 0,
+    };
+
+    public static getLastDeepProfile(): ScalarFieldContourDeepProfile {
+        return ScalarFieldContourBuilder.lastDeepProfile;
+    }
+
+    private static lastCandidateCells = 0;
+    private static lastScannedCells = 0;
+    private static lastActiveSamples = 0;
+
+    private static lastStandingPostProfile:StandingContourPostDeepProfile|null=null;
+    private static lastWetPostProfile:WetContourPostDeepProfile|null=null;
+    public static recordStandingPostProfile(p:StandingContourPostDeepProfile):void{this.lastStandingPostProfile=p;}
+    public static recordWetPostProfile(p:WetContourPostDeepProfile):void{this.lastWetPostProfile=p;}
+    public static getLastStandingPostProfile():StandingContourPostDeepProfile|null{return this.lastStandingPostProfile;}
+    public static getLastWetPostProfile():WetContourPostDeepProfile|null{return this.lastWetPostProfile;}
+
     public static buildSegments(
         options: ScalarFieldContourBuildOptions,
     ): readonly ScalarFieldSegment[] {
         ScalarFieldContourBuilder.validate(options);
 
-        const minColumn = Math.max(
-            0,
-            Math.min(options.columnCount - 1, options.minimumColumn),
-        );
+        const activeBounds =
+            ScalarFieldActiveBounds.find({
+                columnCount: options.columnCount,
+                rowCount: options.rowCount,
+                minimumColumn: options.minimumColumn,
+                maximumColumn: options.maximumColumn,
+                minimumRow: options.minimumRow,
+                maximumRow: options.maximumRow,
+                isoLevel: options.isoLevel,
+                paddingCells: 1,
+                sampleValueByIndex: options.sampleValueByIndex,
+            });
 
-        const maxColumn = Math.max(
-            0,
-            Math.min(options.columnCount - 1, options.maximumColumn),
-        );
+        const minColumn = activeBounds.minimumColumn;
+        const maxColumn = activeBounds.maximumColumn;
+        const minRow = activeBounds.minimumRow;
+        const maxRow = activeBounds.maximumRow;
 
-        const minRow = Math.max(
-            0,
-            Math.min(options.rowCount - 1, options.minimumRow),
-        );
-
-        const maxRow = Math.max(
-            0,
-            Math.min(options.rowCount - 1, options.maximumRow),
-        );
+        ScalarFieldContourBuilder.lastCandidateCells =
+            activeBounds.candidateCells;
+        ScalarFieldContourBuilder.lastActiveSamples =
+            activeBounds.activeSamples;
+        ScalarFieldContourBuilder.lastScannedCells =
+            activeBounds.hasActiveSamples
+                ? Math.max(0, maxColumn - minColumn) *
+                  Math.max(0, maxRow - minRow)
+                : 0;
 
         if (
+            !activeBounds.hasActiveSamples ||
             maxColumn <= minColumn ||
             maxRow <= minRow
         ) {
@@ -84,39 +151,43 @@ export class ScalarFieldContourBuilder {
 
         const segments: ScalarFieldSegment[] = [];
 
+        const width = maxColumn - minColumn + 1;
+        let topValues = new Float64Array(width);
+        let bottomValues = new Float64Array(width);
+
+        const fillRow = (
+            target: Float64Array,
+            row: number,
+        ): void => {
+            const rowOffset =
+                row * options.columnCount +
+                minColumn;
+
+            for (let offset = 0; offset < width; offset += 1) {
+                const sampled =
+                    options.sampleValueByIndex(
+                        rowOffset + offset,
+                    );
+
+                target[offset] =
+                    ScalarFieldContourBuilder.safeSample(
+                        sampled,
+                    );
+            }
+        };
+
+        fillRow(topValues, minRow);
+
         for (let row = minRow; row < maxRow; row += 1) {
+            fillRow(bottomValues, row + 1);
+
             for (let column = minColumn; column < maxColumn; column += 1) {
-                const topLeftIndex =
-                    row * options.columnCount + column;
+                const offset = column - minColumn;
 
-                const topRightIndex =
-                    topLeftIndex + 1;
-
-                const bottomLeftIndex =
-                    topLeftIndex + options.columnCount;
-
-                const bottomRightIndex =
-                    bottomLeftIndex + 1;
-
-                const topLeft =
-                    ScalarFieldContourBuilder.safeSample(
-                        options.sampleValueByIndex(topLeftIndex),
-                    );
-
-                const topRight =
-                    ScalarFieldContourBuilder.safeSample(
-                        options.sampleValueByIndex(topRightIndex),
-                    );
-
-                const bottomRight =
-                    ScalarFieldContourBuilder.safeSample(
-                        options.sampleValueByIndex(bottomRightIndex),
-                    );
-
-                const bottomLeft =
-                    ScalarFieldContourBuilder.safeSample(
-                        options.sampleValueByIndex(bottomLeftIndex),
-                    );
+                const topLeft = topValues[offset];
+                const topRight = topValues[offset + 1];
+                const bottomLeft = bottomValues[offset];
+                const bottomRight = bottomValues[offset + 1];
 
                 let caseIndex = 0;
 
@@ -211,64 +282,54 @@ export class ScalarFieldContourBuilder {
                         bottomLeft
                     ) * 0.25;
 
-                const push = (
-                    start: ScalarFieldPoint,
-                    end: ScalarFieldPoint,
-                ): void => {
-                    segments.push({
-                        start,
-                        end,
-                    });
-                };
-
                 switch (caseIndex) {
                     case 1:
                     case 14:
-                        push(left, top);
+                        segments.push({ start: left, end: top });
                         break;
 
                     case 2:
                     case 13:
-                        push(top, right);
+                        segments.push({ start: top, end: right });
                         break;
 
                     case 3:
                     case 12:
-                        push(left, right);
+                        segments.push({ start: left, end: right });
                         break;
 
                     case 4:
                     case 11:
-                        push(right, bottom);
+                        segments.push({ start: right, end: bottom });
                         break;
 
                     case 5:
                         if (center >= options.isoLevel) {
-                            push(top, right);
-                            push(bottom, left);
+                            segments.push({ start: top, end: right });
+                            segments.push({ start: bottom, end: left });
                         } else {
-                            push(left, top);
-                            push(right, bottom);
+                            segments.push({ start: left, end: top });
+                            segments.push({ start: right, end: bottom });
                         }
                         break;
 
                     case 6:
                     case 9:
-                        push(top, bottom);
+                        segments.push({ start: top, end: bottom });
                         break;
 
                     case 7:
                     case 8:
-                        push(left, bottom);
+                        segments.push({ start: left, end: bottom });
                         break;
 
                     case 10:
                         if (center >= options.isoLevel) {
-                            push(left, top);
-                            push(right, bottom);
+                            segments.push({ start: left, end: top });
+                            segments.push({ start: right, end: bottom });
                         } else {
-                            push(top, right);
-                            push(bottom, left);
+                            segments.push({ start: top, end: right });
+                            segments.push({ start: bottom, end: left });
                         }
                         break;
 
@@ -276,6 +337,10 @@ export class ScalarFieldContourBuilder {
                         break;
                 }
             }
+
+            const previousTop = topValues;
+            topValues = bottomValues;
+            bottomValues = previousTop;
         }
 
         return segments;
@@ -291,13 +356,44 @@ export class ScalarFieldContourBuilder {
     public static buildLoops(
         options: ScalarFieldContourBuildOptions,
     ): readonly ScalarFieldContourLoop[] {
+        const totalStartedAt = performance.now();
+        const segmentStartedAt = totalStartedAt;
         const segments =
             ScalarFieldContourBuilder
                 .buildSegments(
                     options,
                 );
+        const segmentBuildMilliseconds =
+            performance.now() - segmentStartedAt;
 
         if (segments.length === 0) {
+            const candidateCells =
+                ScalarFieldContourBuilder.lastCandidateCells;
+            const cellsScanned =
+                ScalarFieldContourBuilder.lastScannedCells;
+
+            ScalarFieldContourBuilder.lastDeepProfile = {
+                totalMilliseconds: performance.now() - totalStartedAt,
+                segmentBuildMilliseconds,
+                keyAndAdjacencyMilliseconds: 0,
+                stitchingMilliseconds: 0,
+                candidateCells,
+                cellsScanned,
+                scanReductionPercent:
+                    candidateCells > 0
+                        ? Math.max(
+                            0,
+                            (1 - cellsScanned / candidateCells) * 100,
+                        )
+                        : 0,
+                activeSamples:
+                    ScalarFieldContourBuilder.lastActiveSamples,
+                activeContourCells: 0,
+                segmentsGenerated: 0,
+                loopsGenerated: 0,
+                rawVertices: 0,
+            };
+
             return [];
         }
 
@@ -327,11 +423,22 @@ export class ScalarFieldContourBuilder {
             return `${x},${y}`;
         };
 
+        const adjacencyStartedAt = performance.now();
         const adjacency =
             new Map<
                 string,
                 number[]
             >();
+
+        /*
+         * 8I-9B.4: endpoint quantization/string construction was repeated
+         * several times while stitching. Cache both endpoint keys once per
+         * segment so loop assembly reuses them without changing topology.
+         */
+        const startKeys: string[] =
+            new Array(segments.length);
+        const endKeys: string[] =
+            new Array(segments.length);
 
         for (
             let index = 0;
@@ -350,6 +457,9 @@ export class ScalarFieldContourBuilder {
                 keyForPoint(
                     segment.end,
                 );
+
+            startKeys[index] = startKey;
+            endKeys[index] = endKey;
 
             const startList =
                 adjacency.get(
@@ -383,6 +493,10 @@ export class ScalarFieldContourBuilder {
                 );
             }
         }
+
+        const keyAndAdjacencyMilliseconds =
+            performance.now() - adjacencyStartedAt;
+        const stitchingStartedAt = performance.now();
 
         const consumed =
             new Uint8Array(
@@ -422,14 +536,10 @@ export class ScalarFieldContourBuilder {
                 ];
 
             const startKey =
-                keyForPoint(
-                    seed.start,
-                );
+                startKeys[seedIndex];
 
             let currentKey =
-                keyForPoint(
-                    seed.end,
-                );
+                endKeys[seedIndex];
 
             let guard =
                 0;
@@ -488,12 +598,13 @@ export class ScalarFieldContourBuilder {
                     ];
 
                 const nextStartKey =
-                    keyForPoint(
-                        next.start,
-                    );
+                    startKeys[nextIndex];
+
+                const useEnd =
+                    nextStartKey === currentKey;
 
                 const nextPoint =
-                    nextStartKey === currentKey
+                    useEnd
                         ? next.end
                         : next.start;
 
@@ -502,9 +613,9 @@ export class ScalarFieldContourBuilder {
                 );
 
                 currentKey =
-                    keyForPoint(
-                        nextPoint,
-                    );
+                    useEnd
+                        ? endKeys[nextIndex]
+                        : startKeys[nextIndex];
             }
 
             if (
@@ -516,11 +627,7 @@ export class ScalarFieldContourBuilder {
                  * filling closes the shape itself, so omit a duplicate end.
                  */
                 if (
-                    keyForPoint(
-                        points[
-                        points.length - 1
-                        ],
-                    ) === startKey
+                    currentKey === startKey
                 ) {
                     points.pop();
                 }
@@ -534,6 +641,38 @@ export class ScalarFieldContourBuilder {
                 }
             }
         }
+
+        let rawVertices = 0;
+        for (let loopIndex = 0; loopIndex < loops.length; loopIndex += 1) {
+            rawVertices += loops[loopIndex].points.length;
+        }
+
+        const candidateCells =
+            ScalarFieldContourBuilder.lastCandidateCells;
+        const cellsScanned =
+            ScalarFieldContourBuilder.lastScannedCells;
+
+        ScalarFieldContourBuilder.lastDeepProfile = {
+            totalMilliseconds: performance.now() - totalStartedAt,
+            segmentBuildMilliseconds,
+            keyAndAdjacencyMilliseconds,
+            stitchingMilliseconds: performance.now() - stitchingStartedAt,
+            candidateCells,
+            cellsScanned,
+            scanReductionPercent:
+                candidateCells > 0
+                    ? Math.max(
+                        0,
+                        (1 - cellsScanned / candidateCells) * 100,
+                    )
+                    : 0,
+            activeSamples:
+                ScalarFieldContourBuilder.lastActiveSamples,
+            activeContourCells: segments.length,
+            segmentsGenerated: segments.length,
+            loopsGenerated: loops.length,
+            rawVertices,
+        };
 
         return loops;
     }

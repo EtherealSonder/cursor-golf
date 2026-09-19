@@ -23,6 +23,14 @@ import {
     StandingWaterContourBuilder,
 } from "./StandingWaterContourBuilder";
 
+import {
+    StandingWaterReflectionRenderer,
+} from "./StandingWaterReflectionRenderer";
+
+import type {
+    ContourRefreshScheduler,
+} from "../../rendering/ContourRefreshScheduler";
+
 /**
  * 8I-8B.2A production illustrated standing-Water renderer.
  *
@@ -40,8 +48,18 @@ export class StandingWaterRenderer {
     private readonly accentGraphics:
         Graphics;
 
+    private readonly reflectionGraphics:
+        Graphics;
+
+    private readonly reflectionRenderer =
+        new StandingWaterReflectionRenderer();
+
     private readonly contourBuilder =
         new StandingWaterContourBuilder();
+
+    /** Cells retained by presentation hysteresis only. Simulation is untouched. */
+    private readonly visibleBodyCellIndices =
+        new Set<number>();
 
     private readonly cellSize:
         number;
@@ -61,6 +79,9 @@ export class StandingWaterRenderer {
     private refreshAccumulator =
         0;
 
+    private secondsSinceContourRebuild = 0;
+    private lastContourSignature: number | null = null;
+
     private destroyed =
         false;
 
@@ -75,6 +96,10 @@ export class StandingWaterRenderer {
         private readonly performanceProfiler:
             WaterPerformanceProfiler | null =
             null,
+
+        private readonly contourRefreshScheduler:
+            ContourRefreshScheduler | null =
+            null,
     ) {
         this.container =
             new Container();
@@ -85,12 +110,19 @@ export class StandingWaterRenderer {
         this.accentGraphics =
             new Graphics();
 
+        this.reflectionGraphics =
+            new Graphics();
+
         this.container.addChild(
             this.bodyGraphics,
         );
 
         this.container.addChild(
             this.accentGraphics,
+        );
+
+        this.container.addChild(
+            this.reflectionGraphics,
         );
 
         this.cellSize =
@@ -142,6 +174,8 @@ export class StandingWaterRenderer {
 
         this.refreshAccumulator +=
             deltaTime;
+        this.secondsSinceContourRebuild +=
+            deltaTime;
 
         const refreshInterval =
             this.definition
@@ -166,6 +200,13 @@ export class StandingWaterRenderer {
                 0;
         }
 
+        if (
+            this.contourRefreshScheduler &&
+            !this.contourRefreshScheduler.request("standingWater")
+        ) {
+            return;
+        }
+
         this.redraw();
     }
 
@@ -183,6 +224,8 @@ export class StandingWaterRenderer {
 
         this.refreshAccumulator =
             0;
+        this.secondsSinceContourRebuild =
+            this.definition.standingWater.maximumContourReuseSeconds;
 
         this.redraw();
     }
@@ -196,11 +239,12 @@ export class StandingWaterRenderer {
         this.refreshAccumulator =
             0;
 
-        this.bodyGraphics
+        this.reflectionRenderer
             .clear();
 
-        this.accentGraphics
-            .clear();
+        this.visibleBodyCellIndices.clear();
+        this.lastContourSignature = null;
+        this.secondsSinceContourRebuild = 0;
     }
 
     public destroy():
@@ -216,6 +260,12 @@ export class StandingWaterRenderer {
             .destroy();
 
         this.accentGraphics
+            .destroy();
+
+        this.reflectionRenderer
+            .clear();
+
+        this.reflectionGraphics
             .destroy();
 
         this.container
@@ -234,11 +284,11 @@ export class StandingWaterRenderer {
             this.definition
                 .standingWater;
 
-        this.bodyGraphics
-            .clear();
-
-        this.accentGraphics
-            .clear();
+        const redrawStartedAt = performance.now();
+        let scanMilliseconds: number;
+        let contourMilliseconds: number;
+        let graphicsMilliseconds: number;
+        let reflectionMilliseconds: number;
 
         let minimumColumn =
             this.columnCount;
@@ -250,20 +300,50 @@ export class StandingWaterRenderer {
             -1;
         let visibleWaterCells =
             0;
+        let contourSignature =
+            2166136261;
+
+        const scanStartedAt = performance.now();
 
         this.waterField
             .forEachTrackedWaterCell(
                 (cell): void => {
-                    if (
-                        !Number.isFinite(
-                            cell.depth,
-                        ) ||
-                        cell.depth <
-                        standingWater
-                            .contourThreshold
-                    ) {
+                    if (!Number.isFinite(cell.depth)) {
+                        this.visibleBodyCellIndices.delete(cell.index);
                         return;
                     }
+
+                    const wasVisible =
+                        this.visibleBodyCellIndices.has(cell.index);
+                    const threshold =
+                        wasVisible
+                            ? standingWater.contourExitThreshold
+                            : standingWater.contourThreshold;
+
+                    if (cell.depth < threshold) {
+                        this.visibleBodyCellIndices.delete(cell.index);
+                        return;
+                    }
+
+                    this.visibleBodyCellIndices.add(cell.index);
+
+                    const depthQuantum =
+                        Math.max(
+                            0.000001,
+                            standingWater.contourChangeDepthQuantum,
+                        );
+                    const quantizedDepth =
+                        Math.floor(cell.depth / depthQuantum);
+                    contourSignature =
+                        Math.imul(
+                            contourSignature ^ cell.index,
+                            16777619,
+                        );
+                    contourSignature =
+                        Math.imul(
+                            contourSignature ^ quantizedDepth,
+                            16777619,
+                        );
 
                     const column =
                         cell.index %
@@ -304,10 +384,29 @@ export class StandingWaterRenderer {
                 },
             );
 
+        scanMilliseconds = performance.now() - scanStartedAt;
+
         if (
             maximumColumn < 0 ||
             maximumRow < 0
         ) {
+            const alreadyEmpty =
+                this.lastContourSignature === 0;
+            this.visibleBodyCellIndices.clear();
+            if (alreadyEmpty) {
+                return;
+            }
+            this.bodyGraphics.clear();
+            this.accentGraphics.clear();
+            this.reflectionGraphics.clear();
+            this.lastContourSignature = 0;
+            this.secondsSinceContourRebuild = 0;
+            this.reflectionRenderer.draw(
+                this.reflectionGraphics,
+                [],
+                standingWater,
+            );
+
             this.performanceProfiler
                 ?.setWaterCounts(
                     this.waterField
@@ -315,9 +414,36 @@ export class StandingWaterRenderer {
                     0,
                     0,
                 );
+            this.performanceProfiler?.recordStandingWaterDetails({
+                scanMilliseconds, contourMilliseconds: 0, graphicsMilliseconds: 0,
+                reflectionMilliseconds: performance.now() - redrawStartedAt - scanMilliseconds,
+                bodyContours: 0, accentContours: 0, bodyVertices: 0, accentVertices: 0,
+            });
 
             return;
         }
+
+        const forcedRefresh =
+            this.secondsSinceContourRebuild >=
+            standingWater.maximumContourReuseSeconds;
+
+        if (
+            !forcedRefresh &&
+            this.lastContourSignature === contourSignature
+        ) {
+            this.performanceProfiler?.recordStandingWaterDetails({
+                scanMilliseconds, contourMilliseconds: 0, graphicsMilliseconds: 0,
+                reflectionMilliseconds: 0, bodyContours: 0, accentContours: 0,
+                bodyVertices: 0, accentVertices: 0,
+            });
+            return;
+        }
+
+        this.lastContourSignature = contourSignature;
+        this.secondsSinceContourRebuild = 0;
+        this.bodyGraphics.clear();
+        this.accentGraphics.clear();
+        this.reflectionGraphics.clear();
 
         /*
          * Expand one sample around the sparse visible bounds. Marching Squares
@@ -373,10 +499,12 @@ export class StandingWaterRenderer {
                     index:
                         number,
                 ): number =>
-                    this.waterField
-                        .getDepthByIndex(
-                            index,
-                        ),
+                    this.visibleBodyCellIndices.has(index)
+                        ? Math.max(
+                            this.waterField.getDepthByIndex(index),
+                            standingWater.contourExitThreshold + 0.000001,
+                        )
+                        : 0,
         };
 
         const bodyContourOptions = {
@@ -424,6 +552,8 @@ export class StandingWaterRenderer {
             },
         };
 
+        const contourStartedAt = performance.now();
+
         const bodyContours =
             this.contourBuilder
                 .build(
@@ -431,7 +561,7 @@ export class StandingWaterRenderer {
                         ...commonFieldOptions,
                         isoLevel:
                             standingWater
-                                .contourThreshold,
+                                .contourExitThreshold,
                     },
                     bodyContourOptions,
                 );
@@ -447,6 +577,9 @@ export class StandingWaterRenderer {
                     },
                     accentContourOptions,
                 );
+
+        contourMilliseconds = performance.now() - contourStartedAt;
+        const graphicsStartedAt = performance.now();
 
         /*
          * 8I-8B.3 presentation hierarchy.
@@ -547,6 +680,18 @@ export class StandingWaterRenderer {
                 .illustratedAccentAlpha,
         );
 
+        graphicsMilliseconds = performance.now() - graphicsStartedAt;
+        const reflectionStartedAt = performance.now();
+
+        this.reflectionRenderer
+            .draw(
+                this.reflectionGraphics,
+                visibleBodyContours,
+                standingWater,
+            );
+
+        reflectionMilliseconds = performance.now() - reflectionStartedAt;
+
         this.performanceProfiler
             ?.setWaterCounts(
                 this.waterField
@@ -554,6 +699,13 @@ export class StandingWaterRenderer {
                 visibleWaterCells,
                 bodyContours.length,
             );
+
+        this.performanceProfiler?.recordStandingWaterDetails({
+            scanMilliseconds, contourMilliseconds, graphicsMilliseconds, reflectionMilliseconds,
+            bodyContours: visibleBodyContours.length, accentContours: eligibleAccentContours.length,
+            bodyVertices: visibleBodyContours.reduce((sum, contour) => sum + contour.points.length, 0),
+            accentVertices: eligibleAccentContours.reduce((sum, contour) => sum + contour.points.length, 0),
+        });
     }
 
     private isContourCentroidInside(

@@ -7,6 +7,19 @@ import type {
     SprinklerWaterVfxDefinition,
 } from "../config/WaterVfxDefinition";
 
+export interface SprinklerDropletRendererPerformanceDetails {
+    readonly beginFrameMilliseconds: number;
+    readonly slotLookupCreateMilliseconds: number;
+    readonly transformMilliseconds: number;
+    readonly geometryMilliseconds: number;
+    readonly styleMilliseconds: number;
+    readonly endFrameMilliseconds: number;
+    readonly createdSlots: number;
+    readonly reusedSlots: number;
+    readonly hiddenSlots: number;
+    readonly totalSlots: number;
+}
+
 export interface SprinklerDropletPresentation {
     readonly id: string;
     readonly x: number;
@@ -37,6 +50,15 @@ export class SprinklerDropletRenderer {
     private readonly container = new Container();
     private readonly slots = new Map<string, DropletSlot>();
     private animationTime = 0;
+    private frameBeginMilliseconds = 0;
+    private frameSlotLookupCreateMilliseconds = 0;
+    private frameTransformMilliseconds = 0;
+    private frameGeometryMilliseconds = 0;
+    private frameStyleMilliseconds = 0;
+    private frameEndMilliseconds = 0;
+    private frameCreatedSlots = 0;
+    private frameReusedSlots = 0;
+    private frameHiddenSlots = 0;
 
     public constructor(
         private readonly definition: SprinklerWaterVfxDefinition,
@@ -47,26 +69,125 @@ export class SprinklerDropletRenderer {
     }
 
     public beginFrame(): void {
+        this.frameSlotLookupCreateMilliseconds = 0;
+        this.frameTransformMilliseconds = 0;
+        this.frameGeometryMilliseconds = 0;
+        this.frameStyleMilliseconds = 0;
+        this.frameCreatedSlots = 0;
+        this.frameReusedSlots = 0;
+        this.frameHiddenSlots = 0;
+
+        const startedAt = performance.now();
         this.slots.forEach((slot): void => {
             slot.seenThisFrame = false;
         });
+        this.frameBeginMilliseconds = performance.now() - startedAt;
+    }
+
+    /**
+     * 8I-9B.3 batched hot path. Each profiling clock surrounds a complete
+     * pass instead of every droplet, removing profiler overhead from the
+     * workload being measured while preserving the same presentation math.
+     */
+    public renderFrame(
+        presentations: readonly SprinklerDropletPresentation[],
+    ): void {
+        this.beginFrame();
+
+        const resolvedSlots: DropletSlot[] = [];
+        let startedAt = performance.now();
+        for (let index = 0; index < presentations.length; index += 1) {
+            const presentation = presentations[index];
+            const existing = this.slots.get(presentation.id);
+            const slot = existing ?? this.getOrCreateSlot(
+                presentation.id,
+                presentation.seed,
+            );
+            resolvedSlots.push(slot);
+            if (existing) {
+                this.frameReusedSlots += 1;
+            } else {
+                this.frameCreatedSlots += 1;
+            }
+            slot.seenThisFrame = true;
+            slot.container.visible = true;
+        }
+        this.frameSlotLookupCreateMilliseconds = performance.now() - startedAt;
+
+        startedAt = performance.now();
+        for (let index = 0; index < presentations.length; index += 1) {
+            const presentation = presentations[index];
+            const slot = resolvedSlots[index];
+            slot.container.position.set(presentation.x, presentation.y);
+
+            const speedSquared =
+                presentation.velocityX * presentation.velocityX +
+                presentation.velocityY * presentation.velocityY;
+            if (speedSquared > 1e-8) {
+                slot.container.rotation =
+                    Math.atan2(
+                        presentation.velocityY,
+                        presentation.velocityX,
+                    ) +
+                    this.signedVariation(
+                        presentation.seed + 31,
+                        this.definition.rotationVariationRadians,
+                    );
+            }
+        }
+        this.frameTransformMilliseconds = performance.now() - startedAt;
+
+        startedAt = performance.now();
+        for (let index = 0; index < presentations.length; index += 1) {
+            this.drawSlot(
+                resolvedSlots[index],
+                presentations[index],
+            );
+        }
+        this.frameGeometryMilliseconds = performance.now() - startedAt;
+
+        startedAt = performance.now();
+        for (let index = 0; index < presentations.length; index += 1) {
+            const presentation = presentations[index];
+            const slot = resolvedSlots[index];
+            const fadeAlpha = this.getAgeAlpha(presentation.ageSeconds);
+            const pulse =
+                1 +
+                Math.sin(
+                    this.animationTime * this.definition.pulseSpeed +
+                    presentation.seed * 0.731,
+                ) * this.definition.pulseAmplitude;
+
+            slot.container.alpha = this.clamp01(
+                fadeAlpha * this.definition.bodyAlpha,
+            );
+            slot.container.scale.set(pulse, pulse);
+        }
+        this.frameStyleMilliseconds = performance.now() - startedAt;
+
+        this.endFrame();
     }
 
     public setDroplet(
         presentation: SprinklerDropletPresentation,
     ): void {
-        const slot =
-            this.getOrCreateSlot(
-                presentation.id,
-                presentation.seed,
-            );
+        let startedAt = performance.now();
+        const existing = this.slots.get(presentation.id);
+        const slot = existing ?? this.getOrCreateSlot(
+            presentation.id,
+            presentation.seed,
+        );
+        this.frameSlotLookupCreateMilliseconds += performance.now() - startedAt;
+        if (existing) {
+            this.frameReusedSlots += 1;
+        } else {
+            this.frameCreatedSlots += 1;
+        }
 
+        startedAt = performance.now();
         slot.seenThisFrame = true;
         slot.container.visible = true;
-        slot.container.position.set(
-            presentation.x,
-            presentation.y,
-        );
+        slot.container.position.set(presentation.x, presentation.y);
 
         const speed = Math.hypot(
             presentation.velocityX,
@@ -84,44 +205,54 @@ export class SprinklerDropletRenderer {
                     this.definition.rotationVariationRadians,
                 );
         }
+        this.frameTransformMilliseconds += performance.now() - startedAt;
 
-        this.drawSlot(
-            slot,
-            presentation,
-        );
+        startedAt = performance.now();
+        this.drawSlot(slot, presentation);
+        this.frameGeometryMilliseconds += performance.now() - startedAt;
 
-        const fadeAlpha =
-            this.getAgeAlpha(
-                presentation.ageSeconds,
-            );
-
+        startedAt = performance.now();
+        const fadeAlpha = this.getAgeAlpha(presentation.ageSeconds);
         const pulse =
             1 +
             Math.sin(
-                this.animationTime *
-                this.definition.pulseSpeed +
+                this.animationTime * this.definition.pulseSpeed +
                 presentation.seed * 0.731,
-            ) *
-            this.definition.pulseAmplitude;
+            ) * this.definition.pulseAmplitude;
 
-        slot.container.alpha =
-            this.clamp01(
-                fadeAlpha *
-                this.definition.bodyAlpha,
-            );
-
-        slot.container.scale.set(
-            pulse,
-            pulse,
+        slot.container.alpha = this.clamp01(
+            fadeAlpha * this.definition.bodyAlpha,
         );
+        slot.container.scale.set(pulse, pulse);
+        this.frameStyleMilliseconds += performance.now() - startedAt;
     }
 
     public endFrame(): void {
+        const startedAt = performance.now();
         this.slots.forEach((slot): void => {
             if (!slot.seenThisFrame) {
+                if (slot.container.visible) {
+                    this.frameHiddenSlots += 1;
+                }
                 slot.container.visible = false;
             }
         });
+        this.frameEndMilliseconds = performance.now() - startedAt;
+    }
+
+    public getPerformanceDetails(): SprinklerDropletRendererPerformanceDetails {
+        return {
+            beginFrameMilliseconds: this.frameBeginMilliseconds,
+            slotLookupCreateMilliseconds: this.frameSlotLookupCreateMilliseconds,
+            transformMilliseconds: this.frameTransformMilliseconds,
+            geometryMilliseconds: this.frameGeometryMilliseconds,
+            styleMilliseconds: this.frameStyleMilliseconds,
+            endFrameMilliseconds: this.frameEndMilliseconds,
+            createdSlots: this.frameCreatedSlots,
+            reusedSlots: this.frameReusedSlots,
+            hiddenSlots: this.frameHiddenSlots,
+            totalSlots: this.slots.size,
+        };
     }
 
     public update(deltaTime: number): void {

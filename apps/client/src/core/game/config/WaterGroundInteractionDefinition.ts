@@ -171,7 +171,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
      * Retain the tuned 8C-2 baseline. Saturation now reduces this rate over
      * repeated watering rather than requiring another global reduction.
      */
-    baseInfiltrationRate: 0.002,
+    baseInfiltrationRate: 0.003,
 
     waterDepthToMoisture: 0.5,
 
@@ -194,7 +194,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
                 1.5,
 
             dryingRate:
-                0.035,
+                0.14,
         },
         {
             surfaceType:
@@ -215,7 +215,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
                 1.25,
 
             dryingRate:
-                0.025,
+                0.10,
         },
     ],
 
@@ -234,8 +234,8 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
      * removes residual films that would otherwise linger around solver
      * thresholds.
      */
-    shallowWaterDissipationDepth: 0.002,
-    shallowWaterDissipationRate: 0.0004,
+    shallowWaterDissipationDepth: 0.003,
+    shallowWaterDissipationRate: 0.0012,
 
     fixedTimeStep: 1 / 60,
     maximumSubsteps: 6,

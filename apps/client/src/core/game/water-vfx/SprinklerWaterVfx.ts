@@ -14,6 +14,23 @@ import type {
     WaterVfxSystem,
 } from "./WaterVfxSystem";
 
+import type {
+    SprinklerDropletRendererPerformanceDetails,
+} from "./SprinklerDropletRenderer";
+
+export interface SprinklerWaterVfxPerformanceDetails {
+    readonly activeSources: number;
+    readonly inspectedPackets: number;
+    readonly preparedPackets: number;
+    readonly renderedElements: number;
+    readonly sourceBookkeepingMilliseconds: number;
+    readonly packetTraversalMilliseconds: number;
+    readonly packetPreparationMilliseconds: number;
+    readonly rendererSyncMilliseconds: number;
+    readonly legacyHideMilliseconds: number;
+    readonly dropletRenderer: SprinklerDropletRendererPerformanceDetails;
+}
+
 /**
  * 8I-5 production segmented Sprinkler Water presentation.
  *
@@ -22,7 +39,29 @@ import type {
  * Previously emitted packets therefore keep moving naturally when the
  * Sprinkler is hit or rotated, while new packets leave from the new pose.
  */
+interface PreparedSprinklerDroplet {
+    readonly id: string;
+    readonly x: number;
+    readonly y: number;
+    readonly velocityX: number;
+    readonly velocityY: number;
+    readonly ageSeconds: number;
+    readonly flightProgress: number;
+    readonly seed: number;
+}
+
 export class SprinklerWaterVfx {
+    private readonly sourceHashCache = new Map<string, number>();
+    private readonly preparedDroplets: PreparedSprinklerDroplet[] = [];
+    private lastActiveSources = 0;
+    private lastInspectedPackets = 0;
+    private lastPreparedPackets = 0;
+    private lastRenderedDroplets = 0;
+    private lastSourceBookkeepingMilliseconds = 0;
+    private lastPacketTraversalMilliseconds = 0;
+    private lastPacketPreparationMilliseconds = 0;
+    private lastRendererSyncMilliseconds = 0;
+    private lastLegacyHideMilliseconds = 0;
     public constructor(
         private readonly sprinklers: readonly Sprinkler[],
         private readonly airborneWaterSystem: AirborneWaterSystem,
@@ -37,27 +76,37 @@ export class SprinklerWaterVfx {
             this.waterVfxSystem
                 .getSprinklerDropletRenderer();
 
-        renderer.beginFrame();
-
         if (
             !this.definition.enabled ||
             !Number.isFinite(dt) ||
             dt <= 0
         ) {
-            renderer.endFrame();
+            renderer.renderFrame([]);
             return;
         }
 
-        const enabledSourceIds =
-            new Set<string>();
+        const enabledSourceHashes = new Map<string, number>();
+        this.lastInspectedPackets = 0;
+        this.lastPreparedPackets = 0;
+        this.lastRenderedDroplets = 0;
+        this.preparedDroplets.length = 0;
 
-        for (const sprinkler of this.sprinklers) {
-            if (sprinkler.isEnabled()) {
-                enabledSourceIds.add(
-                    sprinkler.getSourceId(),
-                );
+        let startedAt = performance.now();
+        for (let index = 0; index < this.sprinklers.length; index += 1) {
+            const sprinkler = this.sprinklers[index];
+            if (!sprinkler.isEnabled()) {
+                continue;
             }
+
+            const sourceId = sprinkler.getSourceId();
+            enabledSourceHashes.set(
+                sourceId,
+                this.getSourceHash(sourceId),
+            );
         }
+
+        this.lastActiveSources = enabledSourceHashes.size;
+        this.lastSourceBookkeepingMilliseconds = performance.now() - startedAt;
 
         const stride =
             Math.max(
@@ -67,23 +116,28 @@ export class SprinklerWaterVfx {
                 ),
             );
 
+        const terminalAge =
+            Math.max(
+                0.001,
+                this.definition.terminalDropletStartAgeSeconds,
+            );
+
+        startedAt = performance.now();
         this.airborneWaterSystem
             .forEachActivePacketWithEmissionOrdinal(
                 (
                     packet,
                     emissionOrdinal,
                 ): void => {
-                    if (
-                        !enabledSourceIds.has(
-                            packet.getSourceId(),
-                        )
-                    ) {
+                    this.lastInspectedPackets += 1;
+
+                    const sourceId = packet.getSourceId();
+                    const sourceHash = enabledSourceHashes.get(sourceId);
+                    if (sourceHash === undefined) {
                         return;
                     }
 
-                    const sequence =
-                        packet.getSequence();
-
+                    const sequence = packet.getSequence();
                     if (
                         Math.abs(sequence) %
                         stride !==
@@ -92,79 +146,98 @@ export class SprinklerWaterVfx {
                         return;
                     }
 
-                    const sourceId =
-                        packet.getSourceId();
-
                     const packetSeed =
-                        this.hashSeed(
-                            sourceId,
+                        this.finishPacketSeed(
+                            sourceHash,
                             sequence,
                             emissionOrdinal,
                         );
 
-                    const velocityX =
-                        packet.getVelocityX();
-                    const velocityY =
-                        packet.getVelocityY();
-                    const speed =
-                        Math.hypot(
-                            velocityX,
-                            velocityY,
-                        );
+                    const velocityX = packet.getVelocityX();
+                    const velocityY = packet.getVelocityY();
+                    const speedSquared =
+                        velocityX * velocityX +
+                        velocityY * velocityY;
 
-                    const directionX =
-                        speed > 0.0001
-                            ? velocityX / speed
-                            : 0;
-                    const directionY =
-                        speed > 0.0001
-                            ? velocityY / speed
-                            : 0;
+                    let directionX = 0;
+                    let directionY = 0;
+                    if (speedSquared > 0.00000001) {
+                        const inverseSpeed =
+                            1 / Math.sqrt(speedSquared);
+                        directionX = velocityX * inverseSpeed;
+                        directionY = velocityY * inverseSpeed;
+                    }
 
                     const spacingOffset =
-                        this.getSpacingOffset(
-                            packetSeed,
-                        );
+                        this.getSpacingOffset(packetSeed);
+                    const ageSeconds = packet.getAge();
 
-                    renderer.setDroplet({
+                    this.preparedDroplets.push({
                         id:
                             `sprinkler:${sourceId}:` +
                             `${sequence}:${emissionOrdinal}`,
                         x:
                             packet.getPositionX() +
-                            directionX *
-                            spacingOffset,
+                            directionX * spacingOffset,
                         y:
                             packet.getPositionY() +
-                            directionY *
-                            spacingOffset,
+                            directionY * spacingOffset,
                         velocityX,
                         velocityY,
-                        ageSeconds:
-                            packet.getAge(),
+                        ageSeconds,
                         flightProgress:
-                            this.getFlightProgress(
-                                packet.getAge(),
+                            Math.max(
+                                0,
+                                Math.min(
+                                    1,
+                                    ageSeconds / terminalAge,
+                                ),
                             ),
-                        seed:
-                            packetSeed,
+                        seed: packetSeed,
                     });
                 },
             );
 
-        renderer.endFrame();
+        this.lastPacketTraversalMilliseconds = performance.now() - startedAt;
+        this.lastPreparedPackets = this.preparedDroplets.length;
+        this.lastPacketPreparationMilliseconds = this.lastPacketTraversalMilliseconds;
+
+        startedAt = performance.now();
+        renderer.renderFrame(this.preparedDroplets);
+        this.lastRendererSyncMilliseconds = performance.now() - startedAt;
+        this.lastRenderedDroplets = this.preparedDroplets.length;
 
         /*
          * The old continuous Sprinkler ribbon is explicitly hidden. The
          * WaterStreamRenderer remains alive for later Hose/Hydrant VFX.
          */
-        for (const sprinkler of this.sprinklers) {
+        startedAt = performance.now();
+        for (let index = 0; index < this.sprinklers.length; index += 1) {
+            const sprinkler = this.sprinklers[index];
             this.waterVfxSystem
                 .getStreamRenderer()
                 .hideStreamsWithPrefix(
                     `sprinkler:${sprinkler.getSourceId()}:`,
                 );
         }
+        this.lastLegacyHideMilliseconds = performance.now() - startedAt;
+    }
+
+    public getPerformanceDetails(): SprinklerWaterVfxPerformanceDetails {
+        return {
+            activeSources: this.lastActiveSources,
+            inspectedPackets: this.lastInspectedPackets,
+            preparedPackets: this.lastPreparedPackets,
+            renderedElements: this.lastRenderedDroplets,
+            sourceBookkeepingMilliseconds: this.lastSourceBookkeepingMilliseconds,
+            packetTraversalMilliseconds: this.lastPacketTraversalMilliseconds,
+            packetPreparationMilliseconds: this.lastPacketPreparationMilliseconds,
+            rendererSyncMilliseconds: this.lastRendererSyncMilliseconds,
+            legacyHideMilliseconds: this.lastLegacyHideMilliseconds,
+            dropletRenderer: this.waterVfxSystem
+                .getSprinklerDropletRenderer()
+                .getPerformanceDetails(),
+        };
     }
 
     public reset(): void {
@@ -217,51 +290,34 @@ export class SprinklerWaterVfx {
             this.definition.packetSpacingVariation;
     }
 
-    private getFlightProgress(
-        ageSeconds: number,
+    private getSourceHash(
+        sourceId: string,
     ): number {
-        const terminalAge =
-            Math.max(
-                0.001,
-                this.definition
-                    .terminalDropletStartAgeSeconds,
-            );
+        const cached = this.sourceHashCache.get(sourceId);
+        if (cached !== undefined) {
+            return cached;
+        }
 
-        return Math.max(
-            0,
-            Math.min(
-                1,
-                ageSeconds / terminalAge,
-            ),
-        );
+        let hash = 2166136261;
+        for (let index = 0; index < sourceId.length; index += 1) {
+            hash ^= sourceId.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+
+        const normalized = hash >>> 0;
+        this.sourceHashCache.set(sourceId, normalized);
+        return normalized;
     }
 
-    private hashSeed(
-        sourceId: string,
+    private finishPacketSeed(
+        sourceHash: number,
         sequence: number,
         emissionOrdinal: number,
     ): number {
-        let hash = 2166136261;
-
-        for (
-            let index = 0;
-            index < sourceId.length;
-            index += 1
-        ) {
-            hash ^=
-                sourceId.charCodeAt(index);
-
-            hash =
-                Math.imul(
-                    hash,
-                    16777619,
-                );
-        }
-
-        hash ^=
-            sequence +
-            emissionOrdinal * 1013;
-
-        return hash >>> 0;
+        return (
+            sourceHash ^
+            (sequence + emissionOrdinal * 1013)
+        ) >>> 0;
     }
+
 }

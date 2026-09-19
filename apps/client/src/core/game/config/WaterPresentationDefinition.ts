@@ -37,6 +37,8 @@ export interface StandingWaterPresentationDefinition {
 
     /** 8I-8B.1 illustrated standing-Water contour controls. */
     readonly contourThreshold: number;
+    /** 8I-8E-B lower exit threshold used only for presentation hysteresis. */
+    readonly contourExitThreshold: number;
     readonly accentContourThreshold: number;
     readonly contourSimplificationTolerance: number;
     readonly contourSmoothingPasses: number;
@@ -69,11 +71,37 @@ export interface StandingWaterPresentationDefinition {
     readonly accentMinimumPeakDepth: number;
     readonly smallPuddleAlpha: number;
 
+    /** 8I-8C static illustrated puddle reflection marks. */
+    readonly reflectionsEnabled: boolean;
+    readonly reflectionMinimumArea: number;
+    readonly reflectionMediumArea: number;
+    readonly reflectionLargeArea: number;
+    readonly reflectionVeryLargeArea: number;
+    readonly reflectionMaximumMarks: number;
+    readonly reflectionEdgeClearance: number;
+    readonly reflectionMinimumSpacing: number;
+    readonly reflectionMinimumWidth: number;
+    readonly reflectionMaximumWidth: number;
+    readonly reflectionMinimumHeight: number;
+    readonly reflectionMaximumHeight: number;
+    readonly reflectionColor: number;
+    readonly reflectionAlpha: number;
+    readonly reflectionRegionMatchDistance: number;
+    /** Short grace prevents drying contours from destroying/recreating decals. */
+    readonly reflectionStateRetentionRefreshes: number;
+    readonly reflectionMarkInvalidRetentionRefreshes: number;
+    readonly reflectionTierExitScale: number;
+
     /**
      * Presentation refresh cadence only. Water simulation timing is unchanged.
      * 20 Hz is sufficient for standing Water while reducing CPU texture work.
      */
     readonly refreshIntervalSeconds: number;
+
+    /** 8I-9B.1: depth quantization used only to detect meaningful visual change. */
+    readonly contourChangeDepthQuantum: number;
+    /** Force an occasional rebuild so many sub-quantum changes cannot leave stale geometry. */
+    readonly maximumContourReuseSeconds: number;
 
     /**
      * Fixed local texture size used by Phase 8I-3 bounded rendering.
@@ -129,6 +157,7 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
 
         // 8I-8B.1: Hose/Sprinkler material family, calm filled contours.
         contourThreshold: 0.0015,
+        contourExitThreshold: 0.0010,
         accentContourThreshold: 0.010,
         // 8I-8B.2 outer body: restrained shape-preserving smoothing.
         contourSimplificationTolerance: 1.25,
@@ -175,7 +204,32 @@ export const WaterPresentationDefinition: WaterPresentationDefinitionType = {
         accentMinimumPeakDepth: 0.012,
         smallPuddleAlpha: 0.72,
 
+        /*
+         * 8I-8C: sparse static symbolic reflections. Count scales primarily
+         * with connected contour area. Tiny traces receive no marks.
+         */
+        reflectionsEnabled: true,
+        reflectionMinimumArea: 220,
+        reflectionMediumArea: 520,
+        reflectionLargeArea: 900,
+        reflectionVeryLargeArea: 1600,
+        reflectionMaximumMarks: 4,
+        reflectionEdgeClearance: 10,
+        reflectionMinimumSpacing: 18,
+        reflectionMinimumWidth: 5,
+        reflectionMaximumWidth: 9,
+        reflectionMinimumHeight: 3,
+        reflectionMaximumHeight: 5,
+        reflectionColor: 0xddf8f4,
+        reflectionAlpha: 0.84,
+        reflectionRegionMatchDistance: 48,
+        reflectionStateRetentionRefreshes: 10,
+        reflectionMarkInvalidRetentionRefreshes: 4,
+        reflectionTierExitScale: 0.82,
+
         refreshIntervalSeconds: 1 / 20,
+        contourChangeDepthQuantum: 0.0015,
+        maximumContourReuseSeconds: 0.40,
 
         /*
          * 48 cells at the current 8 px Water grid gives a 384 px world-space

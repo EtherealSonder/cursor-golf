@@ -23,6 +23,17 @@ export interface StandingWaterContourOptions {
     };
 }
 
+export interface StandingWaterContourDeepProfile {
+    readonly totalMilliseconds: number;
+    readonly scalarMilliseconds: number;
+    readonly postProcessMilliseconds: number;
+    readonly peakDepthMilliseconds: number;
+    readonly rawLoops: number;
+    readonly acceptedLoops: number;
+    readonly rawVertices: number;
+    readonly finalVertices: number;
+}
+
 export interface StandingWaterContour {
     readonly points: readonly ScalarFieldPoint[];
     readonly area: number;
@@ -41,15 +52,35 @@ export interface StandingWaterContour {
  * the presentation loops so 8 px simulation cells become broad organic lobes.
  */
 export class StandingWaterContourBuilder {
+    private lastDeepProfile: StandingWaterContourDeepProfile = {
+        totalMilliseconds: 0,
+        scalarMilliseconds: 0,
+        postProcessMilliseconds: 0,
+        peakDepthMilliseconds: 0,
+        rawLoops: 0,
+        acceptedLoops: 0,
+        rawVertices: 0,
+        finalVertices: 0,
+    };
+
+    public getLastDeepProfile(): StandingWaterContourDeepProfile {
+        return this.lastDeepProfile;
+    }
+
     public build(
         fieldOptions: ScalarFieldContourBuildOptions,
         options: StandingWaterContourOptions,
     ): readonly StandingWaterContour[] {
+        const totalStartedAt = performance.now();
+        const scalarStartedAt = totalStartedAt;
         const rawLoops =
             ScalarFieldContourBuilder
                 .buildLoops({
                     ...fieldOptions,
 
+                    // 8I-9B.4B: ScalarFieldContourBuilder derives a
+                    // conservative active sub-bounds inside these caller
+                    // bounds before Marching Squares.
                     endpointQuantizationWorldUnits:
                         Math.max(
                             0.001,
@@ -57,6 +88,14 @@ export class StandingWaterContourBuilder {
                             0.0025,
                         ),
                 });
+        const scalarMilliseconds = performance.now() - scalarStartedAt;
+        const postStartedAt = performance.now();
+        let peakDepthMilliseconds = 0;
+        let rawVertices = 0;
+        let finalVertices = 0;
+        for (let profileLoopIndex = 0; profileLoopIndex < rawLoops.length; profileLoopIndex += 1) {
+            rawVertices += rawLoops[profileLoopIndex].points.length;
+        }
 
         const result:
             StandingWaterContour[] =
@@ -68,13 +107,10 @@ export class StandingWaterContourBuilder {
             loopIndex += 1
         ) {
             let points =
-                rawLoops[
-                    loopIndex
-                ].points.slice();
-
-            points =
                 this.simplifyClosedLoop(
-                    points,
+                    rawLoops[
+                        loopIndex
+                    ].points,
                     Math.max(
                         0,
                         options
@@ -82,6 +118,10 @@ export class StandingWaterContourBuilder {
                     ),
                 );
 
+            /*
+             * 8I-9B.4: avoid the unconditional raw-loop slice that previously
+             * happened immediately before simplification.
+             */
             const smoothingPasses =
                 Math.max(
                     0,
@@ -131,17 +171,34 @@ export class StandingWaterContourBuilder {
                     options.minimumArea,
                 )
             ) {
+                const peakStartedAt = performance.now();
+                const peakDepth =
+                    this.getPeakDepthInsideContour(
+                        points,
+                        fieldOptions,
+                    );
+                peakDepthMilliseconds += performance.now() - peakStartedAt;
+                finalVertices += points.length;
+
                 result.push({
                     points,
                     area,
-                    peakDepth:
-                        this.getPeakDepthInsideContour(
-                            points,
-                            fieldOptions,
-                        ),
+                    peakDepth,
                 });
             }
         }
+
+        this.lastDeepProfile = {
+            totalMilliseconds: performance.now() - totalStartedAt,
+            scalarMilliseconds,
+            postProcessMilliseconds: performance.now() - postStartedAt,
+            peakDepthMilliseconds,
+            rawLoops: rawLoops.length,
+            acceptedLoops: result.length,
+            rawVertices,
+            finalVertices,
+        };
+        ScalarFieldContourBuilder.recordStandingPostProfile(this.lastDeepProfile);
 
         return result;
     }
@@ -315,7 +372,7 @@ export class StandingWaterContourBuilder {
         for (let index = 0; index < points.length; index += 1) {
             const dx = points[index].x - centroidX;
             const dy = points[index].y - centroidY;
-            averageRadius += Math.sqrt(dx * dx + dy * dy);
+            averageRadius += Math.hypot(dx, dy);
         }
 
         averageRadius /= points.length;
@@ -379,10 +436,11 @@ export class StandingWaterContourBuilder {
             const point = points[index];
             const radialX = point.x - centroidX;
             const radialY = point.y - centroidY;
-            const radialLength = Math.sqrt(
-                radialX * radialX +
-                radialY * radialY,
-            );
+            const radialLength =
+                Math.hypot(
+                    radialX,
+                    radialY,
+                );
 
             if (radialLength <= 0.0001) {
                 result.push(point);

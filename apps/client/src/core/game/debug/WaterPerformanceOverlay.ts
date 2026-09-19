@@ -1,70 +1,77 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import type { WaterPerformanceSnapshot } from "./WaterPerformanceProfiler";
-
 export class WaterPerformanceOverlay {
-    private readonly container = new Container();
-    private readonly background = new Graphics();
-    private readonly text: Text;
-
-    public constructor() {
-        this.text = new Text({
-            text: "",
-            style: new TextStyle({ fontFamily: "monospace", fontSize: 11, fill: 0xffffff, lineHeight: 14 }),
-        });
-        this.container.addChild(this.background, this.text);
-        this.container.eventMode = "none";
-    }
-
-    public getContainer(): Container { return this.container; }
-
-    public setViewportSize(viewportWidth: number, viewportHeight: number): void {
-        this.container.position.set(Math.max(8, viewportWidth - 330), Math.max(8, viewportHeight - 555));
-    }
-
-    public update(snapshot: WaterPerformanceSnapshot): void {
-        this.text.text = [
-            "8I-3 BROAD PERFORMANCE PROFILE", "",
-            `Actual FPS             ${snapshot.actualFps.toFixed(1)}`,
-            `Actual frame avg       ${snapshot.actualFrameAverageMilliseconds.toFixed(2)} ms`,
-            `World update avg       ${snapshot.worldUpdateAverageMilliseconds.toFixed(2)} ms`,
-            `World update peak      ${snapshot.worldUpdatePeakMilliseconds.toFixed(2)} ms`,
-            `Measured World         ${snapshot.measuredWorldAverageMilliseconds.toFixed(2)} ms`,
-            `WORLD REMAINDER        ${snapshot.worldRemainderAverageMilliseconds.toFixed(2)} ms`, "",
-            `Surface                ${snapshot.surfaceAverageMilliseconds.toFixed(2)} ms`,
-            `Water sources          ${snapshot.waterSourcesAverageMilliseconds.toFixed(2)} ms`,
-            `Airborne Water         ${snapshot.airborneWaterAverageMilliseconds.toFixed(2)} ms`,
-            `Water/Fire             ${snapshot.waterFireInteractionAverageMilliseconds.toFixed(2)} ms`,
-            `Water simulation       ${snapshot.waterSimulationAverageMilliseconds.toFixed(2)} ms`,
-            `Water-ground           ${snapshot.waterGroundInteractionAverageMilliseconds.toFixed(2)} ms`,
-            `  contact wetting      ${snapshot.contactWettingAverageMilliseconds.toFixed(2)} ms`,
-            `  infiltration        ${snapshot.infiltrationAverageMilliseconds.toFixed(2)} ms`,
-            `  moisture diffusion  ${snapshot.moistureDiffusionAverageMilliseconds.toFixed(2)} ms`,
-            `  ground drying       ${snapshot.groundDryingAverageMilliseconds.toFixed(2)} ms`,
-            `  shallow dissipation ${snapshot.shallowWaterDissipationAverageMilliseconds.toFixed(2)} ms`,
-            `Moisture bridge        ${snapshot.moistureSurfaceBridgeAverageMilliseconds.toFixed(2)} ms`,
-            `Wet ground             ${snapshot.wetGroundAverageMilliseconds.toFixed(2)} ms`,
-            `Standing Water         ${snapshot.standingWaterAverageMilliseconds.toFixed(2)} ms`,
-            `Fire simulation        ${snapshot.fireSimulationAverageMilliseconds.toFixed(2)} ms`,
-            `Fire presentation      ${snapshot.firePresentationAverageMilliseconds.toFixed(2)} ms`,
-            `Entities               ${snapshot.entitiesAverageMilliseconds.toFixed(2)} ms`,
-            `Dynamic collisions     ${snapshot.dynamicCollisionsAverageMilliseconds.toFixed(2)} ms`,
-            `Hose collisions        ${snapshot.hoseCollisionsAverageMilliseconds.toFixed(2)} ms`,
-            `Mechanism sync         ${snapshot.mechanismSyncAverageMilliseconds.toFixed(2)} ms`,
-            `Water obstacle sync    ${snapshot.waterObstacleSyncAverageMilliseconds.toFixed(2)} ms`,
-            `Wind presentation      ${snapshot.windPresentationAverageMilliseconds.toFixed(2)} ms`,
-            `Gameplay presentation  ${snapshot.gameplayPresentationAverageMilliseconds.toFixed(2)} ms`,
-            `Debug + metrics        ${snapshot.debugAndMetricsAverageMilliseconds.toFixed(2)} ms`, "",
-            `Water cells T/V/R      ${snapshot.trackedWaterCells}/${snapshot.visibleWaterCells}/${snapshot.activeRenderRegions}`,
-            `Standing tex C/T       ${snapshot.standingWaterTextureCommits}/${snapshot.standingWaterUploadedTexels}`,
-            `Wet tex C/T            ${snapshot.wetGroundTextureCommits}/${snapshot.wetGroundUploadedTexels}`,
-            `Other tex C/T          ${snapshot.otherTextureCommits}/${snapshot.otherUploadedTexels}`,
-        ].join("\n");
-
-        this.background.clear().roundRect(-10, -10, 322, 542, 8).fill({ color: 0x071a18, alpha: 0.90 });
-    }
-
-    public destroy(): void {
-        this.container.removeFromParent();
-        this.container.destroy({ children: true });
-    }
+    private readonly container=new Container(); private readonly background=new Graphics(); private readonly text:Text;
+    public constructor(){this.text=new Text({text:"",style:new TextStyle({fontFamily:"monospace",fontSize:11,fill:0xffffff,lineHeight:14})});this.container.addChild(this.background,this.text);this.container.eventMode="none";}
+    public getContainer():Container{return this.container;}
+    public setViewportSize(w:number,h:number):void{this.container.position.set(Math.max(8,w-390),Math.max(8,h-900));}
+    public update(s:WaterPerformanceSnapshot):void{this.text.text=[
+        "8I-9B.4B CONTOUR SCAN PROFILE", "",
+        `FPS / frame avg        ${s.actualFps.toFixed(1)} / ${s.actualFrameAverageMilliseconds.toFixed(2)} ms`,
+        `World avg / peak       ${s.worldUpdateAverageMilliseconds.toFixed(2)} / ${s.worldUpdatePeakMilliseconds.toFixed(2)} ms`,
+        `Measured / remainder   ${s.measuredWorldAverageMilliseconds.toFixed(2)} / ${s.worldRemainderAverageMilliseconds.toFixed(2)} ms`, "",
+        "WATER SIMULATION",
+        `WaterField avg/peak    ${s.waterSimulationAverageMilliseconds.toFixed(2)} / ${s.waterSimulationPeakMilliseconds.toFixed(2)} ms`,
+        `Airborne Water         ${s.airborneWaterAverageMilliseconds.toFixed(2)} ms   packets ${s.activeAirbornePackets}`,
+        `Water-ground           ${s.waterGroundInteractionAverageMilliseconds.toFixed(2)} ms`,
+        `  contact/infiltration ${s.contactWettingAverageMilliseconds.toFixed(2)} / ${s.infiltrationAverageMilliseconds.toFixed(2)} ms`,
+        `  diffusion/drying     ${s.moistureDiffusionAverageMilliseconds.toFixed(2)} / ${s.groundDryingAverageMilliseconds.toFixed(2)} ms`,
+        `  shallow dissipation  ${s.shallowWaterDissipationAverageMilliseconds.toFixed(2)} ms`,
+        `Water cells T/V        ${s.trackedWaterCells}/${s.visibleWaterCells}`,
+        `Tracked moisture       ${s.trackedMoistureCells}`, "",
+        "STANDING WATER",
+        `Total avg/peak         ${s.standingWaterAverageMilliseconds.toFixed(2)} / ${s.standingWaterPeakMilliseconds.toFixed(2)} ms`,
+        `  scan                 ${s.standingScanAverageMilliseconds.toFixed(2)} ms`,
+        `  contours avg/peak    ${s.standingContourAverageMilliseconds.toFixed(2)} / ${s.standingContourPeakMilliseconds.toFixed(2)} ms`,
+        `  graphics             ${s.standingGraphicsAverageMilliseconds.toFixed(2)} ms`,
+        `  reflections          ${s.standingReflectionAverageMilliseconds.toFixed(2)} ms`,
+        `  body/accent contours ${s.standingBodyContours}/${s.standingAccentContours}`,
+        `  body/accent vertices ${s.standingBodyVertices}/${s.standingAccentVertices}`, "",
+        "WET GROUND",
+        `Total avg/peak         ${s.wetGroundAverageMilliseconds.toFixed(2)} / ${s.wetGroundPeakMilliseconds.toFixed(2)} ms`,
+        `  membership           ${s.wetMembershipAverageMilliseconds.toFixed(2)} ms`,
+        `  contours avg/peak    ${s.wetContourAverageMilliseconds.toFixed(2)} / ${s.wetContourPeakMilliseconds.toFixed(2)} ms`,
+        `  graphics             ${s.wetGraphicsAverageMilliseconds.toFixed(2)} ms`,
+        `  visible/contours     ${s.visibleWetCells}/${s.wetContours}`,
+        `  vertices             ${s.wetVertices}`, "",
+        "SOURCE VFX",
+        `Hose avg/peak          ${s.hoseWaterVfxAverageMilliseconds.toFixed(2)} / ${s.hoseWaterVfxPeakMilliseconds.toFixed(2)} ms`,
+        `  sources/packets/pts  ${s.hoseActiveSources}/${s.hoseInspectedPackets}/${s.hoseRenderedElements}`,
+        `Sprinkler avg/peak     ${s.sprinklerWaterVfxAverageMilliseconds.toFixed(2)} / ${s.sprinklerWaterVfxPeakMilliseconds.toFixed(2)} ms`,
+        `  sources/packets/drop ${s.sprinklerActiveSources}/${s.sprinklerInspectedPackets}/${s.sprinklerRenderedElements}`,
+        "SPRINKLER DEEP PROFILE 9B.3",
+        `  inspected/prepared    ${s.sprinklerInspectedPackets}/${s.sprinklerPreparedPackets}`,
+        `  source bookkeeping   ${s.sprinklerSourceBookkeepingAverageMilliseconds.toFixed(2)} ms`,
+        `  packet traversal     ${s.sprinklerPacketTraversalAverageMilliseconds.toFixed(2)} ms`,
+        `    packet preparation ${s.sprinklerPacketPreparationAverageMilliseconds.toFixed(2)} ms`,
+        `    renderer sync      ${s.sprinklerRendererSyncAverageMilliseconds.toFixed(2)} ms`,
+        `  legacy hide          ${s.sprinklerLegacyHideAverageMilliseconds.toFixed(2)} ms`,
+        `  droplet begin/end    ${s.sprinklerDropletBeginAverageMilliseconds.toFixed(2)} / ${s.sprinklerDropletEndAverageMilliseconds.toFixed(2)} ms`,
+        `  slot lookup/create   ${s.sprinklerSlotLookupCreateAverageMilliseconds.toFixed(2)} ms`,
+        `  transform            ${s.sprinklerTransformAverageMilliseconds.toFixed(2)} ms`,
+        `  geometry rebuild     ${s.sprinklerGeometryAverageMilliseconds.toFixed(2)} ms`,
+        `  style/alpha/scale    ${s.sprinklerStyleAverageMilliseconds.toFixed(2)} ms`,
+        `  slots C/R/H/total    ${s.sprinklerCreatedSlots}/${s.sprinklerReusedSlots}/${s.sprinklerHiddenSlots}/${s.sprinklerTotalSlots}`,
+        "", "CONTOUR PIPELINE DEEP PROFILE",
+        `Scalar total           ${s.contourScalarTotalMilliseconds.toFixed(2)} ms`,
+        `  segment build        ${s.contourSegmentBuildMilliseconds.toFixed(2)} ms`,
+        `  keys/adjacency       ${s.contourKeyAdjacencyMilliseconds.toFixed(2)} ms`,
+        `  stitching            ${s.contourStitchingMilliseconds.toFixed(2)} ms`,
+        `  candidate/scanned    ${s.contourCandidateCells}/${s.contourCellsScanned}`,
+        `  scan reduction       ${s.contourScanReductionPercent.toFixed(1)}%`,
+        `  active samples/cells ${s.contourActiveSamples}/${s.contourActiveCells}`,
+        `  segments/loops       ${s.contourSegments}/${s.contourLoops}`,
+        `  raw vertices         ${s.contourRawVertices}`,
+        "STANDING CONTOUR POST",
+        `  total/scalar         ${s.standingDeepTotalMilliseconds.toFixed(2)} / ${s.standingDeepScalarMilliseconds.toFixed(2)} ms`,
+        `  post/peak-depth      ${s.standingDeepPostMilliseconds.toFixed(2)} / ${s.standingDeepPeakDepthMilliseconds.toFixed(2)} ms`,
+        `  loops raw/accepted   ${s.standingDeepRawLoops}/${s.standingDeepAcceptedLoops}`,
+        `  vertices raw/final   ${s.standingDeepRawVertices}/${s.standingDeepFinalVertices}`,
+        "WET CONTOUR POST",
+        `  total/scalar         ${s.wetDeepTotalMilliseconds.toFixed(2)} / ${s.wetDeepScalarMilliseconds.toFixed(2)} ms`,
+        `  post                 ${s.wetDeepPostMilliseconds.toFixed(2)} ms`,
+        `  loops raw/accepted   ${s.wetDeepRawLoops}/${s.wetDeepAcceptedLoops}`,
+        `  vertices raw/final   ${s.wetDeepRawVertices}/${s.wetDeepFinalVertices}`,
+    ].join("\n");this.background.clear().roundRect(-10,-10,382,1080,8).fill({color:0x071a18,alpha:0.92});}
+    public destroy():void{this.container.removeFromParent();this.container.destroy({children:true});}
 }
