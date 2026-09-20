@@ -3,6 +3,10 @@
     Texture,
 } from "pixi.js";
 
+import {
+    DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
+} from "../config/FireParticleVfxDefinition";
+
 export type FireVfxPresentationOrigin =
     | "ground"
     | "directional"
@@ -101,6 +105,13 @@ export interface FireVfxParticleActivation {
     readonly turbulenceFrequency: number;
 
     /**
+     * Optional presentation-only terminal fade reserved for Directional Fire.
+     * Ground Fire continues to use the shared Ground terminal fade.
+     */
+    readonly directionalTerminalFadeStartFraction?: number;
+    readonly directionalTerminalFadeEndFraction?: number;
+
+    /**
      * Optional presentation-only directional-jet travel constraint.
      *
      * Ground Fire and diagnostic particles omit this completely. Jet Fire
@@ -117,6 +128,10 @@ export interface FireVfxParticleActivation {
         readonly directionX: number;
         readonly directionY: number;
         readonly getMaximumForwardDistance: () => number;
+
+        readonly terminalZoneFraction?: number;
+        readonly terminalLongitudinalScaleAtEnd?: number;
+        readonly terminalTurbulenceAtEnd?: number;
     };
 
     /**
@@ -240,6 +255,12 @@ export class FireVfxParticle {
 
     private turbulenceFrequency =
         0;
+
+    private directionalTerminalFadeStartFraction =
+        1;
+
+    private directionalTerminalFadeEndFraction =
+        1;
 
     private previousTurbulenceOffsetX =
         0;
@@ -481,6 +502,22 @@ export class FireVfxParticle {
                 activation.turbulenceFrequency,
             );
 
+        this.directionalTerminalFadeStartFraction =
+            this.clamp01(
+                activation.directionalTerminalFadeStartFraction ??
+                1,
+            );
+
+        this.directionalTerminalFadeEndFraction =
+            Math.max(
+                this.directionalTerminalFadeStartFraction +
+                    0.001,
+                this.clamp01(
+                    activation.directionalTerminalFadeEndFraction ??
+                    1,
+                ),
+            );
+
         this.previousTurbulenceOffsetX =
             0;
 
@@ -705,9 +742,35 @@ export class FireVfxParticle {
                 ),
             );
 
+        const directionalTerminalProgress =
+            this.getDirectionalTerminalProgress();
+
+        const terminalLongitudinalScale =
+            this.directionalTravelConstraint
+                ?.terminalLongitudinalScaleAtEnd ??
+            1;
+
+        /*
+         * The authored flame texture's Y axis is its long axis. Jet particles
+         * are velocity-oriented, so reducing Y here shortens the flame along
+         * the stream direction without collapsing its lateral width.
+         */
+        const directionalScaleY =
+            scaleY *
+            this.lerp(
+                1,
+                Math.max(
+                    0.05,
+                    terminalLongitudinalScale,
+                ),
+                this.smoothStep(
+                    directionalTerminalProgress,
+                ),
+            );
+
         this.sprite.scale.set(
             scaleX,
-            scaleY,
+            directionalScaleY,
         );
 
         // ---------------------------------------------------
@@ -734,6 +797,29 @@ export class FireVfxParticle {
         this.applyTurbulence(
             normalizedAge,
         );
+
+        // ---------------------------------------------------
+        // Ground Fire terminal opacity fade
+        // ---------------------------------------------------
+
+        this.updateGroundTerminalFade(
+            normalizedAge,
+        );
+
+        this.updateDirectionalTerminalFade(
+            normalizedAge,
+        );
+
+        /*
+         * Spatial fade dominates the visible jet endpoint. A young particle
+         * cannot remain fully opaque merely because its random lifetime has
+         * not yet reached the age-based fade.
+         */
+        this.sprite.alpha *=
+            1 -
+            this.smoothStep(
+                this.getDirectionalTerminalProgress(),
+            );
 
         // ---------------------------------------------------
         // Phase 8F-4 directional Fire presentation boundary
@@ -794,9 +880,15 @@ export class FireVfxParticle {
         this.angularVelocityRetention =
             1;
 
+        this.directionalTerminalFadeStartFraction =
+            1;
+
+        this.directionalTerminalFadeEndFraction =
+            1;
+
         this.directionalTravelConstraint =
             undefined;
-    }
+}
 
     public destroy():
         void {
@@ -805,11 +897,189 @@ export class FireVfxParticle {
             texture:
                 false,
         });
+}
+
+    // -------------------------------------------------------
+    // Ground Fire terminal opacity fade
+    // -------------------------------------------------------
+
+    private updateGroundTerminalFade(
+        normalizedAge:
+            number,
+    ): void {
+
+        const definition =
+            DEFAULT_FIRE_PARTICLE_VFX_DEFINITION
+                .groundTerminalFade;
+
+        if (
+            !definition.enabled ||
+            this.presentationOrigin !==
+                "ground"
+        ) {
+            return;
+        }
+
+        const start =
+            this.clamp01(
+                definition
+                    .startLifetimeFraction,
+            );
+
+        const end =
+            Math.max(
+                start +
+                    0.001,
+                this.clamp01(
+                    definition
+                        .endLifetimeFraction,
+                ),
+            );
+
+        const fadeProgress =
+            this.clamp01(
+                (
+                    normalizedAge -
+                    start
+                ) /
+                (
+                    end -
+                    start
+                ),
+            );
+
+        /*
+         * Opacity-only terminal treatment.
+         * No Graphics mask, clipping, shader, or filter remains.
+         */
+        this.sprite.alpha *=
+            1 -
+            fadeProgress;
+    }
+
+    private updateDirectionalTerminalFade(
+        normalizedAge:
+            number,
+    ): void {
+
+        if (
+            this.presentationOrigin !==
+                "directional"
+        ) {
+            return;
+        }
+
+        const start =
+            this.directionalTerminalFadeStartFraction;
+
+        const end =
+            this.directionalTerminalFadeEndFraction;
+
+        if (
+            normalizedAge <=
+            start
+        ) {
+            return;
+        }
+
+        const progress =
+            this.clamp01(
+                (
+                    normalizedAge -
+                    start
+                ) /
+                Math.max(
+                    0.001,
+                    end -
+                    start,
+                ),
+            );
+
+        /*
+         * Fast opacity-only jet termination. Scale is intentionally left
+         * untouched so the flame does not expose a shrinking bottom lobe.
+         */
+        this.sprite.alpha *=
+            1 -
+            this.smoothStep(
+                progress,
+            );
     }
 
     // -------------------------------------------------------
     // Phase 8F-4 directional Fire presentation constraint
     // -------------------------------------------------------
+
+    private getDirectionalTerminalProgress():
+        number {
+
+        const constraint =
+            this.directionalTravelConstraint;
+
+        if (
+            !constraint ||
+            this.presentationOrigin !==
+                "directional"
+        ) {
+            return 0;
+        }
+
+        const maximumForwardDistance =
+            constraint.getMaximumForwardDistance();
+
+        if (
+            !Number.isFinite(
+                maximumForwardDistance,
+            ) ||
+            maximumForwardDistance <=
+            0
+        ) {
+            return 0;
+        }
+
+        const zoneFraction =
+            this.clamp01(
+                constraint.terminalZoneFraction ??
+                0,
+            );
+
+        if (zoneFraction <= 0) {
+            return 0;
+        }
+
+        const offsetX =
+            this.sprite.x -
+            constraint.originX;
+
+        const offsetY =
+            this.sprite.y -
+            constraint.originY;
+
+        const forwardDistance =
+            offsetX *
+            constraint.directionX +
+            offsetY *
+            constraint.directionY;
+
+        const zoneStartDistance =
+            maximumForwardDistance *
+            (
+                1 -
+                zoneFraction
+            );
+
+        return this.clamp01(
+            (
+                forwardDistance -
+                zoneStartDistance
+            ) /
+            Math.max(
+                0.001,
+                maximumForwardDistance -
+                    zoneStartDistance,
+            ),
+        );
+    }
 
     private hasExceededDirectionalTravelConstraint():
         boolean {
@@ -1084,12 +1354,33 @@ export class FireVfxParticle {
                 ),
             );
 
+        const directionalTerminalProgress =
+            this.getDirectionalTerminalProgress();
+
+        const terminalTurbulenceMultiplier =
+            this.directionalTravelConstraint
+                ?.terminalTurbulenceAtEnd ??
+            1;
+
+        const directionalTerminalDamping =
+            this.lerp(
+                1,
+                Math.max(
+                    0,
+                    terminalTurbulenceMultiplier,
+                ),
+                this.smoothStep(
+                    directionalTerminalProgress,
+                ),
+            );
+
         const offsetX =
             Math.sin(
                 phase,
             ) *
             this.turbulenceAmplitude *
-            deathDamping;
+            deathDamping *
+            directionalTerminalDamping;
 
         const offsetY =
             Math.cos(
@@ -1098,7 +1389,8 @@ export class FireVfxParticle {
             ) *
             this.turbulenceAmplitude *
             0.28 *
-            deathDamping;
+            deathDamping *
+            directionalTerminalDamping;
 
         /*
          * Apply the change in turbulence offset rather than accumulating the

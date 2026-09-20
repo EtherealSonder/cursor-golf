@@ -90,6 +90,17 @@ export interface FireParticleVfxDefinition {
         readonly body: FireParticleThermalRoleDefinition;
         readonly cool: FireParticleThermalRoleDefinition;
     };
+
+    /**
+     * Presentation-only terminal opacity fade for Ground Fire particles.
+     * The authored flame silhouette is preserved. No mask, clipping,
+     * dissolve shader, or filter is used.
+     */
+    readonly groundTerminalFade: {
+        readonly enabled: boolean;
+        readonly startLifetimeFraction: number;
+        readonly endLifetimeFraction: number;
+    };
 }
 
 export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
@@ -115,20 +126,20 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
     },
 
     particle: {
-        lifetimeMinimum: 0.58,
-        lifetimeMaximum: 1.05,
+        lifetimeMinimum: 0.52,
+        lifetimeMaximum: 1.22,
         horizontalVelocityMinimum: -24,
         horizontalVelocityMaximum: 24,
         upwardVelocityMinimum: -155,
         upwardVelocityMaximum: -82,
         startScaleXMinimum: 0.046,
-        startScaleXMaximum: 0.080,
-        startScaleYMinimum: 0.038,
-        startScaleYMaximum: 0.072,
-        endScaleXMinimum: 0.076,
-        endScaleXMaximum: 0.134,
-        endScaleYMinimum: 0.116,
-        endScaleYMaximum: 0.214,
+        startScaleXMaximum: 0.046,
+        startScaleYMinimum: 0.043,
+        startScaleYMaximum: 0.043,
+        endScaleXMinimum: 0.130,
+        endScaleXMaximum: 0.130,
+        endScaleYMinimum: 0.165,
+        endScaleYMaximum: 0.165,
         // FIRE-VFX-CRISP-1A: hard illustrated masks need stronger opacity.
         // Whole-particle lifecycle fading remains handled by FireVfxParticle.
         alphaMinimum: 0.76,
@@ -138,7 +149,7 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
         angularVelocityMinimum: -0.58,
         angularVelocityMaximum: 0.58,
         emergenceEndFraction: 0.12,
-        fadeStartFraction: 0.60,
+        fadeStartFraction: 0.82,
         flickerSpeedMinimum: 7.0,
         flickerSpeedMaximum: 13.0,
         flickerAmountMinimum: 0.015,
@@ -173,5 +184,21 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
         hot: { weight: 0.14, textureVariant: "core", tint: FIRE_ART_DIRECTION.palette.hot, lifetimeMultiplier: 0.76, speedMultiplier: 1.14, scaleMultiplier: 0.78, alphaMultiplier: 1.0 },
         body: { weight: 0.50, textureVariant: "body", tint: FIRE_ART_DIRECTION.palette.body, lifetimeMultiplier: 1.0, speedMultiplier: 1.0, scaleMultiplier: 1.04, alphaMultiplier: 1.0 },
         cool: { weight: 0.36, textureVariant: "accent", tint: FIRE_ART_DIRECTION.palette.coolOuter, lifetimeMultiplier: 1.12, speedMultiplier: 0.90, scaleMultiplier: 1.10, alphaMultiplier: 0.96 },
+    },
+
+    groundTerminalFade: {
+        enabled: true,
+
+        // Keep the full illustrated flame visible and begin opacity fade late.
+        startLifetimeFraction: 0.56,
+
+        // Reach zero opacity before particle expiry.
+        endLifetimeFraction: 0.90,
+
+        // By the end, remove roughly the lower 82% of the source mask.
+        maximumCutoffFromBottom: 0.97,
+
+        // Very narrow feather. Keeps the edge illustrated rather than blurry.
+        edgeFeather: 0,
     },
 };

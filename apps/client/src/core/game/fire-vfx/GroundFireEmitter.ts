@@ -321,11 +321,20 @@ export class GroundFireEmitter {
             spawnIndex +=
             1
         ) {
-            this.spawnOne(
-                cell,
-                cellSize,
-                visualEnergy,
-            );
+            const spawned =
+                this.spawnOne(
+                    cell,
+                    cellSize,
+                    visualEnergy,
+                );
+
+            if (!spawned) {
+                /*
+                 * Presentation budget/pool is saturated. Stop additional
+                 * visual spawn work for this cell this frame.
+                 */
+                break;
+            }
         }
     }
 
@@ -407,7 +416,7 @@ export class GroundFireEmitter {
 
         visualEnergy:
             number,
-    ): void {
+    ): boolean {
 
         const thermalRole =
             this.selectThermalRole();
@@ -423,7 +432,7 @@ export class GroundFireEmitter {
                 visualEnergy,
             );
 
-        this.spawnParticle(
+        return this.spawnParticle(
             thermalRole
                 .textureVariant,
 
@@ -813,12 +822,7 @@ export class GroundFireEmitter {
                 ),
 
             rotation:
-                this.randomRange(
-                    particle
-                        .rotationMinimum,
-                    particle
-                        .rotationMaximum,
-                ),
+                0,
 
             angularVelocity:
                 this.randomRange(

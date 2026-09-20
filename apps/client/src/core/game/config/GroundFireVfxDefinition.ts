@@ -7,6 +7,12 @@ export interface GroundFireVfxDefinition {
     readonly particlesPerSecondPerCell: number;
 
     /**
+     * Presentation-only ceiling for simultaneously active Ground Fire
+     * particles. Reaching this limit skips new visual spawns only.
+     */
+    readonly maximumActivePresentationParticles: number;
+
+    /**
      * Cells below this normalized authoritative intensity do not emit.
      */
     readonly minimumIntensity: number;
@@ -88,7 +94,10 @@ export const DEFAULT_GROUND_FIRE_VFX_DEFINITION:
         true,
 
     particlesPerSecondPerCell:
-        46,
+        45,
+
+    maximumActivePresentationParticles:
+        480,
 
     minimumIntensity:
         0.05,

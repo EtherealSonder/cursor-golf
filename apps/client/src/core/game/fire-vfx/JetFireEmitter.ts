@@ -16,6 +16,14 @@ import {
     DEFAULT_JET_FIRE_VFX_DEFINITION,
 } from "../config/JetFireVfxDefinition";
 
+import {
+    DEFAULT_JET_FIRE_PRESENTATION_DEFINITION,
+} from "../config/JetFirePresentationDefinition";
+
+import type {
+    JetFirePresentationDefinition,
+} from "../config/JetFirePresentationDefinition";
+
 import type {
     JetFireVfxDefinition,
 } from "../config/JetFireVfxDefinition";
@@ -110,6 +118,10 @@ export class JetFireEmitter {
         private readonly particleDefinition:
             FireParticleVfxDefinition =
             DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
+
+        private readonly presentationDefinition:
+            JetFirePresentationDefinition =
+            DEFAULT_JET_FIRE_PRESENTATION_DEFINITION,
     ) {
     }
 
@@ -211,7 +223,9 @@ export class JetFireEmitter {
             Math.max(
                 0,
                 this.definition
-                    .particlesPerSecondPerSource,
+                    .particlesPerSecondPerSource *
+                this.presentationDefinition
+                    .emissionDensityMultiplier,
             ) *
             deltaTime;
 
@@ -402,6 +416,11 @@ export class JetFireEmitter {
             Math.max(
                 0,
                 role.speedMultiplier,
+            ) *
+            Math.max(
+                0,
+                this.presentationDefinition
+                    .forwardVelocityMultiplier,
             );
 
         const lateralVelocity =
@@ -410,6 +429,11 @@ export class JetFireEmitter {
                     .lateralVelocityMinimum,
                 this.definition
                     .lateralVelocityMaximum,
+            ) *
+            Math.max(
+                0,
+                this.presentationDefinition
+                    .lateralVelocityMultiplier,
             );
 
         const windAcceleration =
@@ -517,7 +541,9 @@ export class JetFireEmitter {
                     particle
                         .startScaleXMaximum,
                 ) *
-                startScaleMultiplier,
+                startScaleMultiplier *
+                this.presentationDefinition
+                    .startLateralScaleMultiplier,
 
             startScaleY:
                 this.randomRange(
@@ -526,7 +552,9 @@ export class JetFireEmitter {
                     particle
                         .startScaleYMaximum,
                 ) *
-                startScaleMultiplier,
+                startScaleMultiplier *
+                this.presentationDefinition
+                    .startLongitudinalScaleMultiplier,
 
             endScaleX:
                 this.randomRange(
@@ -535,7 +563,9 @@ export class JetFireEmitter {
                     particle
                         .endScaleXMaximum,
                 ) *
-                endScaleMultiplier,
+                endScaleMultiplier *
+                this.presentationDefinition
+                    .endLateralScaleMultiplier,
 
             endScaleY:
                 this.randomRange(
@@ -544,7 +574,9 @@ export class JetFireEmitter {
                     particle
                         .endScaleYMaximum,
                 ) *
-                endScaleMultiplier,
+                endScaleMultiplier *
+                this.presentationDefinition
+                    .endLongitudinalScaleMultiplier,
 
             maximumAlpha:
                 this.clamp01(
@@ -615,7 +647,8 @@ export class JetFireEmitter {
                     particle
                         .turbulenceAmplitudeMaximum,
                 ) *
-                0.72,
+                this.presentationDefinition
+                    .turbulenceMultiplier,
 
             turbulenceFrequency:
                 this.randomRange(
@@ -624,6 +657,14 @@ export class JetFireEmitter {
                     particle
                         .turbulenceFrequencyMaximum,
                 ),
+
+            directionalTerminalFadeStartFraction:
+                this.presentationDefinition
+                    .terminalFadeStartFraction,
+
+            directionalTerminalFadeEndFraction:
+                this.presentationDefinition
+                    .terminalFadeEndFraction,
 
             /*
              * Phase 8F-4 presentation bridge.
@@ -646,6 +687,18 @@ export class JetFireEmitter {
 
                 directionY:
                     sourceDirectionY,
+
+                terminalZoneFraction:
+                    this.presentationDefinition
+                        .terminalDistanceZoneFraction,
+
+                terminalLongitudinalScaleAtEnd:
+                    this.presentationDefinition
+                        .terminalLongitudinalScaleAtEnd,
+
+                terminalTurbulenceAtEnd:
+                    this.presentationDefinition
+                        .terminalTurbulenceAtEnd,
 
                 getMaximumForwardDistance:
                     (): number => {
@@ -792,21 +845,24 @@ export class JetFireEmitter {
             Math.max(
                 0,
                 hot.weight *
-                1.65,
+                this.presentationDefinition
+                    .hotWeightMultiplier,
             );
 
         const bodyWeight =
             Math.max(
                 0,
                 body.weight *
-                1.05,
+                this.presentationDefinition
+                    .bodyWeightMultiplier,
             );
 
         const coolWeight =
             Math.max(
                 0,
                 cool.weight *
-                0.78,
+                this.presentationDefinition
+                    .coolWeightMultiplier,
             );
 
         const totalWeight =

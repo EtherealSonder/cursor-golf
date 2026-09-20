@@ -15,6 +15,10 @@ import type {
     DirectionalFirePresentationRegion,
 } from "./DirectionalFirePresentationRegion";
 
+import {
+    DEFAULT_GROUND_FIRE_VFX_DEFINITION,
+} from "../config/GroundFireVfxDefinition";
+
 export interface FireVfxPoolDefinition {
     readonly initialCapacity: number;
     readonly maximumCapacity: number;
@@ -39,6 +43,9 @@ export class FireVfxPool {
     private readonly maximumCapacity:
         number;
 
+    private readonly maximumActiveGroundParticles:
+        number;
+
     public constructor(
         fallbackTexture: Texture,
         definition:
@@ -57,6 +64,15 @@ export class FireVfxPool {
                 this.initialCapacity,
                 Math.floor(
                     definition.maximumCapacity,
+                ),
+            );
+
+        this.maximumActiveGroundParticles =
+            Math.max(
+                0,
+                Math.floor(
+                    DEFAULT_GROUND_FIRE_VFX_DEFINITION
+                        .maximumActivePresentationParticles,
                 ),
             );
 
@@ -83,6 +99,15 @@ export class FireVfxPool {
         activation:
             FireVfxParticleActivation,
     ): FireVfxParticle | null {
+
+        if (
+            activation.presentationOrigin ===
+                "ground" &&
+            this.getActiveGroundCount() >=
+                this.maximumActiveGroundParticles
+        ) {
+            return null;
+        }
 
         let particle:
             FireVfxParticle | null =
@@ -257,6 +282,35 @@ export class FireVfxPool {
 
         return this.particles.length;
     }
+
+    private getActiveGroundCount():
+        number {
+
+        let activeGroundCount =
+            0;
+
+        for (
+            let index = 0;
+            index <
+            this.particles.length;
+            index += 1
+        ) {
+            const particle =
+                this.particles[index];
+
+            if (
+                particle.isActive() &&
+                particle.getPresentationOrigin() ===
+                    "ground"
+            ) {
+                activeGroundCount +=
+                    1;
+            }
+        }
+
+        return activeGroundCount;
+    }
+
 
     public destroy():
         void {
