@@ -11,6 +11,10 @@ import type {
     FireVfxParticleActivation,
 } from "./FireVfxParticle";
 
+import type {
+    DirectionalFirePresentationRegion,
+} from "./DirectionalFirePresentationRegion";
+
 export interface FireVfxPoolDefinition {
     readonly initialCapacity: number;
     readonly maximumCapacity: number;
@@ -124,6 +128,58 @@ export class FireVfxPool {
         );
 
         return particle;
+    }
+
+
+    /**
+     * F-2 runtime presentation ownership pass.
+     *
+     * Ground particles may have been emitted before a Directional Fire
+     * footprint reached them. Because Ground and Directional particles share
+     * this pool, remove only Ground presentation particles that currently
+     * occupy Directional presentation-owned space.
+     *
+     * This mutates presentation state only.
+     */
+    public suppressGroundParticlesInDirectionalRegion(
+        region:
+            DirectionalFirePresentationRegion,
+    ): number {
+
+        let suppressedCount =
+            0;
+
+        for (
+            let index = 0;
+            index <
+            this.particles.length;
+            index += 1
+        ) {
+            const particle =
+                this.particles[index];
+
+            if (
+                !particle.isActive() ||
+                particle.getPresentationOrigin() !==
+                    "ground"
+            ) {
+                continue;
+            }
+
+            if (
+                region.containsPoint(
+                    particle.getWorldX(),
+                    particle.getWorldY(),
+                )
+            ) {
+                particle.deactivate();
+
+                suppressedCount +=
+                    1;
+            }
+        }
+
+        return suppressedCount;
     }
 
     public update(

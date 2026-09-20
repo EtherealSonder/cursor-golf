@@ -1,3 +1,5 @@
+import { FIRE_ART_DIRECTION } from "./FireArtDirectionDefinition";
+
 export type FireParticleTextureVariant =
     | "body"
     | "core"
@@ -127,8 +129,10 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
         endScaleXMaximum: 0.134,
         endScaleYMinimum: 0.116,
         endScaleYMaximum: 0.214,
-        alphaMinimum: 0.31,
-        alphaMaximum: 0.55,
+        // FIRE-VFX-CRISP-1A: hard illustrated masks need stronger opacity.
+        // Whole-particle lifecycle fading remains handled by FireVfxParticle.
+        alphaMinimum: 0.76,
+        alphaMaximum: 0.96,
         rotationMinimum: -0.34,
         rotationMaximum: 0.34,
         angularVelocityMinimum: -0.58,
@@ -147,7 +151,9 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
 
     material: {
         outputSize: 192,
-        detailParticleChance: 0.20,
+        // FIRE-VFX-CRISP-1A: use the crisp shape pools for most flames.
+        // Noise-generated detail textures are bypassed by FireVfxTextureFactory.
+        detailParticleChance: 0.82,
         hot: [
             { maskTextureKey: "fireGlowRound", noiseTextureKey: "fireNoisePerlin", noiseScale: 1.35, breakupStrength: 0.08, edgeBreakupStrength: 0.12, noiseOffsetX: 0.12, noiseOffsetY: 0.18 },
             { maskTextureKey: "fireGlowSoft", noiseTextureKey: "fireNoiseCloud", noiseScale: 1.20, breakupStrength: 0.10, edgeBreakupStrength: 0.14, noiseOffsetX: 0.57, noiseOffsetY: 0.31 },
@@ -164,8 +170,8 @@ export const DEFAULT_FIRE_PARTICLE_VFX_DEFINITION:
     },
 
     thermalRoles: {
-        hot: { weight: 0.17, textureVariant: "core", tint: 0xffe66a, lifetimeMultiplier: 0.76, speedMultiplier: 1.14, scaleMultiplier: 0.78, alphaMultiplier: 1.0 },
-        body: { weight: 0.60, textureVariant: "body", tint: 0xff7a32, lifetimeMultiplier: 1.0, speedMultiplier: 1.0, scaleMultiplier: 1.04, alphaMultiplier: 1.0 },
-        cool: { weight: 0.23, textureVariant: "accent", tint: 0xf04438, lifetimeMultiplier: 1.12, speedMultiplier: 0.90, scaleMultiplier: 1.10, alphaMultiplier: 0.86 },
+        hot: { weight: 0.14, textureVariant: "core", tint: FIRE_ART_DIRECTION.palette.hot, lifetimeMultiplier: 0.76, speedMultiplier: 1.14, scaleMultiplier: 0.78, alphaMultiplier: 1.0 },
+        body: { weight: 0.50, textureVariant: "body", tint: FIRE_ART_DIRECTION.palette.body, lifetimeMultiplier: 1.0, speedMultiplier: 1.0, scaleMultiplier: 1.04, alphaMultiplier: 1.0 },
+        cool: { weight: 0.36, textureVariant: "accent", tint: FIRE_ART_DIRECTION.palette.coolOuter, lifetimeMultiplier: 1.12, speedMultiplier: 0.90, scaleMultiplier: 1.10, alphaMultiplier: 0.96 },
     },
 };

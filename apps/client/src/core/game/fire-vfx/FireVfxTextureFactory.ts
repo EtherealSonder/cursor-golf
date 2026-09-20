@@ -2,21 +2,11 @@ import {
     Texture,
 } from "pixi.js";
 
-import {
-    DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
-} from "../config/FireParticleVfxDefinition";
-
-import type {
-    FireParticleMaterialVariantDefinition,
-} from "../config/FireParticleVfxDefinition";
+import { FIRE_ART_DIRECTION } from "../config/FireArtDirectionDefinition";
 
 import {
     AssetLoader,
 } from "../../rendering/AssetLoader";
-
-import {
-    FireParticleTextureGenerator,
-} from "./FireParticleTextureGenerator";
 
 export interface FireVfxMainTextures {
     readonly hot:
@@ -52,94 +42,111 @@ export interface FireVfxTextures {
 }
 
 /**
- * FIRE-VFX-2B hybrid texture factory.
+ * FIRE-VFX-CRISP-1A texture factory.
  *
- * Important test condition:
+ * Presentation-only experiment:
  *
- * fireGradientSoft is intentionally excluded from all active Fire particle
- * mappings.
+ * - Fire simulation/gameplay is untouched.
+ * - GroundFireEmitter and JetFireEmitter are untouched.
+ * - Existing Fire noise generation is bypassed for active flame particles.
+ * - Legacy soft masks remain loaded and available for fallback.
+ * - HOT / BODY / COOL continue to use the existing thermal-role tint system.
  *
- * Main Fire:
- *     HOT  -> fireGlowRound
- *     BODY -> fireGlowSoft
- *     COOL -> fireGlowSoft
- *
- * Detail Fire:
- *     generated only from fireGlowRound / fireGlowSoft + noise
+ * Main mappings provide deterministic fallbacks.
+ * Detail mappings are direct crisp-mask pools. They are AssetLoader-owned
+ * textures, not generated textures.
  */
 export class FireVfxTextureFactory {
 
     public static create():
         FireVfxTextures {
+        const palette = FIRE_ART_DIRECTION.palette;
+        if (
+            !Number.isFinite(palette.hotCore) ||
+            !Number.isFinite(palette.hot) ||
+            !Number.isFinite(palette.body) ||
+            !Number.isFinite(palette.coolOuter)
+        ) {
+            throw new Error("Invalid shared Fire art-direction palette.");
+        }
 
-        const material =
-            DEFAULT_FIRE_PARTICLE_VFX_DEFINITION
-                .material;
 
         const main:
             FireVfxMainTextures = {
 
             hot:
                 AssetLoader.getTexture(
-                    "fireGlowRound",
+                    "fireFlameSmall",
                 ),
 
             body:
                 AssetLoader.getTexture(
-                    "fireGlowSoft",
+                    "fireFlameBroad",
                 ),
 
-            /*
-             * Deliberately use the compact soft mask instead of
-             * fireGradientSoft so cooling particles do not inherit the
-             * vertical capsule/tube silhouette.
-             */
             cool:
                 AssetLoader.getTexture(
-                    "fireGlowSoft",
+                    "fireFlameBroad",
                 ),
         };
 
         const detail:
             FireVfxDetailTextures = {
 
-            hot:
-                this.generateVariants(
-                    material.hot,
-                    material.outputSize,
+            hot: [
+                AssetLoader.getTexture(
+                    "fireFlameSmall",
                 ),
+                AssetLoader.getTexture(
+                    "fireFlameTall",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameCurveLeft",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameCurveRight",
+                ),
+            ],
 
-            body:
-                this.generateVariants(
-                    material.body,
-                    material.outputSize,
+            body: [
+                AssetLoader.getTexture(
+                    "fireFlameBroad",
                 ),
+                AssetLoader.getTexture(
+                    "fireFlameTall",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameCurveLeft",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameCurveRight",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameFork",
+                ),
+            ],
 
-            cool:
-                this.generateVariants(
-                    material.cool,
-                    material.outputSize,
+            cool: [
+                AssetLoader.getTexture(
+                    "fireFlameBroad",
                 ),
+                AssetLoader.getTexture(
+                    "fireFlameCurveLeft",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameCurveRight",
+                ),
+                AssetLoader.getTexture(
+                    "fireFlameFork",
+                ),
+            ],
         };
-
-        if (
-            detail.hot.length ===
-            0 ||
-            detail.body.length ===
-            0 ||
-            detail.cool.length ===
-            0
-        ) {
-            throw new Error(
-                "FireVfxTextureFactory requires at least one HOT, BODY and COOL detail texture.",
-            );
-        }
-
 
         return {
             main,
             detail,
 
+            // Ember presentation is intentionally unchanged in 1A.
             ember:
                 AssetLoader.getTexture(
                     "fireGlowRound",
@@ -148,94 +155,13 @@ export class FireVfxTextureFactory {
     }
 
     public static destroy(
-        textures:
+        _textures:
             FireVfxTextures,
     ): void {
 
         /*
-         * Only generated detail textures belong to this factory.
-         * Main masks and ember are shared AssetLoader textures.
+         * FIRE-VFX-CRISP-1A uses only AssetLoader-owned textures.
+         * Nothing is generated by this factory.
          */
-        this.destroyGeneratedTextures(
-            textures.detail.hot,
-        );
-
-        this.destroyGeneratedTextures(
-            textures.detail.body,
-        );
-
-        this.destroyGeneratedTextures(
-            textures.detail.cool,
-        );
-    }
-
-    private static generateVariants(
-        definitions:
-            readonly FireParticleMaterialVariantDefinition[],
-
-        outputSize:
-            number,
-    ): Texture[] {
-
-        const textures:
-            Texture[] = [];
-
-        for (
-            const definition
-            of definitions
-        ) {
-            const maskTexture =
-                AssetLoader.getTexture(
-                    definition.maskTextureKey,
-                );
-
-            const noiseTexture =
-                AssetLoader.getTexture(
-                    definition.noiseTextureKey,
-                );
-
-            textures.push(
-                FireParticleTextureGenerator
-                    .generate(
-                        maskTexture,
-                        noiseTexture,
-                        {
-                            outputSize,
-
-                            noiseScale:
-                                definition.noiseScale,
-
-                            breakupStrength:
-                                definition.breakupStrength,
-
-                            edgeBreakupStrength:
-                                definition.edgeBreakupStrength,
-
-                            noiseOffsetX:
-                                definition.noiseOffsetX,
-
-                            noiseOffsetY:
-                                definition.noiseOffsetY,
-                        },
-                    ),
-            );
-        }
-
-        return textures;
-    }
-
-    private static destroyGeneratedTextures(
-        textures:
-            readonly Texture[],
-    ): void {
-
-        for (
-            const texture
-            of textures
-        ) {
-            texture.destroy(
-                true,
-            );
-        }
     }
 }

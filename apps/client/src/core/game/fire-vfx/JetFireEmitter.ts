@@ -1,4 +1,4 @@
-﻿import {
+import {
     DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
 } from "../config/FireParticleVfxDefinition";
 
@@ -40,6 +40,14 @@ import type {
     FireVfxTextureVariant,
 } from "./FireVfxSystem";
 
+import {
+    DIRECTIONAL_FIRE_PRESENTATION_CONTRACT,
+} from "./FirePresentationContract";
+
+import type {
+    DirectionalFirePresentationRegion,
+} from "./DirectionalFirePresentationRegion";
+
 export type JetFireEmitterSpawnCallback =
     (
         variant:
@@ -73,6 +81,9 @@ interface JetFireEmitterState {
  */
 export class JetFireEmitter {
 
+    public static readonly presentationContract =
+        DIRECTIONAL_FIRE_PRESENTATION_CONTRACT;
+
     private readonly emitterStates =
         new Map<FireSource, JetFireEmitterState>();
 
@@ -89,6 +100,9 @@ export class JetFireEmitter {
         private readonly spawnParticle:
             JetFireEmitterSpawnCallback,
 
+        private readonly directionalPresentationRegion:
+            DirectionalFirePresentationRegion,
+
         private readonly definition:
             JetFireVfxDefinition =
             DEFAULT_JET_FIRE_VFX_DEFINITION,
@@ -97,6 +111,13 @@ export class JetFireEmitter {
             FireParticleVfxDefinition =
             DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
     ) {
+    }
+
+
+    public getPresentationRegion():
+        DirectionalFirePresentationRegion {
+
+        return this.directionalPresentationRegion;
     }
 
     public update(
@@ -430,6 +451,9 @@ export class JetFireEmitter {
             );
 
         return {
+            presentationOrigin:
+                "directional",
+
             x:
                 spawnX,
 

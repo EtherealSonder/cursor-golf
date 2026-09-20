@@ -20,6 +20,26 @@ import fireGlowRoundTexture from "../../assets/textures/fire/masks/fire_glow_rou
 import fireGlowSoftTexture from "../../assets/textures/fire/masks/fire_glow_soft.png";
 import fireGradientSoftTexture from "../../assets/textures/fire/masks/fire_gradient_soft.png";
 
+import fireFlameBroadTexture from "../../assets/textures/fire/masks/fire_flame_broad.png";
+import fireFlameTallTexture from "../../assets/textures/fire/masks/fire_flame_tall.png";
+import fireFlameCurveLeftTexture from "../../assets/textures/fire/masks/fire_flame_curve_left.png";
+import fireFlameCurveRightTexture from "../../assets/textures/fire/masks/fire_flame_curve_right.png";
+import fireFlameForkTexture from "../../assets/textures/fire/masks/fire_flame_fork.png";
+import fireFlameSmallTexture from "../../assets/textures/fire/masks/fire_flame_small.png";
+import fireFlameTongueNarrowTexture from "../../assets/textures/fire/masks/fire_flame_tongue_narrow.png";
+import fireFlameTongueCurveLeftTexture from "../../assets/textures/fire/masks/fire_flame_tongue_curve_left.png";
+import fireFlameTongueCurveRightTexture from "../../assets/textures/fire/masks/fire_flame_tongue_curve_right.png";
+import fireTopdownLobe01Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_lobe_01.png";
+import fireTopdownLobe02Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_lobe_02.png";
+import fireTopdownLobe03Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_lobe_03.png";
+import fireTopdownCurl01Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_curl_01.png";
+import fireTopdownCurl02Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_curl_02.png";
+import fireTopdownHook01Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_hook_01.png";
+import fireTopdownCrescent01Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_crescent_01.png";
+import fireTopdownFragment01Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_fragment_01.png";
+import fireTopdownFragment02Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_fragment_02.png";
+import fireTopdownFragment03Texture from "../../assets/textures/fire/masks/topdown/fire_topdown_fragment_03.png";
+
 import fireNoiseCloudTexture from "../../assets/textures/fire/noise/fire_noise_cloud.png";
 import fireNoisePerlinTexture from "../../assets/textures/fire/noise/fire_noise_perlin.png";
 import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG";
@@ -126,6 +146,69 @@ export class AssetLoader {
             "fireGradientSoft",
             fireGradientSoftTexture,
         );
+
+
+        // ---------------------------------------------------
+        // FIRE VFX crisp illustrated flame vocabulary
+        // F-3 primary Ground Fire + F-4 Wind-compatible family
+        // ---------------------------------------------------
+
+        await this.loadTexture(
+            "fireFlameBroad",
+            fireFlameBroadTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameTall",
+            fireFlameTallTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameCurveLeft",
+            fireFlameCurveLeftTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameCurveRight",
+            fireFlameCurveRightTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameFork",
+            fireFlameForkTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameSmall",
+            fireFlameSmallTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameTongueNarrow",
+            fireFlameTongueNarrowTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameTongueCurveLeft",
+            fireFlameTongueCurveLeftTexture,
+        );
+
+        await this.loadTexture(
+            "fireFlameTongueCurveRight",
+            fireFlameTongueCurveRightTexture,
+        );
+
+        // F-5/F-6 top-down Fire masks
+        await this.loadTexture("fireTopdownLobe01", fireTopdownLobe01Texture);
+        await this.loadTexture("fireTopdownLobe02", fireTopdownLobe02Texture);
+        await this.loadTexture("fireTopdownLobe03", fireTopdownLobe03Texture);
+        await this.loadTexture("fireTopdownCurl01", fireTopdownCurl01Texture);
+        await this.loadTexture("fireTopdownCurl02", fireTopdownCurl02Texture);
+        await this.loadTexture("fireTopdownHook01", fireTopdownHook01Texture);
+        await this.loadTexture("fireTopdownCrescent01", fireTopdownCrescent01Texture);
+        await this.loadTexture("fireTopdownFragment01", fireTopdownFragment01Texture);
+        await this.loadTexture("fireTopdownFragment02", fireTopdownFragment02Texture);
+        await this.loadTexture("fireTopdownFragment03", fireTopdownFragment03Texture);
 
         // ---------------------------------------------------
         // FIRE-VFX-2A
@@ -264,3 +347,4 @@ export class AssetLoader {
         );
     }
 }
+

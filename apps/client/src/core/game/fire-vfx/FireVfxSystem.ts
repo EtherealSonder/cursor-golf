@@ -1,4 +1,4 @@
-﻿import {
+import {
     Container,
     Texture,
 } from "pixi.js";
@@ -59,6 +59,27 @@ import {
     ScorchRenderer,
 } from "./ScorchRenderer";
 
+import {
+    DIRECTIONAL_FIRE_PRESENTATION_CONTRACT,
+    GROUND_FIRE_PRESENTATION_CONTRACT,
+} from "./FirePresentationContract";
+
+import {
+    FirePresentationContractValidation,
+} from "../debug/FirePresentationContractValidation";
+
+import {
+    DirectionalFirePresentationOwnershipValidation,
+} from "../debug/DirectionalFirePresentationOwnershipValidation";
+import {
+    FireArtDirectionValidation,
+} from "../debug/FireArtDirectionValidation";
+
+
+import {
+    DirectionalFirePresentationRegion,
+} from "./DirectionalFirePresentationRegion";
+
 export type FireVfxTextureVariant =
     | "body"
     | "core"
@@ -95,6 +116,12 @@ export type FireVfxTextureVariant =
  */
 export class FireVfxSystem {
 
+    public static readonly groundPresentationContract =
+        GROUND_FIRE_PRESENTATION_CONTRACT;
+
+    public static readonly directionalPresentationContract =
+        DIRECTIONAL_FIRE_PRESENTATION_CONTRACT;
+
     private readonly groundContainer =
         new Container();
 
@@ -109,6 +136,9 @@ export class FireVfxSystem {
 
     private readonly testEmitter:
         FireTestEmitter | null;
+
+    private readonly directionalPresentationRegion:
+        DirectionalFirePresentationRegion;
 
     private readonly groundFireEmitter:
         GroundFireEmitter;
@@ -132,6 +162,10 @@ export class FireVfxSystem {
         localWindSystem:
             LocalWindSystem,
     ) {
+
+        FirePresentationContractValidation.run();
+        DirectionalFirePresentationOwnershipValidation.run();
+        FireArtDirectionValidation.run();
 
         this.textures =
             FireVfxTextureFactory.create();
@@ -184,6 +218,11 @@ export class FireVfxSystem {
                 environmentField,
             );
 
+        this.directionalPresentationRegion =
+            new DirectionalFirePresentationRegion(
+                fireSourceSystem,
+            );
+
         this.groundFireEmitter =
             new GroundFireEmitter(
                 fireManager,
@@ -200,6 +239,7 @@ export class FireVfxSystem {
                         activation,
                     );
                 },
+                this.directionalPresentationRegion,
             );
 
         this.jetFireEmitter =
@@ -218,6 +258,7 @@ export class FireVfxSystem {
                         activation,
                     );
                 },
+                this.directionalPresentationRegion,
             );
 
         /*
@@ -294,6 +335,23 @@ export class FireVfxSystem {
                 deltaTime,
             );
 
+        // F-2: refresh current Directional presentation ownership before
+        // Ground Fire decides which active cells should emit particles.
+        this.directionalPresentationRegion
+            .update();
+
+        /*
+         * F-2 runtime ownership:
+         *
+         * New Ground emission is blocked by GroundFireEmitter, while this
+         * pass removes Ground particles that were already alive before the
+         * Directional presentation footprint reached them.
+         */
+        this.pool
+            .suppressGroundParticlesInDirectionalRegion(
+                this.directionalPresentationRegion,
+            );
+
         this.groundFireEmitter
             .update(
                 deltaTime,
@@ -307,6 +365,7 @@ export class FireVfxSystem {
         this.pool.update(
             deltaTime,
         );
+
     }
 
     /**
@@ -333,6 +392,9 @@ export class FireVfxSystem {
 
         this.testEmitter
             ?.reset();
+
+        this.directionalPresentationRegion
+            .reset();
 
         this.groundFireEmitter
             .reset();

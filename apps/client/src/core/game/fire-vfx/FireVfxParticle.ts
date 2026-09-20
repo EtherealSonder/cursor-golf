@@ -3,7 +3,21 @@
     Texture,
 } from "pixi.js";
 
+export type FireVfxPresentationOrigin =
+    | "ground"
+    | "directional"
+    | "diagnostic";
+
 export interface FireVfxParticleActivation {
+    /**
+     * F-2 presentation identity only.
+     *
+     * This does not describe authoritative Fire ownership. It exists solely
+     * so presentation systems can distinguish Ground particles from
+     * Directional particles after they enter the shared particle pool.
+     */
+    readonly presentationOrigin?: FireVfxPresentationOrigin;
+
     readonly x: number;
     readonly y: number;
 
@@ -148,6 +162,10 @@ export class FireVfxParticle {
     private active =
         false;
 
+    private presentationOrigin:
+        FireVfxPresentationOrigin =
+        "diagnostic";
+
     private age =
         0;
 
@@ -277,6 +295,24 @@ export class FireVfxParticle {
         return this.active;
     }
 
+    public getPresentationOrigin():
+        FireVfxPresentationOrigin {
+
+        return this.presentationOrigin;
+    }
+
+    public getWorldX():
+        number {
+
+        return this.sprite.x;
+    }
+
+    public getWorldY():
+        number {
+
+        return this.sprite.y;
+    }
+
     public activate(
         texture: Texture,
         activation:
@@ -285,6 +321,10 @@ export class FireVfxParticle {
 
         this.active =
             true;
+
+        this.presentationOrigin =
+            activation.presentationOrigin ??
+            "diagnostic";
 
         this.age =
             0;
@@ -715,6 +755,9 @@ export class FireVfxParticle {
 
         this.active =
             false;
+
+        this.presentationOrigin =
+            "diagnostic";
 
         this.sprite.visible =
             false;

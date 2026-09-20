@@ -1,4 +1,4 @@
-﻿import {
+import {
     DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
 } from "../config/FireParticleVfxDefinition";
 
@@ -43,6 +43,14 @@ import type {
 import type {
     FireVfxTextureVariant,
 } from "./FireVfxSystem";
+
+import {
+    GROUND_FIRE_PRESENTATION_CONTRACT,
+} from "./FirePresentationContract";
+
+import type {
+    DirectionalFirePresentationRegion,
+} from "./DirectionalFirePresentationRegion";
 
 export type GroundFireEmitterSpawnCallback =
     (
@@ -89,6 +97,9 @@ interface GroundFireEmitterState {
 
 export class GroundFireEmitter {
 
+    public static readonly presentationContract =
+        GROUND_FIRE_PRESENTATION_CONTRACT;
+
     private readonly emitterStates =
         new Map<FireCell, GroundFireEmitterState>();
 
@@ -104,6 +115,9 @@ export class GroundFireEmitter {
 
         private readonly spawnParticle:
             GroundFireEmitterSpawnCallback,
+
+        private readonly directionalPresentationRegion:
+            DirectionalFirePresentationRegion,
 
         private readonly definition:
             GroundFireVfxDefinition =
@@ -151,6 +165,17 @@ export class GroundFireEmitter {
 
         for (const cell of cells) {
             if (!cell) {
+                continue;
+            }
+
+            // F-2: presentation suppression only. The FireCell remains
+            // authoritative and continues its normal simulation lifecycle.
+            if (
+                this.directionalPresentationRegion.containsPoint(
+                    cell.getWorldCenterX(),
+                    cell.getWorldCenterY(),
+                )
+            ) {
                 continue;
             }
 
@@ -695,6 +720,9 @@ export class GroundFireEmitter {
                 .velocityContributionY;
 
         return {
+            presentationOrigin:
+                "ground",
+
             x:
                 spawnX,
 
