@@ -14,6 +14,16 @@ export interface JetFirePresentationDefinition {
     readonly endLongitudinalScaleMultiplier: number;
     readonly endLateralScaleMultiplier: number;
     readonly turbulenceMultiplier: number;
+
+    /**
+     * Exaggerated local-Wind response for Directional Fire.
+     * The authoritative LocalWindSystem remains unchanged.
+     */
+    readonly windAccelerationMultiplier: number;
+    readonly windInfluenceStartMultiplier: number;
+    readonly windInfluenceFullFraction: number;
+    readonly windInfluenceResponseExponent: number;
+
     readonly terminalFadeStartFraction: number;
     readonly terminalFadeEndFraction: number;
 
@@ -25,6 +35,15 @@ export interface JetFirePresentationDefinition {
     readonly terminalDistanceZoneFraction: number;
     readonly terminalLongitudinalScaleAtEnd: number;
     readonly terminalTurbulenceAtEnd: number;
+
+    /**
+     * Presentation-only obstacle contact response for Directional Fire.
+     */
+    readonly collisionContactInset: number;
+    readonly collisionEdgeSlideStrength: number;
+    readonly collisionMaximumEdgeTravel: number;
+    readonly collisionVelocityRetention: number;
+    readonly collisionContactLifetimeSeconds: number;
 
     readonly hotWeightMultiplier: number;
     readonly bodyWeightMultiplier: number;
@@ -51,6 +70,13 @@ export const DEFAULT_JET_FIRE_PRESENTATION_DEFINITION:
 
     turbulenceMultiplier: 0.48,
 
+    // Strong, gameplay-readable bend. Near-nozzle momentum remains visible,
+    // then Wind rapidly becomes dominant downstream.
+    windAccelerationMultiplier: 2.65,
+    windInfluenceStartMultiplier: 0.18,
+    windInfluenceFullFraction: 0.52,
+    windInfluenceResponseExponent: 1.35,
+
     // Directional particles disappear before they read as detached floating
     // flame stamps at the downstream end.
     terminalFadeStartFraction: 0.70,
@@ -64,6 +90,14 @@ export const DEFAULT_JET_FIRE_PRESENTATION_DEFINITION:
 
     // Keep terminal fragments aligned instead of letting them float apart.
     terminalTurbulenceAtEnd: 0.20,
+
+    // Stop slightly outside the collider and allow only a small bounded curl
+    // around its contacted edge.
+    collisionContactInset: 2.5,
+    collisionEdgeSlideStrength: 0.42,
+    collisionMaximumEdgeTravel: 30,
+    collisionVelocityRetention: 0.48,
+    collisionContactLifetimeSeconds: 0.16,
 
     // Same F-3 palette, hotter role distribution.
     hotWeightMultiplier: 1.95,

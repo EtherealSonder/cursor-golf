@@ -39,6 +39,12 @@ export class WaterObstacleRegistrationSystem {
     ) {
     }
 
+    public getAirborneCollisionField():
+        AirborneWaterCollisionField {
+
+        return this.airborneField;
+    }
+
     public clearCaches():
         void {
 

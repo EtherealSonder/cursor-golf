@@ -62,6 +62,21 @@ export class WindVfxSystem {
     private destroyed =
         false;
 
+    private performanceDetails = {
+        globalEmitterMilliseconds: 0,
+        localEmitterMilliseconds: 0,
+        poolBookkeepingMilliseconds: 0,
+    };
+
+    public getPerformanceDetails() {
+        return {
+            ...this.performanceDetails,
+            ...this.pool.getPerformanceDetails(),
+            globalEmitter: this.globalEmitter.getPerformanceDetails(),
+            localEmitter: this.localEmitter.getPerformanceDetails(),
+        };
+    }
+
     public constructor(
         windManager:
             WindManager,
@@ -194,13 +209,30 @@ export class WindVfxSystem {
             return;
         }
 
+        this.pool.beginPerformanceFrame();
+        this.globalEmitter.beginPerformanceFrame();
+        this.localEmitter.beginPerformanceFrame();
+
+        const globalStartedAt = performance.now();
         this.globalEmitter.update(
             deltaTime,
         );
+        this.performanceDetails.globalEmitterMilliseconds =
+            performance.now() - globalStartedAt;
 
+        const localStartedAt = performance.now();
         this.localEmitter.update(
             deltaTime,
         );
+        this.performanceDetails.localEmitterMilliseconds =
+            performance.now() - localStartedAt;
+
+        /*
+         * WindVfxPool has no separate per-frame particle-update pass. Its
+         * measurable CPU work is acquire/release bookkeeping performed by the
+         * two emitters, so retain this field explicitly as zero for clarity.
+         */
+        this.performanceDetails.poolBookkeepingMilliseconds = 0;
     }
 
     public reset(): void {

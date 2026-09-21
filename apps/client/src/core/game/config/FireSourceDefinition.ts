@@ -112,3 +112,68 @@ export function validateFireSourceDefinition(
             break;
     }
 }
+
+
+/**
+ * Authoritative Fire/Wind propagation tuning.
+ *
+ * This is simulation data, not presentation data. It deliberately leaves
+ * LocalWindSystem authoritative for airflow geometry and acceleration.
+ */
+export interface FireWindDynamicsDefinition {
+    /**
+     * Normalized local-Wind bias above which Fire may continue propagating
+     * downstream beyond the ordinary point-Fire generation limit.
+     */
+    readonly continuationWindBiasThreshold: number;
+
+    /**
+     * Candidate alignment required to qualify as a continuation step.
+     * 1 = exactly downwind, 0 = perpendicular to Wind.
+     */
+    readonly continuationMinimumAlignment: number;
+
+    /**
+     * Extra probability multiplier for strongly downwind candidates.
+     */
+    readonly strongDownwindProbabilityMultiplier: number;
+
+    /**
+     * Probability multiplier applied to perpendicular candidates in strong Wind.
+     */
+    readonly strongCrosswindProbabilityMultiplier: number;
+
+    /**
+     * Probability multiplier applied to upwind candidates in strong Wind.
+     */
+    readonly strongUpwindProbabilityMultiplier: number;
+
+    /**
+     * Strong Wind narrows the accepted spread cone around the airflow axis.
+     */
+    readonly strongWindMinimumAlignment: number;
+
+    /**
+     * Spatial deterministic variation for ordinary Point Fire. This breaks
+     * the repeated square-grid silhouette without changing cell size.
+     */
+    readonly irregularityMinimumMultiplier: number;
+    readonly irregularityMaximumMultiplier: number;
+    readonly irregularityGenerationPhase: number;
+}
+
+export const DEFAULT_FIRE_WIND_DYNAMICS_DEFINITION:
+    FireWindDynamicsDefinition = Object.freeze({
+    continuationWindBiasThreshold: 0.48,
+    continuationMinimumAlignment: 0.68,
+
+    strongDownwindProbabilityMultiplier: 1.85,
+    strongCrosswindProbabilityMultiplier: 0.16,
+    strongUpwindProbabilityMultiplier: 0.025,
+
+    strongWindMinimumAlignment: 0.34,
+
+    irregularityMinimumMultiplier: 0.42,
+    irregularityMaximumMultiplier: 1.18,
+    irregularityGenerationPhase: 0.731,
+});

@@ -11,6 +11,13 @@ interface Segment {
     readonly b: ScorchContourPoint;
 }
 
+export interface ScorchContourScanBounds {
+    readonly minimumX: number;
+    readonly minimumY: number;
+    readonly maximumX: number;
+    readonly maximumY: number;
+}
+
 /**
  * Converts a smoothed scalar burn field into closed contours using
  * Marching Squares.
@@ -36,19 +43,62 @@ export class ScorchContourBuilder {
             return [];
         }
 
-        const segments:
-            Segment[] = [];
+        return this.buildRegion(
+            values,
+            columns,
+            rows,
+            threshold,
+            {
+                minimumX: 0,
+                minimumY: 0,
+                maximumX: columns - 1,
+                maximumY: rows - 1,
+            },
+        );
+    }
 
-        for (
-            let y = 0;
-            y < rows - 1;
-            y += 1
+    /**
+     * Pass 5 sparse contour path. Only Marching-Squares cells intersecting
+     * the known scorch bounds are visited. Coordinates remain in the original
+     * full-field grid space, so ScorchRenderer does not need to translate or
+     * rebuild historical contours differently.
+     */
+    public buildRegion(
+        values: Float32Array,
+        columns: number,
+        rows: number,
+        threshold: number,
+        bounds: ScorchContourScanBounds,
+    ): ScorchContour[] {
+        if (
+            columns < 2 ||
+            rows < 2 ||
+            values.length < columns * rows
         ) {
-            for (
-                let x = 0;
-                x < columns - 1;
-                x += 1
-            ) {
+            return [];
+        }
+
+        const minimumX = Math.max(
+            0,
+            Math.min(columns - 2, Math.floor(bounds.minimumX)),
+        );
+        const minimumY = Math.max(
+            0,
+            Math.min(rows - 2, Math.floor(bounds.minimumY)),
+        );
+        const maximumX = Math.max(
+            minimumX,
+            Math.min(columns - 2, Math.ceil(bounds.maximumX)),
+        );
+        const maximumY = Math.max(
+            minimumY,
+            Math.min(rows - 2, Math.ceil(bounds.maximumY)),
+        );
+
+        const segments: Segment[] = [];
+
+        for (let y = minimumY; y <= maximumY; y += 1) {
+            for (let x = minimumX; x <= maximumX; x += 1) {
                 this.appendCellSegments(
                     segments,
                     values,
@@ -60,9 +110,7 @@ export class ScorchContourBuilder {
             }
         }
 
-        return this.connectSegments(
-            segments,
-        );
+        return this.connectSegments(segments);
     }
 
     private appendCellSegments(
@@ -355,7 +403,7 @@ export class ScorchContourBuilder {
 
         const adjacency =
             new Map<
-                string,
+                number,
                 Array<{
                     readonly point:
                     ScorchContourPoint;
@@ -533,7 +581,7 @@ export class ScorchContourBuilder {
     private addAdjacency(
         adjacency:
             Map<
-                string,
+                number,
                 Array<{
                     readonly point:
                     ScorchContourPoint;
@@ -645,7 +693,7 @@ export class ScorchContourBuilder {
     private key(
         point:
             ScorchContourPoint,
-    ): string {
+    ): number {
 
         /*
          * Intersections from adjacent Marching-Squares cells should be
@@ -664,7 +712,12 @@ export class ScorchContourBuilder {
                 10000,
             );
 
-        return `${x}:${y}`;
+        /*
+         * Numeric packing avoids allocating thousands of short-lived string
+         * keys during large scorch rebuilds. Quantized coordinates are small
+         * enough to remain exactly representable in a JavaScript number.
+         */
+        return x * 10000000 + y;
     }
 
     private lerp(

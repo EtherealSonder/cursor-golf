@@ -6,6 +6,21 @@ import type { WindVfxParticle } from "./WindVfxParticle";
 import type { WindVfxPool } from "./WindVfxPool";
 
 export class GlobalWindEmitter {
+    private performanceSpawnAttempts = 0;
+    private performanceSpawned = 0;
+
+    public beginPerformanceFrame(): void {
+        this.performanceSpawnAttempts = 0;
+        this.performanceSpawned = 0;
+    }
+
+    public getPerformanceDetails() {
+        return {
+            spawnAttempts: this.performanceSpawnAttempts,
+            spawned: this.performanceSpawned,
+        };
+    }
+
     private readonly particles: WindVfxParticle[] = [];
 
     public constructor(
@@ -29,8 +44,10 @@ export class GlobalWindEmitter {
             ));
 
         while (this.particles.length < targetCount) {
+            this.performanceSpawnAttempts += 1;
             const particle = this.pool.acquire();
             if (!particle) break;
+            this.performanceSpawned += 1;
             this.particles.push(particle);
             this.recycle(particle, true);
         }

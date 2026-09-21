@@ -96,6 +96,24 @@ interface GroundFireEmitterState {
 }
 
 export class GroundFireEmitter {
+    private performanceSpawnAttempts = 0;
+    private performanceSpawned = 0;
+    private performanceSpawnSkipped = 0;
+
+    public beginPerformanceFrame(): void {
+        this.performanceSpawnAttempts = 0;
+        this.performanceSpawned = 0;
+        this.performanceSpawnSkipped = 0;
+    }
+
+    public getPerformanceDetails() {
+        return {
+            spawnAttempts: this.performanceSpawnAttempts,
+            spawned: this.performanceSpawned,
+            skipped: this.performanceSpawnSkipped,
+        };
+    }
+
 
     public static readonly presentationContract =
         GROUND_FIRE_PRESENTATION_CONTRACT;
@@ -321,12 +339,20 @@ export class GroundFireEmitter {
             spawnIndex +=
             1
         ) {
+            this.performanceSpawnAttempts += 1;
+
             const spawned =
                 this.spawnOne(
                     cell,
                     cellSize,
                     visualEnergy,
                 );
+
+            if (spawned) {
+                this.performanceSpawned += 1;
+            } else {
+                this.performanceSpawnSkipped += 1;
+            }
 
             if (!spawned) {
                 /*
@@ -731,6 +757,28 @@ export class GroundFireEmitter {
         return {
             presentationOrigin:
                 "ground",
+
+            collisionResponse: {
+                contactInset:
+                    this.definition
+                        .collisionContactInset,
+
+                edgeSlideStrength:
+                    this.definition
+                        .collisionEdgeSlideStrength,
+
+                maximumEdgeTravel:
+                    this.definition
+                        .collisionMaximumEdgeTravel,
+
+                collisionVelocityRetention:
+                    this.definition
+                        .collisionVelocityRetention,
+
+                contactLifetimeSeconds:
+                    this.definition
+                        .collisionContactLifetimeSeconds,
+            },
 
             x:
                 spawnX,

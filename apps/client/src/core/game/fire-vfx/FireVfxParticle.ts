@@ -1,4 +1,4 @@
-﻿import {
+import {
     Sprite,
     Texture,
 } from "pixi.js";
@@ -6,6 +6,18 @@
 import {
     DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
 } from "../config/FireParticleVfxDefinition";
+
+import type {
+    FireParticleCollisionField,
+} from "./FireParticleCollisionField";
+
+import {
+    resolveFireParticleCollisionResponse,
+} from "./FireParticleCollisionResponse";
+
+import type {
+    FireParticleCollisionResponseDefinition,
+} from "./FireParticleCollisionResponse";
 
 export type FireVfxPresentationOrigin =
     | "ground"
@@ -39,6 +51,21 @@ export interface FireVfxParticleActivation {
     readonly windAccelerationY?: number;
 
     /**
+     * Optional presentation-only live spatial Wind sampler.
+     *
+     * Directional Fire uses this so particles respond when they ENTER or
+     * LEAVE a Local Wind volume after spawn. The callback is queried at the
+     * particle's current world position every update.
+     */
+    readonly sampleWindAccelerationAt?: (
+        worldX: number,
+        worldY: number,
+    ) => {
+        readonly x: number;
+        readonly y: number;
+    };
+
+    /**
      * Optional FIRE-VFX-5B age-dependent Wind influence.
      *
      * Omitted = full Wind influence for the entire particle lifetime.
@@ -49,6 +76,12 @@ export interface FireVfxParticleActivation {
     readonly windInfluenceStartMultiplier?: number;
     readonly windInfluenceFullFraction?: number;
     readonly windInfluenceResponseExponent?: number;
+
+    /**
+     * Optional presentation-only cap for Wind-added Directional Fire speed.
+     * Omitted leaves existing behavior unchanged.
+     */
+    readonly maximumWindAddedSpeed?: number;
 
     /**
      * FIRE-VFX-4B orientation response.
@@ -112,6 +145,13 @@ export interface FireVfxParticleActivation {
     readonly directionalTerminalFadeEndFraction?: number;
 
     /**
+     * Optional presentation-only obstacle collision for Directional Fire.
+     */
+    readonly collisionField?: FireParticleCollisionField;
+    readonly collisionIgnoredSourceId?: string;
+    readonly collisionResponse?: FireParticleCollisionResponseDefinition;
+
+    /**
      * Optional presentation-only directional-jet travel constraint.
      *
      * Ground Fire and diagnostic particles omit this completely. Jet Fire
@@ -170,6 +210,33 @@ export interface FireVfxParticleActivation {
  * Those remain simulation responsibilities.
  */
 export class FireVfxParticle {
+    private static performanceCollisionSweeps = 0;
+    private static performanceCollisionHits = 0;
+    private static performanceGroundCollisionSweeps = 0;
+    private static performanceGroundCollisionHits = 0;
+    private static performanceDirectionalCollisionSweeps = 0;
+    private static performanceDirectionalCollisionHits = 0;
+
+    public static beginPerformanceFrame(): void {
+        this.performanceCollisionSweeps = 0;
+        this.performanceCollisionHits = 0;
+        this.performanceGroundCollisionSweeps = 0;
+        this.performanceGroundCollisionHits = 0;
+        this.performanceDirectionalCollisionSweeps = 0;
+        this.performanceDirectionalCollisionHits = 0;
+    }
+
+    public static getPerformanceDetails() {
+        return {
+            collisionSweeps: this.performanceCollisionSweeps,
+            collisionHits: this.performanceCollisionHits,
+            groundCollisionSweeps: this.performanceGroundCollisionSweeps,
+            groundCollisionHits: this.performanceGroundCollisionHits,
+            directionalCollisionSweeps: this.performanceDirectionalCollisionSweeps,
+            directionalCollisionHits: this.performanceDirectionalCollisionHits,
+        };
+    }
+
 
     private readonly sprite:
         Sprite;
@@ -199,6 +266,10 @@ export class FireVfxParticle {
     private windAccelerationY =
         0;
 
+    private sampleWindAccelerationAt:
+        FireVfxParticleActivation["sampleWindAccelerationAt"] =
+        undefined;
+
     private windInfluenceStartMultiplier =
         1;
 
@@ -207,6 +278,15 @@ export class FireVfxParticle {
 
     private windInfluenceResponseExponent =
         1;
+
+    private maximumWindAddedSpeed =
+        Number.POSITIVE_INFINITY;
+
+    private windAddedVelocityX =
+        0;
+
+    private windAddedVelocityY =
+        0;
 
     private orientToVelocity =
         false;
@@ -266,6 +346,30 @@ export class FireVfxParticle {
         0;
 
     private previousTurbulenceOffsetY =
+        0;
+
+    private collisionField:
+        FireParticleCollisionField | undefined =
+        undefined;
+
+    private collisionIgnoredSourceId:
+        string | undefined =
+        undefined;
+
+    private collisionResponse:
+        FireParticleCollisionResponseDefinition | undefined =
+        undefined;
+
+    private collisionContactAge =
+        0;
+
+    private collisionEdgeTravel =
+        0;
+
+    private collisionPreviousX =
+        0;
+
+    private collisionPreviousY =
         0;
 
     private directionalTravelConstraint:
@@ -375,6 +479,9 @@ export class FireVfxParticle {
             )
                 ? activation.windAccelerationY ?? 0
                 : 0;
+
+        this.sampleWindAccelerationAt =
+            activation.sampleWindAccelerationAt;
 
         this.windInfluenceStartMultiplier =
             this.clamp01(
@@ -524,6 +631,22 @@ export class FireVfxParticle {
         this.previousTurbulenceOffsetY =
             0;
 
+        this.collisionField =
+            activation.collisionField;
+
+        this.collisionIgnoredSourceId =
+            activation.collisionIgnoredSourceId;
+
+        this.collisionResponse =
+            activation.collisionResponse;
+
+        this.collisionContactAge = 0;
+        this.collisionEdgeTravel = 0;
+        this.collisionPreviousX =
+            activation.x;
+        this.collisionPreviousY =
+            activation.y;
+
         this.directionalTravelConstraint =
             activation.directionalTravelConstraint;
 
@@ -610,27 +733,197 @@ export class FireVfxParticle {
                 normalizedAgeForWind,
             );
 
-        this.velocityX +=
-            this.windAccelerationX *
+        /*
+         * Sample Local Wind at the CURRENT particle position. A Directional
+         * Fire particle spawned outside a Fan can therefore begin bending
+         * precisely when it crosses into the airflow volume.
+         */
+        const sampledWindAcceleration =
+            this.sampleWindAccelerationAt
+                ? this.sampleWindAccelerationAt(
+                    this.sprite.x,
+                    this.sprite.y,
+                )
+                : {
+                    x: this.windAccelerationX,
+                    y: this.windAccelerationY,
+                };
+
+        const windDeltaX =
+            sampledWindAcceleration.x *
             windInfluence *
             deltaTime;
 
-        this.velocityY +=
-            this.windAccelerationY *
+        const windDeltaY =
+            sampledWindAcceleration.y *
             windInfluence *
             deltaTime;
+
+        let nextWindAddedVelocityX =
+            this.windAddedVelocityX +
+            windDeltaX;
+
+        let nextWindAddedVelocityY =
+            this.windAddedVelocityY +
+            windDeltaY;
+
+        const windAddedSpeed =
+            Math.sqrt(
+                nextWindAddedVelocityX *
+                    nextWindAddedVelocityX +
+                nextWindAddedVelocityY *
+                    nextWindAddedVelocityY,
+            );
+
+        if (
+            windAddedSpeed >
+            this.maximumWindAddedSpeed
+        ) {
+            const scale =
+                this.maximumWindAddedSpeed /
+                Math.max(
+                    0.0001,
+                    windAddedSpeed,
+                );
+
+            nextWindAddedVelocityX *= scale;
+            nextWindAddedVelocityY *= scale;
+        }
+
+        this.velocityX +=
+            nextWindAddedVelocityX -
+            this.windAddedVelocityX;
+
+        this.velocityY +=
+            nextWindAddedVelocityY -
+            this.windAddedVelocityY;
+
+        this.windAddedVelocityX =
+            nextWindAddedVelocityX;
+
+        this.windAddedVelocityY =
+            nextWindAddedVelocityY;
 
         // ---------------------------------------------------
         // Translation
         // ---------------------------------------------------
 
-        this.sprite.x +=
+        const previousX =
+            this.sprite.x;
+
+        const previousY =
+            this.sprite.y;
+
+        const proposedX =
+            previousX +
             this.velocityX *
             deltaTime;
 
-        this.sprite.y +=
+        const proposedY =
+            previousY +
             this.velocityY *
             deltaTime;
+
+        const collisionHit =
+            (
+                (
+                    this.presentationOrigin ===
+                        "directional" ||
+                    this.presentationOrigin ===
+                        "ground"
+                ) &&
+                this.collisionField
+            )
+                ? (
+                    FireVfxParticle.performanceCollisionSweeps += 1,
+                    this.presentationOrigin === "ground"
+                        ? FireVfxParticle.performanceGroundCollisionSweeps += 1
+                        : FireVfxParticle.performanceDirectionalCollisionSweeps += 1,
+                    this.collisionField.sweep(
+                    previousX,
+                    previousY,
+                    proposedX,
+                    proposedY,
+                    this.collisionIgnoredSourceId,
+                ))
+                : null;
+
+        if (
+            collisionHit &&
+            this.collisionResponse
+        ) {
+            FireVfxParticle.performanceCollisionHits += 1;
+            if (this.presentationOrigin === "ground") {
+                FireVfxParticle.performanceGroundCollisionHits += 1;
+            } else if (this.presentationOrigin === "directional") {
+                FireVfxParticle.performanceDirectionalCollisionHits += 1;
+            }
+            const response =
+                resolveFireParticleCollisionResponse(
+                    collisionHit,
+                    this.velocityX,
+                    this.velocityY,
+                    this.collisionResponse,
+                    this.collisionEdgeTravel,
+                );
+
+            this.sprite.x =
+                response.positionX;
+
+            this.sprite.y =
+                response.positionY;
+
+            this.velocityX =
+                response.velocityX;
+
+            this.velocityY =
+                response.velocityY;
+
+            this.windAddedVelocityX = 0;
+            this.windAddedVelocityY = 0;
+
+            this.collisionContactAge +=
+                deltaTime;
+
+            this.collisionEdgeTravel +=
+                Math.hypot(
+                    this.sprite.x -
+                        this.collisionPreviousX,
+                    this.sprite.y -
+                        this.collisionPreviousY,
+                );
+
+            if (
+                this.collisionContactAge >=
+                    this.collisionResponse
+                        .contactLifetimeSeconds ||
+                this.collisionEdgeTravel >=
+                    this.collisionResponse
+                        .maximumEdgeTravel
+            ) {
+                this.deactivate();
+                return false;
+            }
+        } else {
+            this.sprite.x =
+                proposedX;
+
+            this.sprite.y =
+                proposedY;
+
+            /*
+             * Contact is intentionally short-lived. If the tangential slide
+             * clears the obstacle, retain the travelled edge distance but
+             * stop accumulating contact time.
+             */
+            this.collisionContactAge = 0;
+        }
+
+        this.collisionPreviousX =
+            this.sprite.x;
+
+        this.collisionPreviousY =
+            this.sprite.y;
 
         // ---------------------------------------------------
         // Rotation
@@ -862,6 +1155,9 @@ export class FireVfxParticle {
         this.windAccelerationY =
             0;
 
+        this.sampleWindAccelerationAt =
+            undefined;
+
         this.windInfluenceStartMultiplier =
             1;
 
@@ -870,6 +1166,15 @@ export class FireVfxParticle {
 
         this.windInfluenceResponseExponent =
             1;
+
+        this.maximumWindAddedSpeed =
+            Number.POSITIVE_INFINITY;
+
+        this.windAddedVelocityX =
+            0;
+
+        this.windAddedVelocityY =
+            0;
 
         this.orientToVelocity =
             false;
@@ -885,6 +1190,20 @@ export class FireVfxParticle {
 
         this.directionalTerminalFadeEndFraction =
             1;
+
+        this.collisionField =
+            undefined;
+
+        this.collisionIgnoredSourceId =
+            undefined;
+
+        this.collisionResponse =
+            undefined;
+
+        this.collisionContactAge = 0;
+        this.collisionEdgeTravel = 0;
+        this.collisionPreviousX = 0;
+        this.collisionPreviousY = 0;
 
         this.directionalTravelConstraint =
             undefined;

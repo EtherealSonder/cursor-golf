@@ -7,8 +7,8 @@ export interface WorldPerformanceProfileDefinition {
 
 export const DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION:
     WorldPerformanceProfileDefinition = {
-    enabled: true,
-    overlayEnabled: true,
+    enabled: false,
+    overlayEnabled: false,
     consoleReportingEnabled: false,
     consoleReportIntervalSeconds: 2,
 };

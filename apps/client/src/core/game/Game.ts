@@ -519,6 +519,9 @@ export class Game {
             return;
         }
 
+        const gameUpdateStartedAt =
+            performance.now();
+
         /*
          * Development/test input retained intentionally. Right-click creates
          * an authoritative FireManager ignition at the pointer world position.
@@ -572,6 +575,14 @@ export class Game {
         this.renderer.render();
 
         this.inputManager.update();
+
+        this.world
+            ?.recordFramePresentationDiagnostics(
+                performance.now() -
+                    gameUpdateStartedAt,
+                this.renderer
+                    .getLastPixiRenderMilliseconds(),
+            );
     };
 
     // -------------------------------------------------------------------------

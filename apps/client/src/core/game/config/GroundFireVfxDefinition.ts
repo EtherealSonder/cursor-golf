@@ -81,6 +81,15 @@ export interface GroundFireVfxDefinition {
     readonly spawnOverscanY: number;
 
     /**
+     * Presentation-only solid-collider response for Point/Ground Fire.
+     */
+    readonly collisionContactInset: number;
+    readonly collisionEdgeSlideStrength: number;
+    readonly collisionMaximumEdgeTravel: number;
+    readonly collisionVelocityRetention: number;
+    readonly collisionContactLifetimeSeconds: number;
+
+    /**
      * Safety cap preventing a slow frame from producing a large catch-up
      * burst from every active FireCell.
      */
@@ -173,6 +182,21 @@ export const DEFAULT_GROUND_FIRE_VFX_DEFINITION:
 
     spawnOverscanY:
         5,
+
+    collisionContactInset:
+        2.0,
+
+    collisionEdgeSlideStrength:
+        0.24,
+
+    collisionMaximumEdgeTravel:
+        18,
+
+    collisionVelocityRetention:
+        0.34,
+
+    collisionContactLifetimeSeconds:
+        0.12,
 
     maximumSpawnsPerCellPerFrame:
         4,

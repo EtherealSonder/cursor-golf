@@ -1,5 +1,6 @@
 import {
     Application,
+    UPDATE_PRIORITY,
 } from "pixi.js";
 
 import {
@@ -30,6 +31,41 @@ export class Renderer {
 
     private destroyed =
         false;
+
+    private lastPixiRenderMilliseconds =
+        0;
+
+    private pixiRenderPeakMilliseconds =
+        0;
+
+    private readonly profiledPixiRender =
+        (): void => {
+
+            if (
+                this.app === null ||
+                this.destroyed
+            ) {
+                return;
+            }
+
+            const startedAt =
+                performance.now();
+
+            this.app.render();
+
+            const elapsed =
+                performance.now() -
+                startedAt;
+
+            this.lastPixiRenderMilliseconds =
+                elapsed;
+
+            this.pixiRenderPeakMilliseconds =
+                Math.max(
+                    this.pixiRenderPeakMilliseconds,
+                    elapsed,
+                );
+        };
 
     /**
      * Retained so the current Game class remains
@@ -107,7 +143,7 @@ export class Renderer {
 
             /*
              * The logical drawing surface remains
-             * exactly 1200 × 720.
+             * exactly 1200 Ã— 720.
              *
              * Device-pixel scaling is intentionally
              * kept stable here. CSS handles browser
@@ -154,6 +190,23 @@ export class Renderer {
             canvas,
         );
 
+        /*
+         * Diagnostic Pass 1B. Pixi's Application ticker normally owns the
+         * render callback. Replace only that ticker callback with a measured
+         * wrapper around the same Application.render() call. This does not
+         * add a second render and does not change the game EngineLoop.
+         */
+        this.app.ticker.remove(
+            this.app.render,
+            this.app,
+        );
+
+        this.app.ticker.add(
+            this.profiledPixiRender,
+            undefined,
+            UPDATE_PRIORITY.LOW,
+        );
+
         this.initialized =
             true;
 
@@ -198,6 +251,18 @@ export class Renderer {
         return this.initialized;
     }
 
+    public getLastPixiRenderMilliseconds():
+        number {
+
+        return this.lastPixiRenderMilliseconds;
+    }
+
+    public getPixiRenderPeakMilliseconds():
+        number {
+
+        return this.pixiRenderPeakMilliseconds;
+    }
+
     // -------------------------------------------------------
     // Frame Rendering
     // -------------------------------------------------------
@@ -236,6 +301,10 @@ export class Renderer {
         ) {
             return;
         }
+
+        this.app.ticker.remove(
+            this.profiledPixiRender,
+        );
 
         this.app.destroy(
             true,

@@ -64,6 +64,18 @@ export interface ScalarFieldContourBuildOptions {
      * Existing callers keep the original cell-relative default.
      */
     readonly endpointQuantizationWorldUnits?: number;
+
+    /**
+     * Pass true when the caller has already derived these bounds directly
+     * from its active presentation membership. This avoids a second full
+     * scalar pre-scan whose only purpose would be to rediscover the same
+     * bounds. Marching Squares still samples every cell required inside the
+     * supplied rectangle, so contour topology is unchanged.
+     */
+    readonly boundsAlreadyTight?: boolean;
+
+    /** Optional profiler hint used with boundsAlreadyTight. */
+    readonly knownActiveSamples?: number;
 }
 
 /**
@@ -113,39 +125,55 @@ export class ScalarFieldContourBuilder {
     ): readonly ScalarFieldSegment[] {
         ScalarFieldContourBuilder.validate(options);
 
-        const activeBounds =
-            ScalarFieldActiveBounds.find({
+        const suppliedMinimumColumn = Math.max(
+            0, Math.min(options.columnCount - 1, options.minimumColumn),
+        );
+        const suppliedMaximumColumn = Math.max(
+            0, Math.min(options.columnCount - 1, options.maximumColumn),
+        );
+        const suppliedMinimumRow = Math.max(
+            0, Math.min(options.rowCount - 1, options.minimumRow),
+        );
+        const suppliedMaximumRow = Math.max(
+            0, Math.min(options.rowCount - 1, options.maximumRow),
+        );
+
+        const suppliedCandidateCells =
+            Math.max(0, suppliedMaximumColumn - suppliedMinimumColumn) *
+            Math.max(0, suppliedMaximumRow - suppliedMinimumRow);
+
+        const activeBounds = options.boundsAlreadyTight
+            ? null
+            : ScalarFieldActiveBounds.find({
                 columnCount: options.columnCount,
                 rowCount: options.rowCount,
-                minimumColumn: options.minimumColumn,
-                maximumColumn: options.maximumColumn,
-                minimumRow: options.minimumRow,
-                maximumRow: options.maximumRow,
+                minimumColumn: suppliedMinimumColumn,
+                maximumColumn: suppliedMaximumColumn,
+                minimumRow: suppliedMinimumRow,
+                maximumRow: suppliedMaximumRow,
                 isoLevel: options.isoLevel,
                 paddingCells: 1,
                 sampleValueByIndex: options.sampleValueByIndex,
             });
 
-        const minColumn = activeBounds.minimumColumn;
-        const maxColumn = activeBounds.maximumColumn;
-        const minRow = activeBounds.minimumRow;
-        const maxRow = activeBounds.maximumRow;
+        const minColumn = activeBounds?.minimumColumn ?? suppliedMinimumColumn;
+        const maxColumn = activeBounds?.maximumColumn ?? suppliedMaximumColumn;
+        const minRow = activeBounds?.minimumRow ?? suppliedMinimumRow;
+        const maxRow = activeBounds?.maximumRow ?? suppliedMaximumRow;
+        const hasActiveSamples = activeBounds?.hasActiveSamples ??
+            ((options.knownActiveSamples ?? 1) > 0);
 
         ScalarFieldContourBuilder.lastCandidateCells =
-            activeBounds.candidateCells;
+            activeBounds?.candidateCells ?? suppliedCandidateCells;
         ScalarFieldContourBuilder.lastActiveSamples =
-            activeBounds.activeSamples;
+            activeBounds?.activeSamples ?? Math.max(0, options.knownActiveSamples ?? 0);
         ScalarFieldContourBuilder.lastScannedCells =
-            activeBounds.hasActiveSamples
+            hasActiveSamples
                 ? Math.max(0, maxColumn - minColumn) *
                   Math.max(0, maxRow - minRow)
                 : 0;
 
-        if (
-            !activeBounds.hasActiveSamples ||
-            maxColumn <= minColumn ||
-            maxRow <= minRow
-        ) {
+        if (!hasActiveSamples || maxColumn <= minColumn || maxRow <= minRow) {
             return [];
         }
 

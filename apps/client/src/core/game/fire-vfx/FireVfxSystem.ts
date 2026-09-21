@@ -31,6 +31,10 @@ import {
     FireVfxPool,
 } from "./FireVfxPool";
 
+import {
+    FireVfxParticle,
+} from "./FireVfxParticle";
+
 import type {
     FireVfxParticleActivation,
 } from "./FireVfxParticle";
@@ -79,6 +83,14 @@ import {
 import {
     DirectionalFirePresentationRegion,
 } from "./DirectionalFirePresentationRegion";
+
+import {
+    FireParticleCollisionField,
+} from "./FireParticleCollisionField";
+
+import type {
+    AirborneWaterCollisionField,
+} from "../environment/AirborneWaterCollisionField";
 
 export type FireVfxTextureVariant =
     | "body"
@@ -149,6 +161,25 @@ export class FireVfxSystem {
     private readonly scorchRenderer:
         ScorchRenderer;
 
+    private performanceDetails = {
+        groundEmitterMilliseconds: 0,
+        directionalEmitterMilliseconds: 0,
+        poolUpdateMilliseconds: 0,
+        scorchRendererMilliseconds: 0,
+        directionalRegionMilliseconds: 0,
+        directionalSuppressionMilliseconds: 0,
+    };
+
+    public getPerformanceDetails() {
+        return {
+            ...this.performanceDetails,
+            ...this.pool.getPerformanceDetails(),
+            groundEmitter: this.groundFireEmitter.getPerformanceDetails(),
+            directionalEmitter: this.jetFireEmitter.getPerformanceDetails(),
+            collision: FireVfxParticle.getPerformanceDetails(),
+        };
+    }
+
     public constructor(
         fireManager:
             FireManager,
@@ -161,6 +192,9 @@ export class FireVfxSystem {
 
         localWindSystem:
             LocalWindSystem,
+
+        airborneObstacleField:
+            AirborneWaterCollisionField,
     ) {
 
         FirePresentationContractValidation.run();
@@ -169,6 +203,11 @@ export class FireVfxSystem {
 
         this.textures =
             FireVfxTextureFactory.create();
+
+        const fireParticleCollisionField =
+            new FireParticleCollisionField(
+                airborneObstacleField,
+            );
 
         this.pool =
             new FireVfxPool(
@@ -184,6 +223,7 @@ export class FireVfxSystem {
                             .pool
                             .maximumCapacity,
                 },
+                fireParticleCollisionField,
             );
 
         /*
@@ -330,15 +370,21 @@ export class FireVfxSystem {
          * The diagnostic FireTestEmitter is deliberately excluded from
          * normal gameplay updates.
          */
+        const scorchStartedAt = performance.now();
         this.scorchRenderer
             .update(
                 deltaTime,
             );
+        this.performanceDetails.scorchRendererMilliseconds =
+            performance.now() - scorchStartedAt;
 
-        // F-2: refresh current Directional presentation ownership before
-        // Ground Fire decides which active cells should emit particles.
+        // Pass 4: isolate the ownership refresh because the previous aggregate
+        // firePresentation spike was much larger than emitter + pool timings.
+        const regionStartedAt = performance.now();
         this.directionalPresentationRegion
             .update();
+        this.performanceDetails.directionalRegionMilliseconds =
+            performance.now() - regionStartedAt;
 
         /*
          * F-2 runtime ownership:
@@ -347,24 +393,41 @@ export class FireVfxSystem {
          * pass removes Ground particles that were already alive before the
          * Directional presentation footprint reached them.
          */
+        const suppressionStartedAt = performance.now();
         this.pool
             .suppressGroundParticlesInDirectionalRegion(
                 this.directionalPresentationRegion,
             );
+        this.performanceDetails.directionalSuppressionMilliseconds =
+            performance.now() - suppressionStartedAt;
 
+        this.pool.beginPerformanceFrame();
+        this.groundFireEmitter.beginPerformanceFrame();
+        this.jetFireEmitter.beginPerformanceFrame();
+        FireVfxParticle.beginPerformanceFrame();
+
+        const groundEmitterStartedAt = performance.now();
         this.groundFireEmitter
             .update(
                 deltaTime,
             );
+        this.performanceDetails.groundEmitterMilliseconds =
+            performance.now() - groundEmitterStartedAt;
 
+        const directionalEmitterStartedAt = performance.now();
         this.jetFireEmitter
             .update(
                 deltaTime,
             );
+        this.performanceDetails.directionalEmitterMilliseconds =
+            performance.now() - directionalEmitterStartedAt;
 
+        const poolUpdateStartedAt = performance.now();
         this.pool.update(
             deltaTime,
         );
+        this.performanceDetails.poolUpdateMilliseconds =
+            performance.now() - poolUpdateStartedAt;
 
     }
 

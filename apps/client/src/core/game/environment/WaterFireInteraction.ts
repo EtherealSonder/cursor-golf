@@ -270,6 +270,15 @@ export class WaterFireInteraction {
         waterField: WaterField,
         fireManager: FireManager,
     ): StandingWaterGroundFireResult {
+        /*
+         * Pass 5 sparse interaction path.
+         *
+         * The previous implementation traversed every tracked Water cell for
+         * every active Fire cell, producing O(Fire x Water) work in the exact
+         * stress case where both fields are dense. Ground Fire already gives
+         * us a small authoritative footprint, so query only Water grid cells
+         * whose centres can lie inside that footprint.
+         */
         const activeCells = [
             ...fireManager.getActiveCells(),
         ];
@@ -293,61 +302,124 @@ export class WaterFireInteraction {
                     .standingWaterGroundFireFootprintInsetFraction
             );
 
+        const waterCellSize =
+            Math.max(
+                0.000001,
+                waterField.getDefinition().cellSize,
+            );
+
+        const minimumWorldX =
+            waterField.getMinimumWorldX();
+        const minimumWorldY =
+            waterField.getMinimumWorldY();
+        const waterColumns =
+            waterField.getColumnCount();
+        const waterRows =
+            waterField.getRowCount();
+        const meaningfulDepth =
+            this.definition.minimumMeaningfulStandingWaterDepth;
+
         let extinguishedFireCellCount = 0;
         let meaningfulWaterSampleCount = 0;
 
         for (const fireCell of activeCells) {
-            let shouldExtinguish = false;
-            let eventWaterDepth = 0;
-            let eventX = fireCell.getWorldCenterX();
-            let eventY = fireCell.getWorldCenterY();
+            const fireX = fireCell.getWorldCenterX();
+            const fireY = fireCell.getWorldCenterY();
 
-            waterField.forEachTrackedWaterCell(
-                (waterCell): void => {
-                    if (shouldExtinguish) {
-                        return;
-                    }
-
-                    if (
-                        Math.abs(
-                            waterCell.worldCenterX -
-                            fireCell.getWorldCenterX(),
-                        ) > halfExtent ||
-                        Math.abs(
-                            waterCell.worldCenterY -
-                            fireCell.getWorldCenterY(),
-                        ) > halfExtent
-                    ) {
-                        return;
-                    }
-
-                    const contact =
-                        this.classifyStandingWaterContact(
-                            WaterFireTarget.GroundFire,
-                            waterCell.depth,
-                        );
-
-                    if (
-                        contact.isMeaningfulContact &&
-                        contact.shouldSuppressImmediately
-                    ) {
-                        meaningfulWaterSampleCount += 1;
-                        shouldExtinguish = true;
-                        eventWaterDepth = waterCell.depth;
-                        eventX = waterCell.worldCenterX;
-                        eventY = waterCell.worldCenterY;
-                    }
-                },
+            /*
+             * Convert the old centre-in-footprint test directly into integer
+             * Water-grid bounds. The ceil/floor half-cell terms preserve the
+             * same inclusion rule as the former world-space traversal.
+             */
+            const minimumGridX = Math.max(
+                0,
+                Math.ceil(
+                    (fireX - halfExtent - minimumWorldX) / waterCellSize - 0.5,
+                ),
+            );
+            const maximumGridX = Math.min(
+                waterColumns - 1,
+                Math.floor(
+                    (fireX + halfExtent - minimumWorldX) / waterCellSize - 0.5,
+                ),
+            );
+            const minimumGridY = Math.max(
+                0,
+                Math.ceil(
+                    (fireY - halfExtent - minimumWorldY) / waterCellSize - 0.5,
+                ),
+            );
+            const maximumGridY = Math.min(
+                waterRows - 1,
+                Math.floor(
+                    (fireY + halfExtent - minimumWorldY) / waterCellSize - 0.5,
+                ),
             );
 
+            if (
+                maximumGridX < minimumGridX ||
+                maximumGridY < minimumGridY
+            ) {
+                continue;
+            }
+
+            let shouldExtinguish = false;
+            let eventWaterDepth = 0;
+            let eventX = fireX;
+            let eventY = fireY;
+
+            for (
+                let gridY = minimumGridY;
+                gridY <= maximumGridY && !shouldExtinguish;
+                gridY += 1
+            ) {
+                const rowStart = gridY * waterColumns;
+
+                for (
+                    let gridX = minimumGridX;
+                    gridX <= maximumGridX;
+                    gridX += 1
+                ) {
+                    const waterIndex =
+                        rowStart + gridX;
+                    const waterDepth =
+                        waterField.getDepthByIndex(waterIndex);
+
+                    /*
+                     * Inline the already-validated meaningful standing-Water
+                     * threshold in this hot loop. classifyStandingWaterContact
+                     * remains the public policy API for non-hot callers.
+                     */
+                    if (
+                        !Number.isFinite(waterDepth) ||
+                        waterDepth < meaningfulDepth
+                    ) {
+                        continue;
+                    }
+
+                    meaningfulWaterSampleCount += 1;
+                    shouldExtinguish = true;
+                    eventWaterDepth = waterDepth;
+                    eventX =
+                        minimumWorldX +
+                        (gridX + 0.5) * waterCellSize;
+                    eventY =
+                        minimumWorldY +
+                        (gridY + 0.5) * waterCellSize;
+                    break;
+                }
+            }
+
             if (shouldExtinguish) {
-                const fireIntensity = fireCell.getIntensity();
+                const fireIntensity =
+                    fireCell.getIntensity();
 
                 if (fireManager.extinguishCell(
                     fireCell.getGridX(),
                     fireCell.getGridY(),
                 )) {
                     extinguishedFireCellCount += 1;
+
                     const event: WaterFireExtinguishedEvent = {
                         positionX: eventX,
                         positionY: eventY,
@@ -358,6 +430,7 @@ export class WaterFireInteraction {
                         fireIntensity,
                         extinguished: true,
                     };
+
                     this.contactEvents.push(event);
                     this.extinguishedEvents.push(event);
                 }

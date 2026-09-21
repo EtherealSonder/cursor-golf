@@ -17,15 +17,34 @@ export class AirborneWaterCollisionField {
     private readonly shapes:
         AirborneWaterObstacleShape[] = [];
 
+    private readonly spatialBuckets = new Map<string, number[]>();
+    private readonly spatialCellSize = 96;
+
+    /*
+     * Reused broad-phase scratch state. Fire can issue hundreds of sweeps per
+     * frame, so allocating a Set and Array for every tiny particle segment is
+     * unnecessarily expensive. Generation stamps deduplicate bucket entries
+     * without changing which obstacle shapes are tested.
+     */
+    private readonly candidateStamps: number[] = [];
+    private readonly candidateScratch: number[] = [];
+    private candidateGeneration = 1;
+
     public clear(): void {
         this.shapes.length = 0;
+        this.spatialBuckets.clear();
+        this.candidateStamps.length = 0;
+        this.candidateScratch.length = 0;
+        this.candidateGeneration = 1;
     }
 
     public addShape(
         shape: AirborneWaterObstacleShape,
     ): void {
         this.validateShape(shape);
+        const shapeIndex = this.shapes.length;
         this.shapes.push(shape);
+        this.registerShapeInSpatialBuckets(shape, shapeIndex);
     }
 
     public addRectangle(
@@ -91,7 +110,15 @@ export class AirborneWaterCollisionField {
             AirborneWaterCollisionHit | null =
             null;
 
-        for (const shape of this.shapes) {
+        const candidateIndices = this.getCandidateShapeIndices(
+            startX, startY, endX, endY,
+        );
+
+        for (const shapeIndex of candidateIndices) {
+            const shape = this.shapes[shapeIndex];
+            if (!shape) {
+                continue;
+            }
             if (
                 ignoredSourceId &&
                 shape.ownerSourceIds?.includes(ignoredSourceId)
@@ -130,6 +157,85 @@ export class AirborneWaterCollisionField {
         return nearest;
     }
 
+
+    private registerShapeInSpatialBuckets(
+        shape: AirborneWaterObstacleShape,
+        shapeIndex: number,
+    ): void {
+        const bounds = this.getShapeBounds(shape);
+        const minCellX = Math.floor(bounds.minimumX / this.spatialCellSize);
+        const maxCellX = Math.floor(bounds.maximumX / this.spatialCellSize);
+        const minCellY = Math.floor(bounds.minimumY / this.spatialCellSize);
+        const maxCellY = Math.floor(bounds.maximumY / this.spatialCellSize);
+
+        for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+            for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+                const key = `${cellX}:${cellY}`;
+                const bucket = this.spatialBuckets.get(key);
+                if (bucket) bucket.push(shapeIndex);
+                else this.spatialBuckets.set(key, [shapeIndex]);
+            }
+        }
+    }
+
+    private getCandidateShapeIndices(
+        startX: number, startY: number, endX: number, endY: number,
+    ): number[] {
+        const minCellX = Math.floor(Math.min(startX, endX) / this.spatialCellSize);
+        const maxCellX = Math.floor(Math.max(startX, endX) / this.spatialCellSize);
+        const minCellY = Math.floor(Math.min(startY, endY) / this.spatialCellSize);
+        const maxCellY = Math.floor(Math.max(startY, endY) / this.spatialCellSize);
+        this.candidateScratch.length = 0;
+        this.candidateGeneration += 1;
+        if (this.candidateGeneration >= 0x7fffffff) {
+            this.candidateStamps.fill(0);
+            this.candidateGeneration = 1;
+        }
+        const generation = this.candidateGeneration;
+
+        for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+            for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+                const bucket = this.spatialBuckets.get(`${cellX}:${cellY}`);
+                if (!bucket) continue;
+                for (let offset = 0; offset < bucket.length; offset += 1) {
+                    const index = bucket[offset];
+                    if (this.candidateStamps[index] === generation) continue;
+                    this.candidateStamps[index] = generation;
+                    this.candidateScratch.push(index);
+                }
+            }
+        }
+        return this.candidateScratch;
+    }
+
+    private getShapeBounds(shape: AirborneWaterObstacleShape): {
+        minimumX: number; maximumX: number; minimumY: number; maximumY: number;
+    } {
+        if (shape.kind === "circle") {
+            return {
+                minimumX: shape.centerX - shape.radius,
+                maximumX: shape.centerX + shape.radius,
+                minimumY: shape.centerY - shape.radius,
+                maximumY: shape.centerY + shape.radius,
+            };
+        }
+        if (shape.kind === "rectangle") {
+            return {
+                minimumX: shape.centerX - shape.width * 0.5,
+                maximumX: shape.centerX + shape.width * 0.5,
+                minimumY: shape.centerY - shape.height * 0.5,
+                maximumY: shape.centerY + shape.height * 0.5,
+            };
+        }
+        const c = Math.abs(Math.cos(shape.rotationRadians));
+        const sn = Math.abs(Math.sin(shape.rotationRadians));
+        const halfX = c * shape.width * 0.5 + sn * shape.height * 0.5;
+        const halfY = sn * shape.width * 0.5 + c * shape.height * 0.5;
+        return {
+            minimumX: shape.centerX - halfX, maximumX: shape.centerX + halfX,
+            minimumY: shape.centerY - halfY, maximumY: shape.centerY + halfY,
+        };
+    }
 
     /**
      * Returns a point displaced away from the hit surface.

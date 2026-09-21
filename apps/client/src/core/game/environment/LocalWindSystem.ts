@@ -41,6 +41,30 @@ export interface LocalWindSample {
  * addition.
  */
 export class LocalWindSystem {
+    private performanceQueryCount = 0;
+    private performanceQueryMilliseconds = 0;
+    private performanceCacheHits = 0;
+    private performanceCacheMisses = 0;
+    private readonly sampleCache = new Map<string, LocalWindSample>();
+    private readonly sampleCacheCellSize = 4;
+
+    public beginPerformanceFrame(): void {
+        this.performanceQueryCount = 0;
+        this.performanceQueryMilliseconds = 0;
+        this.performanceCacheHits = 0;
+        this.performanceCacheMisses = 0;
+        this.sampleCache.clear();
+    }
+
+    public getPerformanceDetails() {
+        return {
+            queryCount: this.performanceQueryCount,
+            queryMilliseconds: this.performanceQueryMilliseconds,
+            cacheHits: this.performanceCacheHits,
+            cacheMisses: this.performanceCacheMisses,
+        };
+    }
+
 
     private sources:
         MutableLocalWindSourceDefinition[];
@@ -146,6 +170,10 @@ export class LocalWindSystem {
         worldY: number,
     ): LocalWindSample {
 
+        const performanceStartedAt =
+            performance.now();
+        this.performanceQueryCount += 1;
+
         if (
             !Number.isFinite(
                 worldX,
@@ -154,6 +182,9 @@ export class LocalWindSystem {
                 worldY,
             )
         ) {
+            this.performanceQueryMilliseconds +=
+                performance.now() -
+                performanceStartedAt;
             return {
                 acceleration: {
                     x: 0,
@@ -162,6 +193,19 @@ export class LocalWindSystem {
                 contributingSourceIds: [],
             };
         }
+
+        const cacheX = Math.round(worldX / this.sampleCacheCellSize);
+        const cacheY = Math.round(worldY / this.sampleCacheCellSize);
+        const cacheKey = `${cacheX}:${cacheY}`;
+        const cached = this.sampleCache.get(cacheKey);
+
+        if (cached) {
+            this.performanceCacheHits += 1;
+            this.performanceQueryMilliseconds += performance.now() - performanceStartedAt;
+            return cached;
+        }
+
+        this.performanceCacheMisses += 1;
 
         let accelerationX = 0;
         let accelerationY = 0;
@@ -198,13 +242,17 @@ export class LocalWindSystem {
             );
         }
 
-        return {
+        const sample: LocalWindSample = {
             acceleration: {
                 x: accelerationX,
                 y: accelerationY,
             },
             contributingSourceIds,
         };
+
+        this.sampleCache.set(cacheKey, sample);
+        this.performanceQueryMilliseconds += performance.now() - performanceStartedAt;
+        return sample;
     }
 
     public containsPoint(

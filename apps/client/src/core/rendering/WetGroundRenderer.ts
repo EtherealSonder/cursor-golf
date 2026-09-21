@@ -32,6 +32,19 @@ export class WetGroundRenderer {
         new Map<SurfaceType, number>();
     private readonly secondsSinceContourRebuildBySurfaceType =
         new Map<SurfaceType, number>();
+
+    /*
+     * Performance Optimization Pass 6. Reuse redraw scratch collections so
+     * periodic Wet Ground refreshes do not create a fresh Map-of-Maps and
+     * Set for every material on every contour tick. This changes allocation
+     * behavior only. Moisture membership and contour rules remain identical.
+     */
+    private readonly samplesBySurfaceType =
+        new Map<SurfaceType, Map<number, number>>();
+
+    private readonly seenCellsBySurfaceType =
+        new Map<SurfaceType, Set<number>>();
+
     private refreshAccumulator = 0;
     private destroyed = false;
 
@@ -50,6 +63,8 @@ export class WetGroundRenderer {
             const graphics = new Graphics();
             this.graphicsBySurfaceType.set(style.surfaceType, graphics);
             this.visibleCellsBySurfaceType.set(style.surfaceType, new Map<number, number>());
+            this.samplesBySurfaceType.set(style.surfaceType, new Map<number, number>());
+            this.seenCellsBySurfaceType.set(style.surfaceType, new Set<number>());
             this.secondsSinceContourRebuildBySurfaceType.set(style.surfaceType, 0);
             this.container.addChild(graphics);
         });
@@ -90,6 +105,8 @@ export class WetGroundRenderer {
         this.refreshAccumulator = 0;
         this.graphicsBySurfaceType.forEach((graphics) => graphics.clear());
         this.visibleCellsBySurfaceType.forEach((cells) => cells.clear());
+        this.samplesBySurfaceType.forEach((samples) => samples.clear());
+        this.seenCellsBySurfaceType.forEach((seen) => seen.clear());
         this.contourSignatureBySurfaceType.clear();
         this.secondsSinceContourRebuildBySurfaceType.forEach((_seconds, surfaceType) => {
             this.secondsSinceContourRebuildBySurfaceType.set(surfaceType, 0);
@@ -102,6 +119,8 @@ export class WetGroundRenderer {
         this.graphicsBySurfaceType.forEach((graphics) => graphics.destroy());
         this.graphicsBySurfaceType.clear();
         this.visibleCellsBySurfaceType.clear();
+        this.samplesBySurfaceType.clear();
+        this.seenCellsBySurfaceType.clear();
         this.contourSignatureBySurfaceType.clear();
         this.secondsSinceContourRebuildBySurfaceType.clear();
         this.container.destroy({ children: false });
@@ -119,6 +138,32 @@ export class WetGroundRenderer {
         const rowCount = this.environmentField.getRowCount();
         const cellSize = this.environmentField.getDefinition().cellSize;
 
+        /*
+         * Pass 2: classify tracked moisture once per wet-ground refresh. The
+         * previous path scanned the complete tracked set once for every
+         * material and repeatedly asked SurfaceSystem for the same cell.
+         * Presentation samples are immutable for the duration of this redraw.
+         */
+        const classificationStartedAt = performance.now();
+        const sampleBySurfaceType =
+            this.samplesBySurfaceType;
+
+        sampleBySurfaceType.forEach((samples) => samples.clear());
+
+        for (let i = 0; i < tracked.length; i += 1) {
+            const index = tracked[i];
+            const excess = this.environmentField.getExcessMoistureByIndex(index);
+            if (!Number.isFinite(excess) || excess <= 0) continue;
+
+            const center = this.environmentField.getWorldCenterByIndex(index);
+            if (!center) continue;
+            const surface = this.surfaceSystem.getSurfaceAt(center.x, center.y);
+            if (surface.surfaceState === SurfaceState.Scorched) continue;
+
+            sampleBySurfaceType.get(surface.surfaceType)?.set(index, excess);
+        }
+        membershipMilliseconds += performance.now() - classificationStartedAt;
+
         for (let styleIndex = 0;
             styleIndex < this.definition.materialStyles.length;
             styleIndex += 1) {
@@ -126,31 +171,29 @@ export class WetGroundRenderer {
             const style = this.definition.materialStyles[styleIndex];
             const graphics = this.graphicsBySurfaceType.get(style.surfaceType);
             const visibleCells = this.visibleCellsBySurfaceType.get(style.surfaceType);
-            if (!graphics || !visibleCells) continue;
+            const currentSamples = sampleBySurfaceType.get(style.surfaceType);
+            if (!graphics || !visibleCells || !currentSamples) continue;
 
-            /*
-             * 8I-8E-B Schmitt-trigger membership. New cells must cross the
-             * enter threshold. Existing cells remain until the lower exit
-             * threshold, with a short grace for one-refresh diffusion gaps.
-             */
-            const seen = new Set<number>();
-            for (let i = 0; i < tracked.length; i += 1) {
-                const index = tracked[i];
-                const excess = this.getPresentationMoistureSample(index, style.surfaceType);
+            const seen =
+                this.seenCellsBySurfaceType.get(style.surfaceType);
+
+            if (!seen) continue;
+            seen.clear();
+
+            currentSamples.forEach((excess, index) => {
                 const wasVisible = visibleCells.has(index);
                 const threshold = wasVisible
                     ? this.definition.visibleMoistureExitExcess
                     : this.definition.minimumVisibleMoistureExcess;
-
                 if (excess >= threshold) {
                     visibleCells.set(index, this.definition.visibleCellRetentionRefreshes);
                     seen.add(index);
                 }
-            }
+            });
 
             visibleCells.forEach((remaining, index) => {
                 if (seen.has(index)) return;
-                const excess = this.getPresentationMoistureSample(index, style.surfaceType);
+                const excess = currentSamples.get(index) ?? 0;
                 if (excess >= this.definition.visibleMoistureExitExcess) {
                     visibleCells.set(index, this.definition.visibleCellRetentionRefreshes);
                     return;
@@ -173,6 +216,11 @@ export class WetGroundRenderer {
             let maxColumn = 0;
             let minRow = rowCount - 1;
             let maxRow = 0;
+            let signature = 2166136261;
+            const moistureQuantum =
+                Math.max(0.000001, this.definition.contourChangeMoistureQuantum);
+
+            /* One membership walk now computes bounds and signature together. */
             visibleCells.forEach((_remaining, index) => {
                 const column = index % columnCount;
                 const row = Math.floor(index / columnCount);
@@ -180,7 +228,17 @@ export class WetGroundRenderer {
                 maxColumn = Math.max(maxColumn, column);
                 minRow = Math.min(minRow, row);
                 maxRow = Math.max(maxRow, row);
+
+                const excess = currentSamples.get(index) ?? 0;
+                const retainedExcess = Math.max(
+                    excess,
+                    this.definition.visibleMoistureExitExcess + 0.000001,
+                );
+                const quantizedMoisture = Math.floor(retainedExcess / moistureQuantum);
+                signature = Math.imul(signature ^ index, 16777619);
+                signature = Math.imul(signature ^ quantizedMoisture, 16777619);
             });
+            signature = Math.imul(signature ^ visibleCells.size, 16777619);
 
             minColumn = Math.max(0, minColumn - 1);
             maxColumn = Math.min(columnCount - 1, maxColumn + 1);
@@ -189,19 +247,6 @@ export class WetGroundRenderer {
 
             visibleWetCells += visibleCells.size;
             membershipMilliseconds += performance.now() - membershipStartedAt;
-
-            let signature = 2166136261;
-            const moistureQuantum =
-                Math.max(0.000001, this.definition.contourChangeMoistureQuantum);
-            visibleCells.forEach((_remaining, index) => {
-                const excess =
-                    this.getPresentationMoistureSample(index, style.surfaceType);
-                const quantizedMoisture =
-                    Math.floor(excess / moistureQuantum);
-                signature = Math.imul(signature ^ index, 16777619);
-                signature = Math.imul(signature ^ quantizedMoisture, 16777619);
-            });
-            signature = Math.imul(signature ^ visibleCells.size, 16777619);
 
             const secondsSinceRebuild =
                 this.secondsSinceContourRebuildBySurfaceType.get(style.surfaceType) ?? 0;
@@ -231,11 +276,15 @@ export class WetGroundRenderer {
                     maximumColumn: maxColumn,
                     minimumRow: minRow,
                     maximumRow: maxRow,
+                    boundsAlreadyTight: true,
+                    knownActiveSamples: visibleCells.size,
                     sampleValueByIndex: (index) => {
                         if (!visibleCells.has(index)) return 0;
-                        const excess = this.getPresentationMoistureSample(index, style.surfaceType);
-                        /* Retained cells stay barely inside the contour until grace expires. */
-                        return Math.max(excess, this.definition.visibleMoistureExitExcess + 0.000001);
+                        const excess = currentSamples.get(index) ?? 0;
+                        return Math.max(
+                            excess,
+                            this.definition.visibleMoistureExitExcess + 0.000001,
+                        );
                     },
                 },
                 {
@@ -267,24 +316,6 @@ export class WetGroundRenderer {
             membershipMilliseconds, contourMilliseconds, graphicsMilliseconds,
             trackedMoistureCells: tracked.length, visibleWetCells, contours: contourCount, vertices: vertexCount,
         });
-    }
-
-    private getPresentationMoistureSample(
-        index: number,
-        expectedSurfaceType: SurfaceType,
-    ): number {
-        const excess = this.environmentField.getExcessMoistureByIndex(index);
-        if (!Number.isFinite(excess) || excess <= 0) return 0;
-
-        const center = this.environmentField.getWorldCenterByIndex(index);
-        if (!center) return 0;
-
-        const surface = this.surfaceSystem.getSurfaceAt(center.x, center.y);
-        if (surface.surfaceState === SurfaceState.Scorched ||
-            surface.surfaceType !== expectedSurfaceType) {
-            return 0;
-        }
-        return excess;
     }
 
     private drawContours(

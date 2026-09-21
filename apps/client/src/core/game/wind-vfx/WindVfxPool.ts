@@ -2,6 +2,26 @@ import { Container, Texture } from "pixi.js";
 import { WindVfxParticle } from "./WindVfxParticle";
 
 export class WindVfxPool {
+    private performanceAcquireAttempts = 0;
+    private performanceAcquireSuccesses = 0;
+    private performanceReleases = 0;
+
+    public beginPerformanceFrame(): void {
+        this.performanceAcquireAttempts = 0;
+        this.performanceAcquireSuccesses = 0;
+        this.performanceReleases = 0;
+    }
+
+    public getPerformanceDetails() {
+        return {
+            activeParticles: this.getActiveCount(),
+            particleCapacity: this.getCapacity(),
+            acquireAttempts: this.performanceAcquireAttempts,
+            acquireSuccesses: this.performanceAcquireSuccesses,
+            releases: this.performanceReleases,
+        };
+    }
+
     private readonly particles: WindVfxParticle[] = [];
     private readonly freeParticles: WindVfxParticle[] = [];
 
@@ -25,16 +45,19 @@ export class WindVfxPool {
     }
 
     public acquire(): WindVfxParticle | null {
+        this.performanceAcquireAttempts += 1;
         const particle = this.freeParticles.pop() ?? null;
         if (!particle) {
             return null;
         }
+        this.performanceAcquireSuccesses += 1;
         particle.active = true;
         particle.sprite.visible = true;
         return particle;
     }
 
     public release(particle: WindVfxParticle): void {
+        this.performanceReleases += 1;
         if (!particle.active) {
             return;
         }

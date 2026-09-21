@@ -63,6 +63,14 @@ import type {
 } from "./LocalWindSystem";
 
 import {
+    DEFAULT_FIRE_WIND_DYNAMICS_DEFINITION,
+} from "../config/FireSourceDefinition";
+
+import type {
+    FireWindDynamicsDefinition,
+} from "../config/FireSourceDefinition";
+
+import {
     FireCell,
 } from "./FireCell";
 
@@ -70,6 +78,13 @@ interface PendingIgnition {
     readonly gridX: number;
     readonly gridY: number;
     readonly generation: number;
+}
+
+interface FieldIgnitionCandidate {
+    gridX: number;
+    gridY: number;
+    key: string;
+    score: number;
 }
 
 export interface FireMoistureResponse {
@@ -80,6 +95,25 @@ export interface FireMoistureResponse {
     readonly canIgnite: boolean;
     readonly spreadMultiplier: number;
     readonly combustionMultiplier: number;
+}
+
+
+export interface FireSimulationPerformanceDetails {
+    readonly totalMilliseconds: number;
+    readonly peakMilliseconds: number;
+    readonly activeCellLoopMilliseconds: number;
+    readonly samplingMilliseconds: number;
+    readonly environmentInfluenceMilliseconds: number;
+    readonly spreadMilliseconds: number;
+    readonly fieldIgnitionMilliseconds: number;
+    readonly cleanupMilliseconds: number;
+    readonly commitMilliseconds: number;
+    readonly heatCoolingMilliseconds: number;
+    readonly activeCells: number;
+    readonly spreadPasses: number;
+    readonly pendingIgnitions: number;
+    readonly expiredCells: number;
+    readonly hotCandidates: number;
 }
 
 export interface FireFieldIgnitionMetrics {
@@ -151,6 +185,36 @@ export class FireManager {
     private lastHotCandidateCount =
         0;
 
+    /*
+     * Performance Optimization Pass 6.
+     *
+     * These collections are frame scratch storage. Fire simulation used to
+     * allocate new Maps, Sets and candidate arrays on every update/check.
+     * Reusing them removes avoidable GC pressure from the authoritative Fire
+     * hot path without changing spread, ignition, fuel, moisture or lifetime
+     * rules. They are cleared before each use and never escape FireManager.
+     */
+    private readonly pendingIgnitionsScratch =
+        new Map<string, PendingIgnition>();
+
+    private readonly expiredCellsScratch =
+        new Set<FireCell>();
+
+    private readonly fieldCandidateKeysScratch =
+        new Set<string>();
+
+    private readonly fieldCandidatesScratch:
+        FieldIgnitionCandidate[] = [];
+
+    /*
+     * Final Fire runtime cleanup. Field ignition can inspect thousands of hot
+     * EnvironmentField cells during a check. Keep candidate records alive and
+     * overwrite them on the next check instead of allocating a fresh object
+     * for every accepted candidate. Only the active prefix is exposed to the
+     * sort/commit stage, so simulation ordering and ignition rules are unchanged.
+     */
+    private fieldCandidateScratchCount = 0;
+
     /**
      * null = normal gameplay randomness.
      * number = deterministic validation sequence.
@@ -184,6 +248,10 @@ export class FireManager {
         ignitionDefinition:
             FireIgnitionDefinition =
             DEFAULT_FIRE_IGNITION_DEFINITION,
+
+        private readonly fireWindDynamicsDefinition:
+            FireWindDynamicsDefinition =
+            DEFAULT_FIRE_WIND_DYNAMICS_DEFINITION,
 
         courseBoundaryDefinition:
             CourseBoundaryDefinition =
@@ -243,12 +311,22 @@ export class FireManager {
         }
 
         const pendingIgnitions =
-            new Map<string, PendingIgnition>();
+            this.pendingIgnitionsScratch;
 
-        const expiredCellKeys =
-            new Set<string>();
+        const expiredCells =
+            this.expiredCellsScratch;
 
-        for (const cell of this.activeCells) {
+        pendingIgnitions.clear();
+        expiredCells.clear();
+
+        for (
+            let activeCellIndex = 0;
+            activeCellIndex < this.activeCells.length;
+            activeCellIndex += 1
+        ) {
+            const cell = this.activeCells[activeCellIndex];
+            if (!cell) continue;
+
             cell.advanceAge(
                 safeDeltaTime,
             );
@@ -274,11 +352,8 @@ export class FireManager {
                 cell.setFuelIntensityMultiplier(0);
                 cell.setIntensity(0);
 
-                expiredCellKeys.add(
-                    this.createCellKey(
-                        cell.getGridX(),
-                        cell.getGridY(),
-                    ),
+                expiredCells.add(
+                    cell,
                 );
 
                 continue;
@@ -316,7 +391,10 @@ export class FireManager {
 
             if (
                 cell.getGeneration() <
-                this.definition.maximumSpreadGeneration
+                    this.definition.maximumSpreadGeneration ||
+                this.canContinueSpreadThroughStrongWind(
+                    cell,
+                )
             ) {
                 while (
                     cell.getAge() >=
@@ -339,11 +417,8 @@ export class FireManager {
                 cell.getAge() >=
                 this.definition.lifetime
             ) {
-                expiredCellKeys.add(
-                    this.createCellKey(
-                        cell.getGridX(),
-                        cell.getGridY(),
-                    ),
+                expiredCells.add(
+                    cell,
                 );
             }
         }
@@ -366,9 +441,9 @@ export class FireManager {
             );
         }
 
-        if (expiredCellKeys.size > 0) {
+        if (expiredCells.size > 0) {
             this.removeExpiredCells(
-                expiredCellKeys,
+                expiredCells,
             );
         }
 
@@ -406,6 +481,12 @@ export class FireManager {
 
         this.lastHotCandidateCount =
             0;
+
+        this.pendingIgnitionsScratch.clear();
+        this.expiredCellsScratch.clear();
+        this.fieldCandidateKeysScratch.clear();
+        this.fieldCandidatesScratch.length = 0;
+        this.fieldCandidateScratchCount = 0;
     }
 
     public setValidationRandomSeed(
@@ -593,6 +674,41 @@ export class FireManager {
     // ---------------------------------------------------------------------
     // Queries
     // ---------------------------------------------------------------------
+
+
+    /**
+     * Pass 7 profiler compatibility API.
+     *
+     * The final Fire runtime optimization intentionally removed the expensive
+     * nested per-cell performance.now() instrumentation. World and the
+     * performance overlay still query this method, so retain the contract and
+     * expose lightweight counters. World remains responsible for the outer
+     * FireManager timing/peak measurement.
+     */
+    public getPerformanceDetails():
+        FireSimulationPerformanceDetails {
+        return {
+            totalMilliseconds: 0,
+            peakMilliseconds: 0,
+            activeCellLoopMilliseconds: 0,
+            samplingMilliseconds: 0,
+            environmentInfluenceMilliseconds: 0,
+            spreadMilliseconds: 0,
+            fieldIgnitionMilliseconds: 0,
+            cleanupMilliseconds: 0,
+            commitMilliseconds: 0,
+            heatCoolingMilliseconds: 0,
+            activeCells:
+                this.activeCells.length,
+            spreadPasses: 0,
+            pendingIgnitions:
+                this.pendingIgnitionsScratch.size,
+            expiredCells:
+                this.expiredCellsScratch.size,
+            hotCandidates:
+                this.lastHotCandidateCount,
+        };
+    }
 
     public getActiveCells():
         readonly FireCell[] {
@@ -793,9 +909,13 @@ export class FireManager {
                 : 0;
 
         for (
-            const offset
-            of FIRE_NEIGHBOUR_OFFSETS
+            let offsetIndex = 0;
+            offsetIndex < FIRE_NEIGHBOUR_OFFSETS.length;
+            offsetIndex += 1
         ) {
+            const offset = FIRE_NEIGHBOUR_OFFSETS[offsetIndex];
+            if (!offset) continue;
+
             const gridX =
                 sourceCell.getGridX() +
                 offset.x;
@@ -852,6 +972,38 @@ export class FireManager {
                     targetMoisture,
                 );
 
+            const candidateAlignment =
+                this.getCandidateWindAlignment(
+                    offset.x,
+                    offset.y,
+                    normalizedWindX,
+                    normalizedWindY,
+                );
+
+            /*
+             * Once local Wind is strong enough, Fire behaves like a narrow
+             * downwind propagation front rather than continuing its ordinary
+             * near-square neighbour expansion.
+             */
+            if (
+                windBiasStrength >=
+                    this.fireWindDynamicsDefinition
+                        .continuationWindBiasThreshold &&
+                candidateAlignment <
+                    this.fireWindDynamicsDefinition
+                        .strongWindMinimumAlignment
+            ) {
+                continue;
+            }
+
+            const irregularityMultiplier =
+                this.getSpreadIrregularityMultiplier(
+                    sourceCell,
+                    gridX,
+                    gridY,
+                    windBiasStrength,
+                );
+
             const spreadProbability =
                 this.getDirectionalSpreadProbability(
                     offset.x,
@@ -861,6 +1013,7 @@ export class FireManager {
                     normalizedWindY,
                     windBiasStrength,
                 ) *
+                irregularityMultiplier *
                 sourceCell.getIntensity() *
                 moistureSpreadMultiplier *
                 this.ignitionDefinition
@@ -989,18 +1142,26 @@ export class FireManager {
             strongWindMultiplier =
                 this.lerp(
                     this.definition
-                        .crosswindSpreadMultiplier,
+                        .crosswindSpreadMultiplier *
+                    this.fireWindDynamicsDefinition
+                        .strongCrosswindProbabilityMultiplier,
                     this.definition
-                        .maximumDownwindSpreadMultiplier,
+                        .maximumDownwindSpreadMultiplier *
+                    this.fireWindDynamicsDefinition
+                        .strongDownwindProbabilityMultiplier,
                     alignment,
                 );
         } else {
             strongWindMultiplier =
                 this.lerp(
                     this.definition
-                        .crosswindSpreadMultiplier,
+                        .crosswindSpreadMultiplier *
+                    this.fireWindDynamicsDefinition
+                        .strongCrosswindProbabilityMultiplier,
                     this.definition
-                        .maximumUpwindSpreadMultiplier,
+                        .maximumUpwindSpreadMultiplier *
+                    this.fireWindDynamicsDefinition
+                        .strongUpwindProbabilityMultiplier,
                     -alignment,
                 );
         }
@@ -1072,6 +1233,99 @@ export class FireManager {
         );
     }
 
+    private canContinueSpreadThroughStrongWind(
+        cell: FireCell,
+    ): boolean {
+        const wind =
+            this.localWindSystem.getAccelerationAt(
+                cell.getWorldCenterX(),
+                cell.getWorldCenterY(),
+            );
+
+        const magnitude =
+            Math.sqrt(
+                wind.x * wind.x +
+                wind.y * wind.y,
+            );
+
+        return (
+            this.getWindBiasStrength(
+                magnitude,
+            ) >=
+            this.fireWindDynamicsDefinition
+                .continuationWindBiasThreshold
+        );
+    }
+
+    private getCandidateWindAlignment(
+        offsetX: number,
+        offsetY: number,
+        normalizedWindX: number,
+        normalizedWindY: number,
+    ): number {
+        const length =
+            Math.sqrt(
+                offsetX * offsetX +
+                offsetY * offsetY,
+            );
+
+        if (length <= 0) {
+            return 0;
+        }
+
+        return (
+            offsetX / length *
+                normalizedWindX +
+            offsetY / length *
+                normalizedWindY
+        );
+    }
+
+    /**
+     * Deterministic spatial variation prevents ordinary Point Fire from
+     * repeatedly resolving into a visually obvious square. Strong Wind
+     * progressively disables this variation because the Wind corridor should
+     * become the dominant shape.
+     */
+    private getSpreadIrregularityMultiplier(
+        sourceCell: FireCell,
+        targetGridX: number,
+        targetGridY: number,
+        windBiasStrength: number,
+    ): number {
+        const seed =
+            sourceCell.getGridX() * 12.9898 +
+            sourceCell.getGridY() * 78.233 +
+            targetGridX * 37.719 +
+            targetGridY * 19.913 +
+            sourceCell.getGeneration() *
+                this.fireWindDynamicsDefinition
+                    .irregularityGenerationPhase;
+
+        const raw =
+            Math.sin(seed) *
+            43758.5453123;
+
+        const unit =
+            raw -
+            Math.floor(raw);
+
+        const irregular =
+            this.lerp(
+                this.fireWindDynamicsDefinition
+                    .irregularityMinimumMultiplier,
+                this.fireWindDynamicsDefinition
+                    .irregularityMaximumMultiplier,
+                unit,
+            );
+
+        return this.lerp(
+            irregular,
+            1,
+            windBiasStrength,
+        );
+    }
+
     private commitPendingIgnitions(
         pendingIgnitions: Map<string, PendingIgnition>,
     ): void {
@@ -1121,16 +1375,14 @@ export class FireManager {
             Map<string, PendingIgnition>,
     ): void {
 
-        const candidates:
-            Array<{
-                readonly gridX: number;
-                readonly gridY: number;
-                readonly key: string;
-                readonly score: number;
-            }> = [];
+        const candidates =
+            this.fieldCandidatesScratch;
 
         const candidateKeys =
-            new Set<string>();
+            this.fieldCandidateKeysScratch;
+
+        this.fieldCandidateScratchCount = 0;
+        candidateKeys.clear();
 
         const trackedHeatIndices =
             this.environmentField
@@ -1140,9 +1392,12 @@ export class FireManager {
             0;
 
         for (
-            const fieldIndex
-            of trackedHeatIndices
+            let trackedIndex = 0;
+            trackedIndex < trackedHeatIndices.length;
+            trackedIndex += 1
         ) {
+            const fieldIndex = trackedHeatIndices[trackedIndex];
+            if (fieldIndex === undefined) continue;
             const heat =
                 this.environmentField
                     .getHeatByIndex(
@@ -1242,18 +1497,34 @@ export class FireManager {
                 key,
             );
 
-            candidates.push({
-                gridX:
-                    gridPosition.gridX,
+            const candidateIndex =
+                this.fieldCandidateScratchCount;
 
-                gridY:
-                    gridPosition.gridY,
+            const reusableCandidate =
+                candidates[candidateIndex];
 
-                key,
+            if (reusableCandidate) {
+                reusableCandidate.gridX = gridPosition.gridX;
+                reusableCandidate.gridY = gridPosition.gridY;
+                reusableCandidate.key = key;
+                reusableCandidate.score = score;
+            } else {
+                candidates.push({
+                    gridX: gridPosition.gridX,
+                    gridY: gridPosition.gridY,
+                    key,
+                    score,
+                });
+            }
 
-                score,
-            });
+            this.fieldCandidateScratchCount += 1;
         }
+
+        /*
+         * Keep only this check's active prefix before sorting. Candidate
+         * objects inside that prefix are reused across checks.
+         */
+        candidates.length = this.fieldCandidateScratchCount;
 
         /*
          * Prefer the strongest thermally supported candidates when the
@@ -1737,7 +2008,7 @@ export class FireManager {
     // ---------------------------------------------------------------------
 
     private removeExpiredCells(
-        expiredCellKeys: Set<string>,
+        expiredCells: Set<FireCell>,
     ): void {
         for (
             let index =
@@ -1757,15 +2028,9 @@ export class FireManager {
                 continue;
             }
 
-            const key =
-                this.createCellKey(
-                    cell.getGridX(),
-                    cell.getGridY(),
-                );
-
             if (
-                !expiredCellKeys.has(
-                    key,
+                !expiredCells.has(
+                    cell,
                 )
             ) {
                 continue;
@@ -1777,7 +2042,10 @@ export class FireManager {
             );
 
             this.occupiedCellKeys.delete(
-                key,
+                this.createCellKey(
+                    cell.getGridX(),
+                    cell.getGridY(),
+                ),
             );
         }
     }

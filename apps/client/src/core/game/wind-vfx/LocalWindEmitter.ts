@@ -30,6 +30,24 @@ import type {
  * particles inside that exact stream.
  */
 export class LocalWindEmitter {
+    private performanceSpawnAttempts = 0;
+    private performanceSpawned = 0;
+    private performanceActiveSources = 0;
+
+    public beginPerformanceFrame(): void {
+        this.performanceSpawnAttempts = 0;
+        this.performanceSpawned = 0;
+        this.performanceActiveSources = 0;
+    }
+
+    public getPerformanceDetails() {
+        return {
+            spawnAttempts: this.performanceSpawnAttempts,
+            spawned: this.performanceSpawned,
+            activeSources: this.performanceActiveSources,
+        };
+    }
+
 
     private readonly particlesBySource =
         new Map<string, WindVfxParticle[]>();
@@ -172,6 +190,7 @@ export class LocalWindEmitter {
             particles.length <
             target
         ) {
+            this.performanceSpawnAttempts += 1;
             const particle =
                 this.pool.acquire();
 

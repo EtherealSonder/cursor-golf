@@ -88,6 +88,27 @@ interface JetFireEmitterState {
  * This class never deposits heat, ignites terrain or changes a FireSource.
  */
 export class JetFireEmitter {
+    private performanceSpawnAttempts = 0;
+    private performanceSpawned = 0;
+    private performanceSpawnSkipped = 0;
+    private performanceActiveSources = 0;
+
+    public beginPerformanceFrame(): void {
+        this.performanceSpawnAttempts = 0;
+        this.performanceSpawned = 0;
+        this.performanceSpawnSkipped = 0;
+        this.performanceActiveSources = 0;
+    }
+
+    public getPerformanceDetails() {
+        return {
+            spawnAttempts: this.performanceSpawnAttempts,
+            spawned: this.performanceSpawned,
+            skipped: this.performanceSpawnSkipped,
+            activeSources: this.performanceActiveSources,
+        };
+    }
+
 
     public static readonly presentationContract =
         DIRECTIONAL_FIRE_PRESENTATION_CONTRACT;
@@ -144,6 +165,7 @@ export class JetFireEmitter {
             deltaTime <=
             0
         ) {
+            this.performanceActiveSources += 1;
             return;
         }
 
@@ -152,6 +174,8 @@ export class JetFireEmitter {
 
         let sawDirectionalSource =
             false;
+
+        this.performanceActiveSources = 0;
 
         for (
             const source
@@ -497,22 +521,60 @@ export class JetFireEmitter {
                 lateralVelocity,
 
             windAccelerationX:
-                windAcceleration.x,
+                windAcceleration.x *
+                this.presentationDefinition
+                    .windAccelerationMultiplier,
 
             windAccelerationY:
-                windAcceleration.y,
+                windAcceleration.y *
+                this.presentationDefinition
+                    .windAccelerationMultiplier,
+
+            /*
+             * Live spatial sampling is essential for a jet that crosses a
+             * Fan after leaving the nozzle. Wind is evaluated at the moving
+             * particle position rather than frozen at its spawn position.
+             */
+            sampleWindAccelerationAt:
+                (
+                    worldX: number,
+                    worldY: number,
+                ) => {
+                    const liveWind =
+                        this.localWindSystem
+                            .getAccelerationAt(
+                                worldX,
+                                worldY,
+                            );
+
+                    const multiplier =
+                        this.presentationDefinition
+                            .windAccelerationMultiplier;
+
+                    return {
+                        x:
+                            liveWind.x *
+                            multiplier,
+                        y:
+                            liveWind.y *
+                            multiplier,
+                    };
+                },
 
             windInfluenceStartMultiplier:
-                this.definition
+                this.presentationDefinition
                     .windInfluenceStartMultiplier,
 
             windInfluenceFullFraction:
-                this.definition
+                this.presentationDefinition
                     .windInfluenceFullFraction,
 
             windInfluenceResponseExponent:
-                this.definition
+                this.presentationDefinition
                     .windInfluenceResponseExponent,
+
+            maximumWindAddedSpeed:
+                720,
 
             orientToVelocity:
                 true,
@@ -665,6 +727,27 @@ export class JetFireEmitter {
             directionalTerminalFadeEndFraction:
                 this.presentationDefinition
                     .terminalFadeEndFraction,
+
+            collisionIgnoredSourceId:
+                sourceId,
+
+            collisionResponse: {
+                contactInset:
+                    this.presentationDefinition
+                        .collisionContactInset,
+                edgeSlideStrength:
+                    this.presentationDefinition
+                        .collisionEdgeSlideStrength,
+                maximumEdgeTravel:
+                    this.presentationDefinition
+                        .collisionMaximumEdgeTravel,
+                collisionVelocityRetention:
+                    this.presentationDefinition
+                        .collisionVelocityRetention,
+                contactLifetimeSeconds:
+                    this.presentationDefinition
+                        .collisionContactLifetimeSeconds,
+            },
 
             /*
              * Phase 8F-4 presentation bridge.

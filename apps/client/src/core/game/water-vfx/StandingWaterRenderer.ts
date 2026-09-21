@@ -302,6 +302,8 @@ export class StandingWaterRenderer {
             0;
         let contourSignature =
             2166136261;
+        const visibleDepthByIndex =
+            new Map<number, number>();
 
         const scanStartedAt = performance.now();
 
@@ -326,6 +328,7 @@ export class StandingWaterRenderer {
                     }
 
                     this.visibleBodyCellIndices.add(cell.index);
+                    visibleDepthByIndex.set(cell.index, cell.depth);
 
                     const depthQuantum =
                         Math.max(
@@ -494,17 +497,27 @@ export class StandingWaterRenderer {
             minimumRow,
             maximumRow,
 
+            /*
+             * These bounds were already derived from visible Water membership
+             * above. Skipping ScalarFieldActiveBounds avoids a redundant full
+             * rectangle pre-scan before Marching Squares.
+             */
+            boundsAlreadyTight: true,
+            knownActiveSamples: visibleWaterCells,
+
             sampleValueByIndex:
                 (
                     index:
                         number,
-                ): number =>
-                    this.visibleBodyCellIndices.has(index)
-                        ? Math.max(
-                            this.waterField.getDepthByIndex(index),
+                ): number => {
+                    const depth = visibleDepthByIndex.get(index);
+                    return depth === undefined
+                        ? 0
+                        : Math.max(
+                            depth,
                             standingWater.contourExitThreshold + 0.000001,
-                        )
-                        : 0,
+                        );
+                },
         };
 
         const bodyContourOptions = {

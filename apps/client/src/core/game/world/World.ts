@@ -101,6 +101,10 @@ import {
     WaterPerformanceProfiler,
 } from "../debug/WaterPerformanceProfiler";
 
+import {
+    WaterPerformanceOverlay,
+} from "../debug/WaterPerformanceOverlay";
+
 
 import {
     DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
@@ -347,6 +351,10 @@ export class World {
         new WaterPerformanceProfiler(
             DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
         );
+
+    private waterPerformanceOverlay:
+        WaterPerformanceOverlay | null =
+        null;
 
     private readonly contourRefreshScheduler =
         new ContourRefreshScheduler();
@@ -807,6 +815,7 @@ export class World {
         this.createCameraActivationDebugGraphics();
 
         this.createPerformanceDebugOverlay();
+        this.createWaterPerformanceOverlay();
         ScalarFieldTexture
             .setPerformanceProfiler(
                 this.waterPerformanceProfiler,
@@ -1122,6 +1131,12 @@ export class World {
                 viewportHeight,
             );
 
+        this.waterPerformanceOverlay
+            ?.setViewportSize(
+                viewportWidth,
+                viewportHeight,
+            );
+
     }
 
     public updateCamera(
@@ -1145,8 +1160,13 @@ export class World {
             number,
     ): void {
 
+        this.applyPresentationDiagnosticMode();
+
         this.waterPerformanceProfiler
             .beginFrame();
+
+        this.localWindSystem
+            .beginPerformanceFrame();
 
         this.contourRefreshScheduler
             .beginFrame();
@@ -1184,18 +1204,31 @@ export class World {
          * Phase 8F-10: 8I is not consuming gameplay events yet, so discard
          * previous-frame events before producing this frame's contacts.
          */
-        this.waterPerformanceProfiler.measure("waterFireInteraction", (): void => {
-            this.waterFireInteraction.clearGameplayEvents();
-            this.fireSourceSystem.beginDirectionalWaterSuppressionFrame();
-            this.waterFireInteraction.updateAirborneWaterDirectionalFire(
-                this.airborneWaterSystem.getLastMovementSweeps(),
-                this.fireSourceSystem,
-            );
-            this.waterFireInteraction.updateAirborneWaterGroundFire(
-                this.airborneWaterSystem.getLastMovementSweeps(),
-                this.fireManager,
-            );
-        });
+        this.waterFireInteraction.clearGameplayEvents();
+        this.fireSourceSystem.beginDirectionalWaterSuppressionFrame();
+
+        const airborneWaterSweeps =
+            this.airborneWaterSystem.getLastMovementSweeps();
+
+        this.waterPerformanceProfiler.measure(
+            "waterFireAirborneDirectional",
+            (): void => {
+                this.waterFireInteraction.updateAirborneWaterDirectionalFire(
+                    airborneWaterSweeps,
+                    this.fireSourceSystem,
+                );
+            },
+        );
+
+        this.waterPerformanceProfiler.measure(
+            "waterFireAirborneGround",
+            (): void => {
+                this.waterFireInteraction.updateAirborneWaterGroundFire(
+                    airborneWaterSweeps,
+                    this.fireManager,
+                );
+            },
+        );
 
         this.airborneWaterVisualizer?.update();
 
@@ -1258,16 +1291,25 @@ export class World {
          * Fire simulation advances, so extinguished Ground Fire cannot
          * deposit heat, burn fuel, scorch, or spread during this frame.
          */
-        this.waterPerformanceProfiler.measure("waterFireInteraction", (): void => {
-            this.waterFireInteraction.updateStandingWaterGroundFire(
-                this.waterField,
-                this.fireManager,
-            );
-            this.waterFireInteraction.updateStandingWaterDirectionalFire(
-                this.waterField,
-                this.fireSourceSystem,
-            );
-        });
+        this.waterPerformanceProfiler.measure(
+            "waterFireStandingGround",
+            (): void => {
+                this.waterFireInteraction.updateStandingWaterGroundFire(
+                    this.waterField,
+                    this.fireManager,
+                );
+            },
+        );
+
+        this.waterPerformanceProfiler.measure(
+            "waterFireStandingDirectional",
+            (): void => {
+                this.waterFireInteraction.updateStandingWaterDirectionalFire(
+                    this.waterField,
+                    this.fireSourceSystem,
+                );
+            },
+        );
 
 
 
@@ -1306,18 +1348,115 @@ export class World {
 
 
 
+        let fireSourceSystemMilliseconds = 0;
         this.waterPerformanceProfiler.measure("fireSimulation", (): void => {
+            const fireSourceStartedAt = performance.now();
             this.fireSourceSystem.update(deltaTime);
+            fireSourceSystemMilliseconds = performance.now() - fireSourceStartedAt;
             this.fireManager.update(deltaTime);
         });
 
-        this.waterPerformanceProfiler.measure("firePresentation", (): void => {
-            this.fireDirectionalValidation?.update();
-            this.fireSourceVisualizer?.update();
-            if (this.fireVfxEnabled) {
-                this.fireVfxSystem?.update(deltaTime);
-            }
-        });
+        this.waterPerformanceProfiler.measure(
+            "fireDirectionalValidation",
+            (): void => {
+                this.fireDirectionalValidation?.update();
+            },
+        );
+
+        this.waterPerformanceProfiler.measure(
+            "fireSourceVisualizer",
+            (): void => {
+                this.fireSourceVisualizer?.update();
+            },
+        );
+
+        this.waterPerformanceProfiler.measure(
+            "fireVfxUpdate",
+            (): void => {
+                if (this.fireVfxEnabled) {
+                    this.fireVfxSystem?.update(deltaTime);
+                }
+            },
+        );
+
+        if (this.fireVfxSystem) {
+            const fireProfile =
+                this.fireVfxSystem.getPerformanceDetails();
+            const fireSimulationProfile =
+                this.fireManager.getPerformanceDetails();
+            this.waterPerformanceProfiler.recordFireDeepProfileDetails({
+                fireSourceSystemMilliseconds,
+                simulationTotalMilliseconds: fireSimulationProfile.totalMilliseconds,
+                simulationPeakMilliseconds: fireSimulationProfile.peakMilliseconds,
+                activeCellLoopMilliseconds: fireSimulationProfile.activeCellLoopMilliseconds,
+                samplingMilliseconds: fireSimulationProfile.samplingMilliseconds,
+                environmentInfluenceMilliseconds: fireSimulationProfile.environmentInfluenceMilliseconds,
+                spreadMilliseconds: fireSimulationProfile.spreadMilliseconds,
+                fieldIgnitionMilliseconds: fireSimulationProfile.fieldIgnitionMilliseconds,
+                cleanupMilliseconds: fireSimulationProfile.cleanupMilliseconds,
+                commitMilliseconds: fireSimulationProfile.commitMilliseconds,
+                heatCoolingMilliseconds: fireSimulationProfile.heatCoolingMilliseconds,
+                simulationActiveCells: fireSimulationProfile.activeCells,
+                spreadPasses: fireSimulationProfile.spreadPasses,
+                pendingIgnitions: fireSimulationProfile.pendingIgnitions,
+                expiredCells: fireSimulationProfile.expiredCells,
+                hotCandidates: fireSimulationProfile.hotCandidates,
+                groundEmitterMilliseconds:
+                    fireProfile.groundEmitterMilliseconds,
+                directionalEmitterMilliseconds:
+                    fireProfile.directionalEmitterMilliseconds,
+                poolUpdateMilliseconds:
+                    fireProfile.poolUpdateMilliseconds,
+                scorchRendererMilliseconds:
+                    fireProfile.scorchRendererMilliseconds,
+                directionalRegionMilliseconds:
+                    fireProfile.directionalRegionMilliseconds,
+                directionalSuppressionMilliseconds:
+                    fireProfile.directionalSuppressionMilliseconds,
+                activeGroundParticles:
+                    fireProfile.activeGroundParticles,
+                activeDirectionalParticles:
+                    fireProfile.activeDirectionalParticles,
+                activeParticles:
+                    fireProfile.activeParticles,
+                particleCapacity:
+                    fireProfile.particleCapacity,
+                acquireAttempts:
+                    fireProfile.acquireAttempts,
+                acquireSuccesses:
+                    fireProfile.acquireSuccesses,
+                reusedParticles:
+                    fireProfile.reusedParticles,
+                createdParticles:
+                    fireProfile.createdParticles,
+                groundSpawnAttempts:
+                    fireProfile.groundEmitter.spawnAttempts,
+                groundSpawned:
+                    fireProfile.groundEmitter.spawned,
+                groundSpawnSkipped:
+                    fireProfile.groundEmitter.skipped,
+                directionalSpawnAttempts:
+                    fireProfile.directionalEmitter.spawnAttempts,
+                directionalSpawned:
+                    fireProfile.directionalEmitter.spawned,
+                directionalSpawnSkipped:
+                    fireProfile.directionalEmitter.skipped,
+                activeDirectionalSources:
+                    fireProfile.directionalEmitter.activeSources,
+                collisionSweeps:
+                    fireProfile.collision.collisionSweeps,
+                collisionHits:
+                    fireProfile.collision.collisionHits,
+                groundCollisionSweeps:
+                    fireProfile.collision.groundCollisionSweeps,
+                groundCollisionHits:
+                    fireProfile.collision.groundCollisionHits,
+                directionalCollisionSweeps:
+                    fireProfile.collision.directionalCollisionSweeps,
+                directionalCollisionHits:
+                    fireProfile.collision.directionalCollisionHits,
+            });
+        }
 
 
 
@@ -1436,6 +1575,45 @@ export class World {
             this.windVfxSystem?.update(deltaTime);
         });
 
+        if (this.windVfxSystem) {
+            const windProfile =
+                this.windVfxSystem.getPerformanceDetails();
+            const localWindProfile =
+                this.localWindSystem.getPerformanceDetails();
+            this.waterPerformanceProfiler.recordWindDeepProfileDetails({
+                globalEmitterMilliseconds:
+                    windProfile.globalEmitterMilliseconds,
+                localEmitterMilliseconds:
+                    windProfile.localEmitterMilliseconds,
+                poolBookkeepingMilliseconds:
+                    windProfile.poolBookkeepingMilliseconds,
+                activeParticles:
+                    windProfile.activeParticles,
+                particleCapacity:
+                    windProfile.particleCapacity,
+                acquireAttempts:
+                    windProfile.acquireAttempts,
+                acquireSuccesses:
+                    windProfile.acquireSuccesses,
+                releases:
+                    windProfile.releases,
+                globalSpawnAttempts:
+                    windProfile.globalEmitter.spawnAttempts,
+                globalSpawned:
+                    windProfile.globalEmitter.spawned,
+                localSpawnAttempts:
+                    windProfile.localEmitter.spawnAttempts,
+                localSpawned:
+                    windProfile.localEmitter.spawned,
+                activeLocalSources:
+                    windProfile.localEmitter.activeSources,
+                localWindQueries:
+                    localWindProfile.queryCount,
+                localWindQueryMilliseconds:
+                    localWindProfile.queryMilliseconds,
+            });
+        }
+
         this.waterPerformanceProfiler.measure("gameplayPresentation", (): void => {
             if (
                 this.connector &&
@@ -1528,6 +1706,12 @@ export class World {
         this.waterPerformanceProfiler
             .endFrame(
                 deltaTime,
+            );
+
+        this.waterPerformanceOverlay
+            ?.update(
+                this.waterPerformanceProfiler
+                    .getSnapshot(),
             );
 
     }
@@ -1721,6 +1905,12 @@ export class World {
             ?.destroy();
 
         this.performanceDebugOverlay =
+            null;
+
+        this.waterPerformanceOverlay
+            ?.destroy();
+
+        this.waterPerformanceOverlay =
             null;
 
         ScalarFieldTexture
@@ -1939,38 +2129,6 @@ export class World {
 
         this.performanceDebugOverlay
             ?.resetDisplay();
-
-        console.log(
-            "Performance benchmark applied.",
-            {
-                id:
-                    benchmark.id,
-
-                fans:
-                    benchmark
-                        .fanSources
-                        .length,
-
-                fireTubes:
-                    benchmark
-                        .fireTubes
-                        .length,
-
-                windVfxEnabled:
-                    benchmark
-                        .windVfxEnabled,
-
-                fireVfxEnabled:
-                    benchmark
-                        .fireVfxEnabled,
-
-                warmupSeconds:
-                    benchmark.profiling.warmupSeconds,
-
-                measurementSeconds:
-                    benchmark.profiling.measurementSeconds,
-            },
-        );
     }
 
     public clearPerformanceBenchmark():
@@ -2040,6 +2198,124 @@ export class World {
     public getPerformanceSnapshot() {
         return this.performanceMetrics
             .getSnapshot();
+    }
+
+    public recordFramePresentationDiagnostics(
+        gameUpdateMilliseconds: number,
+        pixiRenderMilliseconds: number,
+    ): void {
+
+        this.waterPerformanceProfiler
+            .recordFramePresentationDiagnostics(
+                gameUpdateMilliseconds,
+                pixiRenderMilliseconds,
+                this.getPresentationDiagnosticMode(),
+                this.fireVfxSystem
+                    ?.getActiveParticleCount() ?? 0,
+                this.windVfxSystem
+                    ?.getActiveParticleCount() ?? 0,
+                this.waterVfxSystem
+                    ?.getActiveParticleCount() ?? 0,
+            );
+    }
+
+    private getPresentationDiagnosticMode(): string {
+        const mode =
+            new URLSearchParams(
+                window.location.search,
+            ).get(
+                "vfxdiag",
+            ) ??
+            "all";
+
+        switch (mode) {
+            case "fire-off":
+            case "wind-off":
+            case "water-off":
+            case "all-off":
+                return mode;
+
+            default:
+                return "all";
+        }
+    }
+
+    private applyPresentationDiagnosticMode(): void {
+        const mode =
+            this.getPresentationDiagnosticMode();
+
+        const hideFire =
+            mode === "fire-off" ||
+            mode === "all-off";
+
+        const hideWind =
+            mode === "wind-off" ||
+            mode === "all-off";
+
+        const hideWater =
+            mode === "water-off" ||
+            mode === "all-off";
+
+        if (this.fireVfxSystem) {
+            const fireVisible =
+                this.fireVfxEnabled &&
+                !hideFire;
+
+            this.fireVfxSystem
+                .getGroundContainer()
+                .visible =
+                fireVisible;
+
+            this.fireVfxSystem
+                .getAirborneContainer()
+                .visible =
+                fireVisible;
+        }
+
+        if (this.windVfxSystem) {
+            const benchmarkWindEnabled =
+                this.activePerformanceBenchmark
+                    ?.windVfxEnabled ??
+                true;
+
+            this.windVfxSystem
+                .setEnabled(
+                    benchmarkWindEnabled &&
+                    !hideWind,
+                );
+        }
+
+        if (this.waterVfxSystem) {
+            this.waterVfxSystem
+                .getGroundContainer()
+                .visible =
+                !hideWater;
+
+            this.waterVfxSystem
+                .getAirborneContainer()
+                .visible =
+                !hideWater;
+
+            this.waterVfxSystem
+                .getStreamRenderer()
+                .getContainer()
+                .visible =
+                !hideWater;
+        }
+
+        if (this.standingWaterRenderer) {
+            this.standingWaterRenderer
+                .getDisplayObject()
+                .visible =
+                !hideWater;
+        }
+
+        if (this.wetGroundRenderer) {
+            this.wetGroundRenderer
+                .getDisplayObject()
+                .visible =
+                !hideWater;
+        }
     }
 
     private setFireVfxEnabled(
@@ -3420,12 +3696,23 @@ export class World {
             );
         }
 
+        /*
+         * Fire VFX consumes the same PhysicsWorld-derived airborne obstacle
+         * cache as airborne Water. Synchronize before constructing the Fire
+         * presentation collision adapter so static objects, mechanisms and
+         * Hydrant Hose geometry are available immediately.
+         */
+        this.waterObstacleRegistrationSystem
+            .synchronize();
+
         this.fireVfxSystem =
             new FireVfxSystem(
                 this.fireManager,
                 this.fireSourceSystem,
                 this.environmentField,
                 this.localWindSystem,
+                this.waterObstacleRegistrationSystem
+                    .getAirborneCollisionField(),
             );
 
         /*
@@ -3912,6 +4199,34 @@ export class World {
 
         this.surfaceGraphics
             ?.clear();
+    }
+
+    private createWaterPerformanceOverlay():
+        void {
+
+        if (
+            !this.waterPerformanceProfiler
+                .isOverlayEnabled()
+        ) {
+            return;
+        }
+
+        this.waterPerformanceOverlay =
+            new WaterPerformanceOverlay();
+
+        this.waterPerformanceOverlay
+            .setViewportSize(
+                this.camera
+                    .getViewportWidth(),
+                this.camera
+                    .getViewportHeight(),
+            );
+
+        this.screenOverlayContainer
+            .addChild(
+                this.waterPerformanceOverlay
+                    .getContainer(),
+            );
     }
 
     // -------------------------------------------------------

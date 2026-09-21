@@ -19,6 +19,10 @@ import {
     DEFAULT_GROUND_FIRE_VFX_DEFINITION,
 } from "../config/GroundFireVfxDefinition";
 
+import type {
+    FireParticleCollisionField,
+} from "./FireParticleCollisionField";
+
 export interface FireVfxPoolDefinition {
     readonly initialCapacity: number;
     readonly maximumCapacity: number;
@@ -31,6 +35,38 @@ export interface FireVfxPoolDefinition {
  * reuses inactive particles instead of allocating/destroying Sprites.
  */
 export class FireVfxPool {
+    private performanceAcquireAttempts = 0;
+    private performanceAcquireSuccesses = 0;
+    private performanceReusedParticles = 0;
+    private performanceCreatedParticles = 0;
+
+    public beginPerformanceFrame(): void {
+        this.performanceAcquireAttempts = 0;
+        this.performanceAcquireSuccesses = 0;
+        this.performanceReusedParticles = 0;
+        this.performanceCreatedParticles = 0;
+    }
+
+    public getPerformanceDetails() {
+        let activeGroundParticles = 0;
+        let activeDirectionalParticles = 0;
+        for (const particle of this.particles) {
+            if (!particle.isActive()) continue;
+            if (particle.getPresentationOrigin() === "ground") activeGroundParticles += 1;
+            if (particle.getPresentationOrigin() === "directional") activeDirectionalParticles += 1;
+        }
+        return {
+            activeGroundParticles,
+            activeDirectionalParticles,
+            activeParticles: activeGroundParticles + activeDirectionalParticles,
+            particleCapacity: this.particles.length,
+            acquireAttempts: this.performanceAcquireAttempts,
+            acquireSuccesses: this.performanceAcquireSuccesses,
+            reusedParticles: this.performanceReusedParticles,
+            createdParticles: this.performanceCreatedParticles,
+        };
+    }
+
     private readonly container =
         new Container();
 
@@ -50,6 +86,8 @@ export class FireVfxPool {
         fallbackTexture: Texture,
         definition:
             FireVfxPoolDefinition,
+        private readonly collisionField?:
+            FireParticleCollisionField,
     ) {
         this.initialCapacity =
             Math.max(
@@ -99,6 +137,7 @@ export class FireVfxPool {
         activation:
             FireVfxParticleActivation,
     ): FireVfxParticle | null {
+        this.performanceAcquireAttempts += 1;
 
         if (
             activation.presentationOrigin ===
@@ -127,6 +166,7 @@ export class FireVfxPool {
             ) {
                 particle =
                     candidate;
+                this.performanceReusedParticles += 1;
 
                 break;
             }
@@ -137,6 +177,7 @@ export class FireVfxPool {
             this.particles.length <
             this.maximumCapacity
         ) {
+            this.performanceCreatedParticles += 1;
             particle =
                 this.createParticle(
                     texture,
@@ -147,9 +188,24 @@ export class FireVfxPool {
             return null;
         }
 
+        this.performanceAcquireSuccesses += 1;
+
         particle.activate(
             texture,
-            activation,
+            (
+                activation.presentationOrigin ===
+                    "directional" ||
+                activation.presentationOrigin ===
+                    "ground"
+            ) &&
+            this.collisionField
+                ? {
+                    ...activation,
+                    collisionField:
+                        activation.collisionField ??
+                        this.collisionField,
+                }
+                : activation,
         );
 
         return particle;

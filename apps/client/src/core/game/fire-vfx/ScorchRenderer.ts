@@ -32,6 +32,13 @@ interface ScorchLayer {
     readonly deformationPixels: number;
 }
 
+interface ScorchWorkBounds {
+    readonly minimumX: number;
+    readonly minimumY: number;
+    readonly maximumX: number;
+    readonly maximumY: number;
+}
+
 /**
  * FIRE-VFX-8B presentation-only scorch renderer.
  *
@@ -674,17 +681,33 @@ export class ScorchRenderer {
     private rebuild():
         void {
 
-        this.contourBurnValues.set(
-            this.visualBurnValues,
-        );
-
-        this.closeAndSmoothField();
+        const workBounds =
+            this.calculateScorchWorkBounds();
 
         this.context.clearRect(
             0,
             0,
             this.canvas.width,
             this.canvas.height,
+        );
+
+        if (!workBounds) {
+            this.updateTextureSource();
+            return;
+        }
+
+        /*
+         * Pass 5 keeps the full-size reusable scalar buffers, but copies and
+         * smooths only the rectangular region that can contain scorch. This
+         * removes the previous full EnvironmentField smoothing pass while
+         * retaining exactly the same scalar values inside the relevant area.
+         */
+        this.copyVisualBurnRegion(
+            workBounds,
+        );
+
+        this.closeAndSmoothField(
+            workBounds,
         );
 
         /*
@@ -754,11 +777,12 @@ export class ScorchRenderer {
         ) {
             const contours =
                 this.contourBuilder
-                    .build(
+                    .buildRegion(
                         this.contourBurnValues,
                         this.columns,
                         this.rows,
                         layer.threshold,
+                        workBounds,
                     );
 
             this.drawLayer(
@@ -770,8 +794,81 @@ export class ScorchRenderer {
         this.updateTextureSource();
     }
 
-    private closeAndSmoothField():
-        void {
+    private calculateScorchWorkBounds():
+        ScorchWorkBounds | null {
+
+        const tracked =
+            this.environmentField
+                .getTrackedBurnIndices();
+
+        if (tracked.length === 0) {
+            return null;
+        }
+
+        let minimumX = this.columns;
+        let minimumY = this.rows;
+        let maximumX = -1;
+        let maximumY = -1;
+
+        for (const index of tracked) {
+            if (
+                index < 0 ||
+                index >= this.visualBurnValues.length ||
+                (this.visualBurnValues[index] ?? 0) <= 0
+            ) {
+                continue;
+            }
+
+            const x = index % this.columns;
+            const y = Math.floor(index / this.columns);
+
+            minimumX = Math.min(minimumX, x);
+            minimumY = Math.min(minimumY, y);
+            maximumX = Math.max(maximumX, x);
+            maximumY = Math.max(maximumY, y);
+        }
+
+        if (maximumX < minimumX || maximumY < minimumY) {
+            return null;
+        }
+
+        /*
+         * One cell is required by Marching Squares around the visible mass.
+         * Each smoothing pass can spread influence by one additional cell.
+         * A final safety cell preserves the previous closing behaviour at the
+         * cropped boundary.
+         */
+        const margin =
+            Math.max(
+                2,
+                Math.floor(this.definition.smoothingPasses) + 2,
+            );
+
+        return {
+            minimumX: Math.max(0, minimumX - margin),
+            minimumY: Math.max(0, minimumY - margin),
+            maximumX: Math.min(this.columns - 1, maximumX + margin),
+            maximumY: Math.min(this.rows - 1, maximumY + margin),
+        };
+    }
+
+    private copyVisualBurnRegion(
+        bounds: ScorchWorkBounds,
+    ): void {
+        for (let y = bounds.minimumY; y <= bounds.maximumY; y += 1) {
+            const rowStart = y * this.columns;
+
+            for (let x = bounds.minimumX; x <= bounds.maximumX; x += 1) {
+                const index = rowStart + x;
+                this.contourBurnValues[index] =
+                    this.visualBurnValues[index] ?? 0;
+            }
+        }
+    }
+
+    private closeAndSmoothField(
+        bounds: ScorchWorkBounds,
+    ): void {
 
         const passCount =
             Math.max(
@@ -790,10 +887,13 @@ export class ScorchRenderer {
             this.smoothPass(
                 this.contourBurnValues,
                 this.scratchValues,
+                bounds,
             );
 
-            this.contourBurnValues.set(
+            this.copyScalarRegion(
                 this.scratchValues,
+                this.contourBurnValues,
+                bounds,
             );
         }
     }
@@ -804,6 +904,9 @@ export class ScorchRenderer {
 
         destination:
             Float32Array,
+
+        bounds:
+            ScorchWorkBounds,
     ): void {
 
         const strength =
@@ -820,13 +923,13 @@ export class ScorchRenderer {
             );
 
         for (
-            let y = 0;
-            y < this.rows;
+            let y = bounds.minimumY;
+            y <= bounds.maximumY;
             y += 1
         ) {
             for (
-                let x = 0;
-                x < this.columns;
+                let x = bounds.minimumX;
+                x <= bounds.maximumX;
                 x += 1
             ) {
                 const index =
@@ -943,6 +1046,21 @@ export class ScorchRenderer {
                             neighbourMaximum,
                         )
                         : 0;
+            }
+        }
+    }
+
+    private copyScalarRegion(
+        source: Float32Array,
+        destination: Float32Array,
+        bounds: ScorchWorkBounds,
+    ): void {
+        for (let y = bounds.minimumY; y <= bounds.maximumY; y += 1) {
+            const rowStart = y * this.columns;
+
+            for (let x = bounds.minimumX; x <= bounds.maximumX; x += 1) {
+                const index = rowStart + x;
+                destination[index] = source[index] ?? 0;
             }
         }
     }
