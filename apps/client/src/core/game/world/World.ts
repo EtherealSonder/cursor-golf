@@ -22,6 +22,10 @@ import {
 } from "../config/CourseBoundaryDefinition";
 
 import {
+    DEFAULT_FIRE_ROBOT_DEFINITION,
+} from "../config/RobotDefinition";
+
+import {
     DEFAULT_COURSE_VISUAL_DEFINITION,
 } from "../config/CourseVisualDefinition";
 
@@ -69,10 +73,6 @@ import type {
     FireWindTestConfigurationId,
 } from "../config/FireWindTestDefinition";
 
-import {
-    ProceduralObstacleFieldGenerator,
-} from "../generation/ProceduralObstacleFieldGenerator";
-
 import type {
     CourseVisualDefinition,
 } from "../config/CourseVisualDefinition";
@@ -117,6 +117,10 @@ import {
 import {
     LocalWindDebugVisualizer,
 } from "../debug/LocalWindDebugVisualizer";
+
+import {
+    RobotDebugVisualizer,
+} from "../debug/RobotDebugVisualizer";
 
 import {
     HoseJetBallForceSystem,
@@ -217,6 +221,18 @@ import {
 import {
     StaticObstacle,
 } from "../entities/obstacles/StaticObstacle";
+
+import {
+    Robot,
+} from "../entities/robots/Robot";
+
+import {
+    RobotNavigationQuery,
+} from "../entities/robots/RobotNavigationQuery";
+
+import {
+    RobotInteractionRegistry,
+} from "../entities/robots/RobotInteractionRegistry";
 
 import {
     FireManager,
@@ -573,6 +589,9 @@ export class World {
     private readonly physicsWorld:
         PhysicsWorld;
 
+    private readonly robotInteractionRegistry:
+        RobotInteractionRegistry;
+
     private readonly dynamicCollisionSystem:
         DynamicCollisionSystem;
 
@@ -589,6 +608,13 @@ export class World {
 
     private ball:
         Ball | null = null;
+
+    /** R-2.1 autonomous enemy prototype with local obstacle avoidance. */
+    private fireRobot:
+        Robot | null = null;
+
+    private robotDebugVisualizer:
+        RobotDebugVisualizer | null = null;
 
     /**
      * H2 presentation-only motion trail.
@@ -659,6 +685,9 @@ export class World {
 
         this.physicsWorld =
             new PhysicsWorld();
+
+        this.robotInteractionRegistry =
+            new RobotInteractionRegistry();
 
         this.windManager =
             new WindManager();
@@ -822,85 +851,23 @@ export class World {
             );
 
         // ---------------------------------------------------
-        // Procedural Obstacle Field
+        // R-2.1 Robot Navigation Test Obstacles
         // ---------------------------------------------------
 
-        const obstacleField =
-            new ProceduralObstacleFieldGenerator()
-                .generate(
-                    DEFAULT_COURSE_BOUNDARY_DEFINITION,
-                );
-
         this.staticObstacleDefinitions = [
-            ...obstacleField.staticDefinitions,
-            {
-                id: "8d7-test-square-1",
-                shape: "rectangle",
-                positionX: 760,
-                positionY: 260,
-                width: 72,
-                height: 72,
-                fillColor: 0x8b6f47,
-                outlineColor: 0x2f2419,
-                outlineWidth: 4,
-                material: { restitution: 0.45, collisionFriction: 0.24 },
-            },
-            {
-                id: "8d7-test-square-2",
-                shape: "rectangle",
-                positionX: 980,
-                positionY: 460,
-                width: 72,
-                height: 72,
-                fillColor: 0x8b6f47,
-                outlineColor: 0x2f2419,
-                outlineWidth: 4,
-                material: { restitution: 0.45, collisionFriction: 0.24 },
-            },
+            { id: "robot-test-square-1", shape: "rectangle", positionX: 760, positionY: 260, width: 72, height: 72, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-2", shape: "rectangle", positionX: 980, positionY: 460, width: 108, height: 108, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-3", shape: "rectangle", positionX: 1500, positionY: 240, width: 84, height: 84, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-4", shape: "rectangle", positionX: 1620, positionY: 610, width: 128, height: 128, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-5", shape: "rectangle", positionX: 1180, positionY: 720, width: 64, height: 64, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-6", shape: "rectangle", positionX: 1840, positionY: 390, width: 96, height: 96, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
         ];
 
-        for (
-            const definition
-            of this.staticObstacleDefinitions
-        ) {
-            this.physicsWorld
-                .registerStaticDefinition(
-                    definition,
-                );
-
-            this.addEntity(
-                new StaticObstacle(
-                    definition,
-                ),
-            );
+        for (const definition of this.staticObstacleDefinitions) {
+            this.physicsWorld.registerStaticDefinition(definition);
+            this.robotInteractionRegistry.registerStaticObstacle(definition);
+            this.addEntity(new StaticObstacle(definition));
         }
-
-        for (
-            const definition
-            of obstacleField
-                .dynamicDefinitions
-        ) {
-            const obstacle =
-                new DynamicObstacle(
-                    definition,
-                    DEFAULT_COURSE_BOUNDARY_DEFINITION,
-                );
-
-            this.dynamicObstacles.push(
-                obstacle,
-            );
-
-            this.physicsWorld
-                .registerDynamicCollidable(
-                    `dynamic-obstacle-${this.dynamicObstacles.length}`,
-                    obstacle,
-                );
-
-            this.addEntity(
-                obstacle,
-            );
-        }
-
 
 
         // ---------------------------------------------------
@@ -927,6 +894,16 @@ export class World {
         );
         this.createBallTrail();
 
+        this.robotInteractionRegistry.register({
+            id: "ball", label: "Ball",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: 14 },
+            getX: (): number => this.ball?.getX() ?? -100000,
+            getY: (): number => this.ball?.getY() ?? -100000,
+        });
+
+        this.createFireRobotR1R2();
+
         this.createStandingWaterRenderer();
 
         this.createWaterVfxSystem();
@@ -936,25 +913,13 @@ export class World {
         this.createAirborneWaterVisualizer();
 
         this.createSprinklerEntities();
+        this.registerRobotR4MechanismTargets();
 
         this.createSprinklerWaterVfx();
 
-        this.createHydrantHoseEntity();
-
-        this.createHoseWaterVfx();
-
-        /*
-         * Phase 8D-7:
-         * Create the deterministic Fire Tube before registering live gameplay
-         * colliders with the Water obstacle bridge. This ensures the Fire Tube
-         * exists when WaterGameObjectIntegrationValidation runs and remains
-         * registered during normal runtime.
-         */
-        this.createFireTubeEntities();
-
+        // R-1/R-2 robot test scene intentionally omits Hydrant/Hose and Fire Tube.
+        // Their implementations remain intact and can be restored after robot validation.
         this.createWaterGameObjectIntegration();
-
-        this.createHoseJetBallForceSystem();
 
 
         this.unsubscribeFromBallImpacts =
@@ -1466,6 +1431,9 @@ export class World {
             }
         });
 
+        this.robotDebugVisualizer
+            ?.update();
+
         if (
             this.ball &&
             this.waterVfxSystem
@@ -1752,6 +1720,15 @@ export class World {
         this.ballTrail =
             null;
 
+        this.robotDebugVisualizer
+            ?.destroy();
+
+        this.robotDebugVisualizer =
+            null;
+
+        this.fireRobot =
+            null;
+
         for (
             const entity
             of this.entities
@@ -1764,6 +1741,8 @@ export class World {
 
         this.dynamicObstacles.length =
             0;
+
+        this.robotInteractionRegistry.clear();
 
         this.physicsWorld
             .clear();
@@ -3112,6 +3091,88 @@ export class World {
                 this.hydrantHose
                     .getNozzlePreSprayGraphics(),
             );
+    }
+
+    // -------------------------------------------------------
+    // R-2.1 Fire Robot Navigation
+    // -------------------------------------------------------
+
+    private createFireRobotR1R2(): void {
+        if (!DEFAULT_FIRE_ROBOT_DEFINITION.enabled) {
+            return;
+        }
+
+        if (this.fireRobot) {
+            throw new Error("World Fire Robot R-2.1 has already been created.");
+        }
+
+        const navigationQuery =
+            new RobotNavigationQuery(
+                this.robotInteractionRegistry,
+                DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                DEFAULT_FIRE_ROBOT_DEFINITION.id,
+            );
+
+        this.fireRobot =
+            new Robot(
+                DEFAULT_FIRE_ROBOT_DEFINITION,
+                navigationQuery,
+                this.robotInteractionRegistry,
+            );
+
+        this.robotInteractionRegistry.register({
+            id: DEFAULT_FIRE_ROBOT_DEFINITION.id, label: "Fire Robot",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: DEFAULT_FIRE_ROBOT_DEFINITION.navigationRadius },
+            getX: (): number => this.fireRobot?.getX() ?? -100000,
+            getY: (): number => this.fireRobot?.getY() ?? -100000,
+        });
+
+        this.addEntity(
+            this.fireRobot,
+            WorldRenderLayer.GameplayActors,
+        );
+
+        if (DEFAULT_FIRE_ROBOT_DEFINITION.debugEnabled) {
+            this.robotDebugVisualizer =
+                new RobotDebugVisualizer(
+                    this.fireRobot,
+                );
+
+            this.presentationLayers
+                .getLayer(WorldRenderLayer.Debug)
+                .addChild(
+                    this.robotDebugVisualizer
+                        .getContainer(),
+                );
+
+            this.robotDebugVisualizer
+                .update();
+        }
+    }
+
+    /** R-4: mechanisms are explicitly classified once, not hard-coded in Robot AI. */
+    private registerRobotR4MechanismTargets(): void {
+        for (let index = 0; index < this.fans.length; index += 1) {
+            const fan = this.fans[index];
+            if (!fan) continue;
+            this.robotInteractionRegistry.register({
+                id: `fan-${index}`, label: "Fan",
+                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+                shape: { kind: "circle", radius: 42 },
+                getX: (): number => fan.getX(), getY: (): number => fan.getY(),
+            });
+        }
+        for (let index = 0; index < this.sprinklers.length; index += 1) {
+            const sprinkler = this.sprinklers[index];
+            if (!sprinkler) continue;
+            this.robotInteractionRegistry.register({
+                id: `sprinkler-${index}`, label: "Sprinkler",
+                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+                shape: { kind: "circle", radius: 30 },
+                getX: (): number => sprinkler.getX(), getY: (): number => sprinkler.getY(),
+            });
+        }
     }
 
     // -------------------------------------------------------
