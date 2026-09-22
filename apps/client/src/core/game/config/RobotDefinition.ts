@@ -28,6 +28,10 @@ export interface RobotDefinition {
     readonly bodyCatchupSeconds: number;
     readonly visionRange: number;
     readonly visionHalfAngleDegrees: number;
+    readonly targetTurnSpeedRadiansPerSecond: number;
+    readonly targetAlignmentToleranceDegrees: number;
+    readonly targetLossGraceSeconds: number;
+    readonly attackDurationSeconds: number;
     readonly enabled: boolean;
     readonly debugEnabled: boolean;
 }
@@ -71,6 +75,15 @@ export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     // R-4 passive perception. Detection does not interrupt locomotion yet.
     visionRange: 360,
     visionHalfAngleDegrees: 42,
+
+    // R-5 target orientation. Kept separate from wander turning so attack
+    // presentation can be tuned independently later.
+    targetTurnSpeedRadiansPerSecond: Math.PI * 1.8,
+    targetAlignmentToleranceDegrees: 4,
+    targetLossGraceSeconds: 0.3,
+
+    // R-6 generic attack commitment. Elemental output is added in a later phase.
+    attackDurationSeconds: 5.0,
 
     enabled: true,
     debugEnabled: true,

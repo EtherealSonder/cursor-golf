@@ -87,6 +87,9 @@ export class RobotLocomotionController {
         return { distance, phase: this.phase, activeLeg };
     }
 
+    /** R-5: stop a gait cleanly before target orientation begins. */
+    public plantForTargeting(): void { this.reset(); }
+
     public reset(): void {
         this.phase = "PLANTED";
         this.phaseElapsed = 0;

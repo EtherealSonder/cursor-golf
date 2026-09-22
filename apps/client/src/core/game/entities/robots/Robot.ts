@@ -9,8 +9,10 @@ import type { RobotNavigationPoint, RobotNavigationQuery } from "./RobotNavigati
 import type { RobotInteractionRegistry } from "./RobotInteractionRegistry";
 import { RobotTargetQuery } from "./RobotTargetQuery";
 import { RobotVisionSystem, type RobotVisionCandidate } from "./RobotVisionSystem";
+import { RobotTargetingController, type RobotTargetingPhase } from "./RobotTargetingController";
+import { RobotAttackController, type RobotAttackPhase } from "./RobotAttackController";
 
-export type RobotMovementState = "WAITING" | "TURNING" | "WANDERING";
+export type RobotMovementState = "WAITING" | "TURNING" | "WANDERING" | "DETECTING" | "TARGET_LOCKED" | "ATTACKING";
 
 export interface RobotDebugSnapshot {
     readonly id: string; readonly state: RobotMovementState;
@@ -26,6 +28,9 @@ export interface RobotDebugSnapshot {
     readonly visionRange: number; readonly visionHalfAngleDegrees: number;
     readonly visionCandidates: readonly RobotVisionCandidate[];
     readonly detectedTargetId: string | null; readonly detectedTargetLabel: string | null;
+    readonly targetingPhase: RobotTargetingPhase; readonly targetLossSeconds: number;
+    readonly attackPhase: RobotAttackPhase; readonly attackElapsedSeconds: number;
+    readonly attackRemainingSeconds: number; readonly attackDurationSeconds: number;
 }
 
 export class Robot extends Entity {
@@ -51,6 +56,8 @@ export class Robot extends Entity {
     private abandonedDestinations = 0;
     private headingErrorDegrees = 0;
     private readonly visionSystem: RobotVisionSystem;
+    private readonly targetingController: RobotTargetingController;
+    private readonly attackController: RobotAttackController;
     private visionCandidates: readonly RobotVisionCandidate[] = [];
     private detectedTargetId: string | null = null;
     private detectedTargetLabel: string | null = null;
@@ -67,6 +74,10 @@ export class Robot extends Entity {
         this.roamCenterY = definition.positionY;
         this.obstacleAvoidance = new RobotObstacleAvoidance(navigationQuery);
         this.visionSystem = new RobotVisionSystem(new RobotTargetQuery(interactionRegistry), interactionRegistry);
+        this.targetingController = new RobotTargetingController(
+            definition.targetAlignmentToleranceDegrees, definition.targetLossGraceSeconds,
+        );
+        this.attackController = new RobotAttackController(definition.attackDurationSeconds);
     }
 
     public getForwardX(): number { return Math.cos(this.visualRoot.rotation); }
@@ -75,6 +86,7 @@ export class Robot extends Entity {
     public getDebugSnapshot(): RobotDebugSnapshot {
         const distanceToDestination = this.destination
             ? Math.hypot(this.destination.x - this.getX(), this.destination.y - this.getY()) : null;
+        const attack = this.attackController.getSnapshot();
         return {
             id: this.definition.id, state: this.state, x: this.getX(), y: this.getY(),
             rotationRadians: this.visualRoot.rotation, roamCenterX: this.roamCenterX,
@@ -90,6 +102,9 @@ export class Robot extends Entity {
             headingErrorDegrees: this.headingErrorDegrees,
             visionRange: this.definition.visionRange, visionHalfAngleDegrees: this.definition.visionHalfAngleDegrees,
             visionCandidates: this.visionCandidates, detectedTargetId: this.detectedTargetId, detectedTargetLabel: this.detectedTargetLabel,
+            targetingPhase: this.targetingController.getPhase(), targetLossSeconds: this.targetingController.getTargetLossSeconds(),
+            attackPhase: attack.phase, attackElapsedSeconds: attack.elapsedSeconds,
+            attackRemainingSeconds: attack.remainingSeconds, attackDurationSeconds: attack.durationSeconds,
         };
     }
 
@@ -124,8 +139,44 @@ export class Robot extends Entity {
         this.obstacleAvoidance.update(deltaTime);
         const vision = this.visionSystem.scan(this.getX(), this.getY(), this.getForwardX(), this.getForwardY(), this.definition.visionRange, this.definition.visionHalfAngleDegrees, this.definition.id);
         this.visionCandidates = vision.candidates;
-        this.detectedTargetId = vision.selectedTarget?.id ?? null;
-        this.detectedTargetLabel = vision.selectedTarget?.label ?? null;
+
+        this.attackController.releaseSuppressionIfAbsent(vision.selectedTarget?.id ?? null);
+        const perceivedTarget = vision.selectedTarget && !this.attackController.isSuppressed(vision.selectedTarget.id)
+            ? vision.selectedTarget : null;
+        const targeting = this.targetingController.update(
+            deltaTime, perceivedTarget, this.getX(), this.getY(), this.visualRoot.rotation,
+        );
+        this.detectedTargetId = targeting.target?.id ?? null;
+        this.detectedTargetLabel = targeting.target?.label ?? null;
+
+        if (this.state === "ATTACKING") {
+            if (targeting.target && targeting.desiredAngle !== null) {
+                this.updateAttackTracking(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+                return;
+            }
+            // The R-5 loss grace still applies. If it expires, cancel the timer
+            // and return to wandering rather than attacking empty space.
+            this.attackController.reset();
+            this.destination = null;
+            this.headingErrorDegrees = 0;
+            this.resetAvoidanceState();
+            this.beginWaiting(0);
+        }
+
+        if (targeting.target && targeting.desiredAngle !== null) {
+            this.updateTargeting(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+            return;
+        }
+
+        // Target was released after the loss grace period. Start a fresh wander
+        // decision instead of resuming a half-completed pre-detection step.
+        if (this.state === "DETECTING" || this.state === "TARGET_LOCKED") {
+            this.destination = null;
+            this.headingErrorDegrees = 0;
+            this.resetAvoidanceState();
+            this.beginWaiting(0);
+        }
+
         if (this.state === "WAITING") this.updateWaiting(deltaTime);
         else if (this.state === "TURNING") this.updateTurning(deltaTime);
         else this.updateWandering(deltaTime);
@@ -134,6 +185,46 @@ export class Robot extends Entity {
     protected onDestroy(): void {
         this.locomotion = null; this.bodySprite = null; this.leg1Sprite = null; this.leg2Sprite = null;
         this.container.destroy({ children: true });
+    }
+
+
+    private updateTargeting(deltaTime: number, desiredAngle: number, headingErrorDegrees: number): void {
+        this.locomotion?.plantForTargeting();
+        this.resetAvoidanceState();
+        this.headingErrorDegrees = headingErrorDegrees;
+        if (headingErrorDegrees <= this.definition.targetAlignmentToleranceDegrees) {
+            this.visualRoot.rotation = desiredAngle;
+            this.headingErrorDegrees = 0;
+            this.state = "TARGET_LOCKED";
+            const target = this.targetingController.getTarget();
+            if (target) {
+                this.attackController.start(target.id);
+                this.state = "ATTACKING";
+            }
+            return;
+        }
+        this.state = "DETECTING";
+        this.rotateTowardsAtSpeed(desiredAngle, deltaTime, this.definition.targetTurnSpeedRadiansPerSecond);
+    }
+
+    private updateAttackTracking(deltaTime: number, desiredAngle: number, headingErrorDegrees: number): void {
+        this.locomotion?.plantForTargeting();
+        this.resetAvoidanceState();
+        this.headingErrorDegrees = headingErrorDegrees;
+        this.rotateTowardsAtSpeed(desiredAngle, deltaTime, this.definition.targetTurnSpeedRadiansPerSecond);
+        if (headingErrorDegrees <= this.definition.targetAlignmentToleranceDegrees) {
+            this.visualRoot.rotation = desiredAngle;
+            this.headingErrorDegrees = 0;
+        }
+        if (!this.attackController.update(deltaTime)) return;
+
+        // R-6 has no elemental output and no cooldown yet. Finish the timed
+        // commitment, release the target, and request a fresh wander cycle.
+        this.targetingController.clear();
+        this.destination = null;
+        this.headingErrorDegrees = 0;
+        this.resetAvoidanceState();
+        this.beginWaiting(0);
     }
 
     private updateWaiting(deltaTime: number): void {
@@ -243,8 +334,12 @@ export class Robot extends Entity {
     }
 
     private rotateTowards(targetAngle: number, deltaTime: number): void {
+        this.rotateTowardsAtSpeed(targetAngle, deltaTime, this.definition.turnSpeedRadiansPerSecond);
+    }
+
+    private rotateTowardsAtSpeed(targetAngle: number, deltaTime: number, speedRadiansPerSecond: number): void {
         const difference = this.shortestAngle(targetAngle - this.visualRoot.rotation);
-        const maximum = this.definition.turnSpeedRadiansPerSecond * deltaTime;
+        const maximum = speedRadiansPerSecond * deltaTime;
         this.visualRoot.rotation += Math.max(-maximum, Math.min(maximum, difference));
     }
 
