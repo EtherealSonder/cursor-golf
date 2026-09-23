@@ -1,4 +1,4 @@
-export type RobotElement = "fire" | "water";
+export type RobotElement = "fire" | "water" | "wind";
 
 export interface RobotDefinition {
     readonly element: RobotElement;
@@ -39,6 +39,7 @@ export interface RobotDefinition {
     readonly attackWarningDurationSeconds: number;
     readonly fireOutletOffset: number;
     readonly waterOutletOffset: number;
+    readonly windOutletOffset: number;
     readonly waterJetBallImpulseMultiplier: number;
     /** Shared physical mass used when elemental forces such as Water/Wind move a Robot. */
     readonly externalForceMass: number;
@@ -114,6 +115,7 @@ export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     // R-8 directional Fire originates at the visual nozzle tip.
     fireOutletOffset: 72,
     waterOutletOffset: 72,
+    windOutletOffset: 48,
     waterJetBallImpulseMultiplier: 1,
     // Robots should react to strong elemental forces, but only with a subtle shove.
     externalForceMass: 16,
@@ -150,6 +152,24 @@ export const DEFAULT_WATER_ROBOT_DEFINITION: RobotDefinition = {
     waterJetBallImpulseMultiplier: 8,
     // Water artwork has a slightly smaller circular LED aperture than Fire.
     ledScreenDiameter: 28,
+    enabled: true,
+    debugEnabled: false,
+};
+
+
+/** Wind Robot reuses shared Robot AI and emits a powerful conical suction field. */
+export const DEFAULT_WIND_ROBOT_DEFINITION: RobotDefinition = {
+    ...DEFAULT_FIRE_ROBOT_DEFINITION,
+    id: "wind-robot-1",
+    element: "wind",
+    positionX: 760,
+    positionY: 360,
+    bodyTextureKey: "windRobotBody",
+    leg1TextureKey: "windRobotLeg1",
+    leg2TextureKey: "windRobotLeg2",
+    ledColor: 0xF4F0D8,
+    ledScreenDiameter: 31,
+    windOutletOffset: 48,
     enabled: true,
     debugEnabled: false,
 };

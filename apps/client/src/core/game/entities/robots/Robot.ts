@@ -13,9 +13,11 @@ import { RobotTargetingController, type RobotTargetingPhase } from "./RobotTarge
 import { RobotAttackController, type RobotAttackPhase } from "./RobotAttackController";
 import { RobotFireAttackController } from "./RobotFireAttackController";
 import { RobotWaterAttackController } from "./RobotWaterAttackController";
+import { RobotWindAttackController } from "./RobotWindAttackController";
 import { RobotLedDisplay, type RobotLedState } from "./RobotLedDisplay";
 import type { FireSourceSystem } from "../../environment/FireSourceSystem";
 import type { WaterSourceSystem } from "../../environment/WaterSourceSystem";
+import type { LocalWindSystem } from "../../environment/LocalWindSystem";
 import type { DynamicObstacleDefinition } from "../../config/ObstacleDefinition";
 import type { DynamicCollidableImpact } from "../../physics/DynamicCollidable";
 import { RobotImpactReactionController } from "./RobotImpactReactionController";
@@ -71,7 +73,7 @@ export class Robot extends Entity {
     private readonly visionSystem: RobotVisionSystem;
     private readonly targetingController: RobotTargetingController;
     private readonly attackController: RobotAttackController;
-    private readonly elementAttackController: RobotFireAttackController | RobotWaterAttackController;
+    private readonly elementAttackController: RobotFireAttackController | RobotWaterAttackController | RobotWindAttackController;
     private readonly externalRigidBody: RigidBody2D;
     private lastCommittedTargetX: number | null = null;
     private lastCommittedTargetY: number | null = null;
@@ -87,6 +89,7 @@ export class Robot extends Entity {
         interactionRegistry: RobotInteractionRegistry,
         fireSourceSystem: FireSourceSystem,
         waterSourceSystem: WaterSourceSystem,
+        localWindSystem: LocalWindSystem,
     ) {
         super();
         this.spawnX = definition.positionX;
@@ -105,9 +108,13 @@ export class Robot extends Entity {
             ? new RobotWaterAttackController(
                 definition.id, waterSourceSystem, definition.waterOutletOffset, definition.attackWarningDurationSeconds,
             )
-            : new RobotFireAttackController(
-                definition.id, fireSourceSystem, definition.fireOutletOffset, definition.attackWarningDurationSeconds,
-            );
+            : definition.element === "wind"
+                ? new RobotWindAttackController(
+                    definition.id, localWindSystem, definition.windOutletOffset, definition.attackWarningDurationSeconds,
+                )
+                : new RobotFireAttackController(
+                    definition.id, fireSourceSystem, definition.fireOutletOffset, definition.attackWarningDurationSeconds,
+                );
         this.ledDisplay = new RobotLedDisplay(
             definition.ledScreenDiameter,
             definition.ledColor,
@@ -327,27 +334,28 @@ export class Robot extends Entity {
         }
 
         if (this.state === "ATTACKING") {
-            const committedWaterAttack =
-                this.elementAttackController instanceof RobotWaterAttackController &&
+            const committedDirectionalAttack =
+                (this.elementAttackController instanceof RobotWaterAttackController ||
+                    this.elementAttackController instanceof RobotWindAttackController) &&
                 this.elementAttackController.continuesAttackAfterTargetLoss();
 
-            // Water tracks only while the target is actually visible. The generic
+            // Committed Water/Wind attacks track only while the target is actually visible. The generic
             // targeting controller may retain a lost target for its grace window,
-            // but committed Water must freeze at the last in-cone world point.
+            // but committed attacks freeze at the last in-cone world point.
             if (
                 targeting.target && targeting.desiredAngle !== null &&
-                (!committedWaterAttack || perceivedTarget !== null)
+                (!committedDirectionalAttack || perceivedTarget !== null)
             ) {
                 this.updateAttackTracking(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
                 this.updateLedDisplay(deltaTime);
                 return;
             }
 
-            // Water is a committed directional attack. Once firing begins it
+            // Water and Wind are committed directional attacks. Once firing begins they
             // completes the full authored duration. If perception is lost, keep
             // aiming at the last point at which the target was actually visible.
             if (
-                committedWaterAttack &&
+                committedDirectionalAttack &&
                 this.lastCommittedTargetX !== null &&
                 this.lastCommittedTargetY !== null
             ) {

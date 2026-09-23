@@ -246,7 +246,9 @@ export class LocalWindEmitter {
             particle.age +=
                 deltaTime;
 
+            const pullFlow = source.flowMode === "pull";
             particle.distance +=
+                (pullFlow ? -1 : 1) *
                 particle.speed *
                 deltaTime;
 
@@ -256,15 +258,12 @@ export class LocalWindEmitter {
                     source,
                 );
 
+            const minimumTravelDistance = this.getMinimumCenterDistance(particle);
             if (
-                particle.distance >
-                maximumCenterDistance
+                (!pullFlow && particle.distance > maximumCenterDistance) ||
+                (pullFlow && particle.distance < minimumTravelDistance)
             ) {
-                this.recycle(
-                    particle,
-                    source,
-                    false,
-                );
+                this.recycle(particle, source, false);
             }
 
             const progress =
@@ -351,7 +350,7 @@ export class LocalWindEmitter {
             );
 
             particle.sprite.rotation =
-                source.directionRadians;
+                source.directionRadians + (pullFlow ? Math.PI : 0);
 
             particle.setRenderedSize(
                 this.definition.local
@@ -548,11 +547,12 @@ export class LocalWindEmitter {
                 this.lerp(
                     minimumCenterDistance,
                     maximumCenterDistance,
-                    biasedProgress,
+                    source.flowMode === "pull" ? 1 - biasedProgress : biasedProgress,
                 );
         } else {
-            particle.distance =
-                minimumCenterDistance;
+            particle.distance = source.flowMode === "pull"
+                ? maximumCenterDistance
+                : minimumCenterDistance;
         }
 
         const texture =

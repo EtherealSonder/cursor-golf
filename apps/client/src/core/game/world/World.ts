@@ -24,6 +24,7 @@ import {
 import {
     DEFAULT_FIRE_ROBOT_DEFINITION,
     DEFAULT_WATER_ROBOT_DEFINITION,
+    DEFAULT_WIND_ROBOT_DEFINITION,
     SECOND_FIRE_ROBOT_DEFINITION,
     SECOND_WATER_ROBOT_DEFINITION,
 } from "../config/RobotDefinition";
@@ -634,6 +635,9 @@ export class World {
     private secondFireRobot: Robot | null = null;
     private secondWaterRobot: Robot | null = null;
 
+    /** Wind elemental variant using shared Robot AI and Local Wind suction. */
+    private windRobot: Robot | null = null;
+
     private robotDebugVisualizer:
         RobotDebugVisualizer | null = null;
 
@@ -935,13 +939,12 @@ export class World {
         });
 
         this.createFireRobotR1R2();
-        this.createSecondFireRobot();
 
         this.createStandingWaterRenderer();
 
         this.createWaterVfxSystem();
         this.createWaterRobot();
-        this.createSecondWaterRobot();
+        this.createWindRobot();
         this.connectBallWaterSplashVfx();
         this.createWaterDepositDebugController();
 
@@ -1797,6 +1800,7 @@ export class World {
             null;
         this.secondFireRobot = null;
         this.secondWaterRobot = null;
+        this.windRobot = null;
 
         for (
             const entity
@@ -3217,6 +3221,7 @@ export class World {
                 this.robotInteractionRegistry,
                 this.fireSourceSystem,
                 this.waterSourceSystem,
+                this.localWindSystem,
             );
 
         this.robotInteractionRegistry.register({
@@ -3297,6 +3302,7 @@ export class World {
             this.robotInteractionRegistry,
             this.fireSourceSystem,
             this.waterSourceSystem,
+            this.localWindSystem,
         );
 
         this.robotInteractionRegistry.register({
@@ -3351,6 +3357,51 @@ export class World {
         }
     }
 
+    /** Wind Robot reuses shared AI and drives an authoritative conical Local Wind pull source. */
+    private createWindRobot(): void {
+        const definition = DEFAULT_WIND_ROBOT_DEFINITION;
+        if (!definition.enabled) return;
+        if (this.windRobot) throw new Error("World Wind Robot has already been created.");
+
+        const navigationQuery = new RobotNavigationQuery(
+            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
+        );
+        this.windRobot = new Robot(
+            definition, navigationQuery, this.robotInteractionRegistry,
+            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
+        );
+        const robot = this.windRobot;
+
+        this.robotInteractionRegistry.register({
+            id: definition.id, label: "Wind Robot",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: definition.navigationRadius },
+            getX: () => robot?.getX() ?? -100000,
+            getY: () => robot?.getY() ?? -100000,
+        });
+
+        this.addEntity(robot, WorldRenderLayer.GameplayActors);
+        this.physicsWorld.registerDynamicCollidable(
+            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
+        );
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot?.getX() ?? -100000,
+            getY: () => robot?.getY() ?? -100000,
+            notifyImpact: (x, y, sourceId) => robot?.notifyExternalImpact({
+                sourceKind: "water", sourceId, positionX: x, positionY: y,
+            }),
+        });
+        this.localWindSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot?.getX() ?? -100000,
+            getY: () => robot?.getY() ?? -100000,
+            notifyImpact: (x, y, sourceId) => robot?.notifyExternalImpact({
+                sourceKind: "wind", sourceId, positionX: x, positionY: y,
+            }),
+        });
+    }
+
     /** Temporary second Fire Robot for multi-enemy gameplay testing. */
     private createSecondFireRobot(): void {
         const definition = SECOND_FIRE_ROBOT_DEFINITION;
@@ -3359,7 +3410,7 @@ export class World {
         );
         this.secondFireRobot = new Robot(
             definition, navigationQuery, this.robotInteractionRegistry,
-            this.fireSourceSystem, this.waterSourceSystem,
+            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
         );
         const robot = this.secondFireRobot;
         this.robotInteractionRegistry.register({
@@ -3405,7 +3456,7 @@ export class World {
         );
         this.secondWaterRobot = new Robot(
             definition, navigationQuery, this.robotInteractionRegistry,
-            this.fireSourceSystem, this.waterSourceSystem,
+            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
         );
         const robot = this.secondWaterRobot;
         this.robotInteractionRegistry.register({

@@ -8,6 +8,8 @@
  * sources represent spatial mechanisms such as fans,
  * vents, turbines, and future saboteur abilities.
  */
+export type LocalWindFlowMode = "push" | "pull";
+
 export interface LocalWindSourceDefinition {
 
     readonly id: string;
@@ -58,6 +60,9 @@ export interface LocalWindSourceDefinition {
      * smooth lateral falloff.
      */
     readonly edgeFalloffFraction: number;
+
+    /** Geometry extends along directionRadians. Pull reverses only acceleration/VFX travel. */
+    readonly flowMode?: LocalWindFlowMode;
 
     readonly enabled: boolean;
 }

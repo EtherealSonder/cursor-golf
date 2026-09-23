@@ -18,6 +18,7 @@ interface MutableLocalWindSourceDefinition {
     acceleration: number;
     endStrengthMultiplier: number;
     edgeFalloffFraction: number;
+    flowMode?: "push" | "pull";
     enabled: boolean;
 }
 
@@ -150,6 +151,29 @@ export class LocalWindSystem {
     }
 
 
+
+    public addSource(source: LocalWindSourceDefinition): void {
+        this.validateSources([...this.sources, source]);
+        this.sources.push({ ...source });
+        this.sampleCache.clear();
+    }
+
+    public removeSource(sourceId: string): boolean {
+        const index = this.sources.findIndex((source) => source.id === sourceId);
+        if (index < 0) return false;
+        this.sources.splice(index, 1);
+        this.sampleCache.clear();
+        return true;
+    }
+
+    public setSourceEnabled(sourceId: string, enabled: boolean): boolean {
+        const source = this.sources.find((candidate) => candidate.id === sourceId);
+        if (!source) return false;
+        source.enabled = enabled;
+        this.sampleCache.clear();
+        return true;
+    }
+
     /**
      * Updates only the runtime transform of one source.
      *
@@ -190,6 +214,7 @@ export class LocalWindSystem {
         source.positionX = positionX;
         source.positionY = positionY;
         source.directionRadians = directionRadians;
+        this.sampleCache.clear();
 
         return true;
     }
@@ -351,15 +376,11 @@ export class LocalWindSystem {
         const accelerationMagnitude =
             source.acceleration *
             influence;
+        const flowSign = source.flowMode === "pull" ? -1 : 1;
 
         return {
-            x:
-                directionX *
-                accelerationMagnitude,
-
-            y:
-                directionY *
-                accelerationMagnitude,
+            x: directionX * accelerationMagnitude * flowSign,
+            y: directionY * accelerationMagnitude * flowSign,
         };
     }
 
