@@ -1090,6 +1090,51 @@ export class Ball extends Entity {
     // Dynamic Collision Body Interface
     // -------------------------------------------------------
 
+    /**
+     * Authoritative airborne-Water response. The Water system supplies packet
+     * velocity and quantity; Ball remains sole owner of its velocity.
+     */
+    public applyWaterJetImpulse(
+        waterVelocityX: number,
+        waterVelocityY: number,
+        waterAmount: number,
+        contactPointX: number,
+        contactPointY: number,
+    ): void {
+        const speed = Math.hypot(waterVelocityX, waterVelocityY);
+        if (!Number.isFinite(speed) || speed <= 0 || !Number.isFinite(waterAmount) || waterAmount <= 0) {
+            return;
+        }
+
+        const directionX = waterVelocityX / speed;
+        const directionY = waterVelocityY / speed;
+
+        // A pressurised Hose hit must read as an immediate physical shove.
+        // Drive the Ball toward a substantial downstream speed instead of
+        // relying on tiny packet-mass impulses that are erased by resistance.
+        const maximumSpeed = this.physicsDefinition.maximumBallSpeed;
+        const targetPushSpeed = Math.min(maximumSpeed * 0.72, Math.max(260, speed * 0.58));
+        const downstreamSpeed = this.velocityX * directionX + this.velocityY * directionY;
+        const requiredDeltaSpeed = Math.max(0, targetPushSpeed - downstreamSpeed);
+        if (requiredDeltaSpeed <= 0) return;
+
+        // Water amount still matters, but even a valid individual Hose packet
+        // contributes enough to become visible. Repeated packets rapidly build
+        // toward targetPushSpeed while the normal maximum-speed cap remains authoritative.
+        const coupling = Math.min(0.42, Math.max(0.16, waterAmount * 3.5));
+        const deltaSpeed = requiredDeltaSpeed * coupling;
+        const inverseMass = this.getInverseMass();
+        if (inverseMass <= 0) return;
+
+        const impulseMagnitude = deltaSpeed / inverseMass;
+        this.applyImpulseAtWorldPoint(
+            directionX * impulseMagnitude,
+            directionY * impulseMagnitude,
+            contactPointX,
+            contactPointY,
+        );
+    }
+
     public applyImpulseAtWorldPoint(
         impulseX:
             number,
@@ -2378,6 +2423,15 @@ export class Ball extends Entity {
                     speedBeforeCollision,
                     ballSpeedAfterCollision,
                 );
+
+                // R-9: physics collision is authoritative. Report the resolved
+                // contact to any impact-aware dynamic body after resolution.
+                obstacle.notifyExternalImpact?.({
+                    sourceKind: "ball",
+                    sourceId: "player-ball",
+                    positionX: dynamicManifold.contactPointX,
+                    positionY: dynamicManifold.contactPointY,
+                });
 
                 this.logDynamicObstacleCollision(
                     obstacle,

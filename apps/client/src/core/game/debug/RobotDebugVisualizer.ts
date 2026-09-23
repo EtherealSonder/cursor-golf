@@ -4,10 +4,17 @@ import type { Robot } from "../entities/robots/Robot";
 export class RobotDebugVisualizer {
     private readonly container = new Container();
     private readonly graphics = new Graphics();
-    private readonly text = new Text({ text: "ROBOT R-6", style: { fontFamily: "monospace", fontSize: 14, fill: 0xffffff, lineHeight: 19, stroke: { color: 0x15101a, width: 4 } } });
+    private readonly text = new Text({ text: "ROBOT R-7", style: { fontFamily: "monospace", fontSize: 14, fill: 0xffffff, lineHeight: 19, stroke: { color: 0x15101a, width: 4 } } });
     public constructor(private readonly robot: Robot) { this.container.addChild(this.graphics, this.text); }
     public getContainer(): Container { return this.container; }
+
+    /** Runtime visibility hook for quick Robot diagnostics without rebuilding visuals. */
+    public setEnabled(enabled: boolean): void {
+        this.container.visible = enabled;
+    }
+
     public update(): void {
+        if (!this.container.visible) return;
         const s = this.robot.getDebugSnapshot(); this.graphics.clear();
         this.graphics.circle(s.roamCenterX, s.roamCenterY, s.roamRadius).stroke({ width: 3, color: 0xf6c453, alpha: 0.9 });
         this.graphics.circle(s.roamCenterX, s.roamCenterY, 6).fill({ color: 0xf6c453, alpha: 1 });
@@ -35,13 +42,16 @@ export class RobotDebugVisualizer {
 
         this.text.position.set(s.x - 220, s.y - 250);
         this.text.text = [
-            "FIRE ROBOT  R-6", `State: ${s.state}`, `Locomotion: ${s.locomotionPhase}`,
+            "FIRE ROBOT  R-8.1", `State: ${s.state}`, `Locomotion: ${s.locomotionPhase}`,
             `Vision: ${s.visionRange}px / ±${s.visionHalfAngleDegrees}°`,
             `Candidates: ${s.visionCandidates.length}`, `Target: ${s.detectedTargetLabel ?? "NONE"}`,
             `Targeting: ${s.targetingPhase}`, `Target loss: ${s.targetLossSeconds.toFixed(2)} s`,
+            `Warning: ${s.warningActive ? `${s.warningRemainingSeconds.toFixed(2)} s remaining` : "INACTIVE"}`,
             `Attack: ${s.attackPhase}`,
             `Attack elapsed: ${s.attackElapsedSeconds.toFixed(2)} / ${s.attackDurationSeconds.toFixed(2)} s`,
             `Attack remaining: ${s.attackRemainingSeconds.toFixed(2)} s`,
+            `Attack ready: ${s.attackReady ? "YES" : "NO"}`,
+            `Cooldown: ${s.cooldownRemainingSeconds.toFixed(2)} s remaining / ${s.cooldownDurationSeconds.toFixed(2)} s`,
             `Heading error: ${s.headingErrorDegrees.toFixed(1)} deg`,
             `Destination: ${s.destination ? "VALID" : "NONE"}`,
             `Avoidance: ${s.avoidingObstacle ? `STEERING ${s.avoidanceTurnDegrees.toFixed(0)} deg` : "DIRECT"}`,

@@ -315,6 +315,14 @@ export class PhysicsWorld {
         return this.rigidDynamicCollidables;
     }
 
+    /** R-9 colliders that opt into non-physical impact awareness. */
+    public getImpactAwareDynamicCollidables(): readonly DynamicCollidable[] {
+        return [...this.registrations.values()]
+            .filter((registration): registration is DynamicPhysicsColliderRegistration =>
+                registration.kind === "dynamic" && registration.participation.impactAwareness)
+            .map((registration) => registration.body);
+    }
+
     public getRigidStaticDefinitions():
         readonly StaticObstacleDefinition[] {
 

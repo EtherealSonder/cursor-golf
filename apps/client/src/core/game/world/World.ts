@@ -23,6 +23,9 @@ import {
 
 import {
     DEFAULT_FIRE_ROBOT_DEFINITION,
+    DEFAULT_WATER_ROBOT_DEFINITION,
+    SECOND_FIRE_ROBOT_DEFINITION,
+    SECOND_WATER_ROBOT_DEFINITION,
 } from "../config/RobotDefinition";
 
 import {
@@ -125,6 +128,8 @@ import {
 import {
     HoseJetBallForceSystem,
 } from "../physics/water/HoseJetBallForceSystem";
+import { ROBOT_HOSE_JET_BALL_FORCE_DEFINITION } from "../config/HoseJetBallForceDefinition";
+import { FireSourceType } from "../config/FireSourceDefinition";
 
 import {
     StandingWaterRenderer,
@@ -456,8 +461,9 @@ export class World {
 
     /** Phase 8B-12 continuous Hose jet -> Ball gameplay response. */
     private hoseJetBallForceSystem:
-        HoseJetBallForceSystem | null =
-        null;
+        HoseJetBallForceSystem | null = null;
+    private waterRobotJetBallForceSystem: HoseJetBallForceSystem | null = null;
+    private secondWaterRobotJetBallForceSystem: HoseJetBallForceSystem | null = null;
 
     private readonly surfaceSystem:
         SurfaceSystem;
@@ -553,6 +559,14 @@ export class World {
         HoseWaterVfx | null =
         null;
 
+    /** Hose-style production stream for the Water Robot attack. */
+    private waterRobotHoseVfx:
+        HoseWaterVfx | null =
+        null;
+
+    private secondWaterRobotHoseVfx:
+        HoseWaterVfx | null = null;
+
     /** Phase 8C-8A interactive primary-button Water deposit tool. */
     private waterDepositDebugController:
         WaterDepositDebugController | null =
@@ -612,6 +626,13 @@ export class World {
     /** R-2.1 autonomous enemy prototype with local obstacle avoidance. */
     private fireRobot:
         Robot | null = null;
+
+    /** Water elemental variant using the shared Robot AI. */
+    private waterRobot:
+        Robot | null = null;
+
+    private secondFireRobot: Robot | null = null;
+    private secondWaterRobot: Robot | null = null;
 
     private robotDebugVisualizer:
         RobotDebugVisualizer | null = null;
@@ -902,15 +923,43 @@ export class World {
             getY: (): number => this.ball?.getY() ?? -100000,
         });
 
+        // Authoritative airborne Water can push the Ball without consuming
+        // the packet, so normal downstream/ground deposition is preserved.
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: "ball-water-jet",
+            radius: this.ball.getRadius(),
+            maximumImpactHeight: this.ball.getRadius() * 2.25,
+            getX: () => this.ball?.getX() ?? -100000,
+            getY: () => this.ball?.getY() ?? -100000,
+            notifyImpact: () => { /* Ball does not use Robot impact awareness. */ },
+        });
+
         this.createFireRobotR1R2();
+        this.createSecondFireRobot();
 
         this.createStandingWaterRenderer();
 
         this.createWaterVfxSystem();
+        this.createWaterRobot();
+        this.createSecondWaterRobot();
         this.connectBallWaterSplashVfx();
         this.createWaterDepositDebugController();
 
         this.createAirborneWaterVisualizer();
+        const waterRobotAttackSource = this.waterRobot?.getWaterAttackSource();
+        if (waterRobotAttackSource) {
+            this.airborneWaterVisualizer?.setSourceHidden(
+                waterRobotAttackSource.getWaterSourceId(),
+                true,
+            );
+        }
+        const secondWaterRobotAttackSource = this.secondWaterRobot?.getWaterAttackSource();
+        if (secondWaterRobotAttackSource) {
+            this.airborneWaterVisualizer?.setSourceHidden(
+                secondWaterRobotAttackSource.getWaterSourceId(),
+                true,
+            );
+        }
 
         this.createSprinklerEntities();
         this.registerRobotR4MechanismTargets();
@@ -1133,6 +1182,9 @@ export class World {
         this.localWindSystem
             .beginPerformanceFrame();
 
+        this.localWindSystem
+            .updateImpactAwareTargets();
+
         this.contourRefreshScheduler
             .beginFrame();
 
@@ -1171,6 +1223,8 @@ export class World {
          */
         this.waterFireInteraction.clearGameplayEvents();
         this.fireSourceSystem.beginDirectionalWaterSuppressionFrame();
+        this.fireSourceSystem.beginDirectionalObstacleSuppressionFrame();
+        this.updateDirectionalFireObstacleSuppression();
 
         const airborneWaterSweeps =
             this.airborneWaterSystem.getLastMovementSweeps();
@@ -1209,6 +1263,8 @@ export class World {
 
         this.waterPerformanceProfiler.measure("hoseWaterVfx", (): void => {
             this.hoseWaterVfx?.update(deltaTime);
+            this.waterRobotHoseVfx?.update(deltaTime);
+            this.secondWaterRobotHoseVfx?.update(deltaTime);
         });
 
         /*
@@ -1272,6 +1328,7 @@ export class World {
                 this.waterFireInteraction.updateStandingWaterDirectionalFire(
                     this.waterField,
                     this.fireSourceSystem,
+                    deltaTime,
                 );
             },
         );
@@ -1455,6 +1512,8 @@ export class World {
                  */
         this.waterPerformanceProfiler.measure("hoseBallForce", (): void => {
             this.hoseJetBallForceSystem?.update(deltaTime);
+            this.waterRobotJetBallForceSystem?.update(deltaTime);
+            this.secondWaterRobotJetBallForceSystem?.update(deltaTime);
         });
 
         /*
@@ -1696,6 +1755,11 @@ export class World {
 
         this.hoseWaterVfx = null;
 
+        this.waterRobotHoseVfx?.destroy();
+        this.waterRobotHoseVfx = null;
+        this.secondWaterRobotHoseVfx?.destroy();
+        this.secondWaterRobotHoseVfx = null;
+
         this.airborneWaterVisualizer
             ?.destroy();
 
@@ -1728,6 +1792,11 @@ export class World {
 
         this.fireRobot =
             null;
+
+        this.waterRobot =
+            null;
+        this.secondFireRobot = null;
+        this.secondWaterRobot = null;
 
         for (
             const entity
@@ -3014,6 +3083,34 @@ export class World {
     // Phase 8B-12 Hose Jet -> Ball Force
     // -------------------------------------------------------
 
+    /**
+     * Establish one authoritative solid-obstacle cutoff for every enabled
+     * directional Fire source before simulation and presentation consume its
+     * effective length. This prevents particles/heat from reappearing beyond
+     * the first blocking object.
+     */
+    private updateDirectionalFireObstacleSuppression(): void {
+        for (const source of this.fireSourceSystem.getSources()) {
+            const definition = source.getDefinition();
+            if (!source.isEnabled() || definition.type !== FireSourceType.Directional) continue;
+
+            const direction = source.getDirectionRadians();
+            const startX = source.getPositionX();
+            const startY = source.getPositionY();
+            const endX = startX + Math.cos(direction) * definition.length;
+            const endY = startY + Math.sin(direction) * definition.length;
+            const hit = this.airborneWaterCollisionField.sweep(
+                startX, startY, endX, endY, source.getId(),
+            );
+            if (!hit) continue;
+
+            const contactDistance = Math.max(0, definition.length * hit.fraction - 2);
+            this.fireSourceSystem.suppressDirectionalSourceFromObstacleDistance(
+                source.getId(), contactDistance,
+            );
+        }
+    }
+
     private createHoseJetBallForceSystem():
         void {
 
@@ -3118,6 +3215,8 @@ export class World {
                 DEFAULT_FIRE_ROBOT_DEFINITION,
                 navigationQuery,
                 this.robotInteractionRegistry,
+                this.fireSourceSystem,
+                this.waterSourceSystem,
             );
 
         this.robotInteractionRegistry.register({
@@ -3132,6 +3231,34 @@ export class World {
             this.fireRobot,
             WorldRenderLayer.GameplayActors,
         );
+
+        // R-9 shared Robot physical/elemental impact awareness. The Robot is
+        // kinematic: Ball collision response deflects the Ball but never moves it.
+        this.physicsWorld.registerDynamicCollidable(
+            `${DEFAULT_FIRE_ROBOT_DEFINITION.id}-physics`,
+            this.fireRobot,
+            { participation: { impactAwareness: true } },
+        );
+
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: DEFAULT_FIRE_ROBOT_DEFINITION.id,
+            radius: DEFAULT_FIRE_ROBOT_DEFINITION.navigationRadius,
+            getX: () => this.fireRobot?.getX() ?? -100000,
+            getY: () => this.fireRobot?.getY() ?? -100000,
+            notifyImpact: (x, y, sourceId) => this.fireRobot?.notifyExternalImpact({
+                sourceKind: "water", sourceId, positionX: x, positionY: y,
+            }),
+        });
+
+        this.localWindSystem.registerImpactAwareTarget({
+            id: DEFAULT_FIRE_ROBOT_DEFINITION.id,
+            radius: DEFAULT_FIRE_ROBOT_DEFINITION.navigationRadius,
+            getX: () => this.fireRobot?.getX() ?? -100000,
+            getY: () => this.fireRobot?.getY() ?? -100000,
+            notifyImpact: (x, y, sourceId) => this.fireRobot?.notifyExternalImpact({
+                sourceKind: "wind", sourceId, positionX: x, positionY: y,
+            }),
+        });
 
         if (DEFAULT_FIRE_ROBOT_DEFINITION.debugEnabled) {
             this.robotDebugVisualizer =
@@ -3149,6 +3276,212 @@ export class World {
             this.robotDebugVisualizer
                 .update();
         }
+    }
+
+    /** Water Robot reuses the complete shared Robot behaviour and swaps only elemental output/art. */
+    private createWaterRobot(): void {
+        if (!DEFAULT_WATER_ROBOT_DEFINITION.enabled) return;
+        if (this.waterRobot) throw new Error("World Water Robot has already been created.");
+        if (!this.waterVfxSystem) throw new Error("World requires WaterVfxSystem before Water Robot VFX.");
+
+        const definition = DEFAULT_WATER_ROBOT_DEFINITION;
+        const navigationQuery = new RobotNavigationQuery(
+            this.robotInteractionRegistry,
+            DEFAULT_COURSE_BOUNDARY_DEFINITION,
+            definition.id,
+        );
+
+        this.waterRobot = new Robot(
+            definition,
+            navigationQuery,
+            this.robotInteractionRegistry,
+            this.fireSourceSystem,
+            this.waterSourceSystem,
+        );
+
+        this.robotInteractionRegistry.register({
+            id: definition.id, label: "Water Robot",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: definition.navigationRadius },
+            getX: () => this.waterRobot?.getX() ?? -100000,
+            getY: () => this.waterRobot?.getY() ?? -100000,
+        });
+
+        this.addEntity(this.waterRobot, WorldRenderLayer.GameplayActors);
+        this.physicsWorld.registerDynamicCollidable(
+            `${definition.id}-physics`,
+            this.waterRobot,
+            { participation: { impactAwareness: true } },
+        );
+
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: definition.id,
+            radius: definition.navigationRadius,
+            getX: () => this.waterRobot?.getX() ?? -100000,
+            getY: () => this.waterRobot?.getY() ?? -100000,
+            notifyImpact: (x, y, sourceId) => this.waterRobot?.notifyExternalImpact({
+                sourceKind: "water", sourceId, positionX: x, positionY: y,
+            }),
+        });
+
+        this.localWindSystem.registerImpactAwareTarget({
+            id: definition.id,
+            radius: definition.navigationRadius,
+            getX: () => this.waterRobot?.getX() ?? -100000,
+            getY: () => this.waterRobot?.getY() ?? -100000,
+            notifyImpact: (x, y, sourceId) => this.waterRobot?.notifyExternalImpact({
+                sourceKind: "wind", sourceId, positionX: x, positionY: y,
+            }),
+        });
+
+        const waterAttack = this.waterRobot.getWaterAttackSource();
+        if (!waterAttack) throw new Error("Water Robot did not create its Water attack source.");
+        this.waterRobotHoseVfx = new HoseWaterVfx(
+            waterAttack,
+            this.airborneWaterSystem,
+            this.waterVfxSystem,
+            this.waterVfxSystem.getDefinition().hose,
+        );
+        this.airborneWaterVisualizer?.setSourceHidden(waterAttack.getWaterSourceId(), true);
+        if (this.ball) {
+            this.waterRobotJetBallForceSystem = new HoseJetBallForceSystem(
+                waterAttack, this.ball, ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
+                this.airborneWaterSystem, this.physicsWorld,
+            );
+        }
+    }
+
+    /** Temporary second Fire Robot for multi-enemy gameplay testing. */
+    private createSecondFireRobot(): void {
+        const definition = SECOND_FIRE_ROBOT_DEFINITION;
+        const navigationQuery = new RobotNavigationQuery(
+            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
+        );
+        this.secondFireRobot = new Robot(
+            definition, navigationQuery, this.robotInteractionRegistry,
+            this.fireSourceSystem, this.waterSourceSystem,
+        );
+        const robot = this.secondFireRobot;
+        this.robotInteractionRegistry.register({
+            id: definition.id, label: "Fire Robot 2",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: definition.navigationRadius },
+            getX: () => robot.getX(), getY: () => robot.getY(),
+        });
+        this.addEntity(robot, WorldRenderLayer.GameplayActors);
+        this.physicsWorld.registerDynamicCollidable(
+            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
+        );
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot.getX(), getY: () => robot.getY(),
+            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                sourceKind: "water", sourceId, positionX: x, positionY: y,
+            }),
+        });
+        this.localWindSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot.getX(), getY: () => robot.getY(),
+            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                sourceKind: "wind", sourceId, positionX: x, positionY: y,
+            }),
+        });
+    }
+
+    /** Temporary second Water Robot for multi-enemy gameplay testing. */
+    private createSecondWaterRobot(): void {
+        if (!this.waterVfxSystem) throw new Error("World requires WaterVfxSystem before second Water Robot VFX.");
+        const requestedDefinition = SECOND_WATER_ROBOT_DEFINITION;
+        const safeSpawn = this.resolveTemporaryRobotSpawn(
+            requestedDefinition.positionX, requestedDefinition.positionY, requestedDefinition.navigationRadius,
+        );
+        const definition = {
+            ...requestedDefinition,
+            positionX: safeSpawn.x,
+            positionY: safeSpawn.y,
+        };
+        const navigationQuery = new RobotNavigationQuery(
+            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
+        );
+        this.secondWaterRobot = new Robot(
+            definition, navigationQuery, this.robotInteractionRegistry,
+            this.fireSourceSystem, this.waterSourceSystem,
+        );
+        const robot = this.secondWaterRobot;
+        this.robotInteractionRegistry.register({
+            id: definition.id, label: "Water Robot 2",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: definition.navigationRadius },
+            getX: () => robot.getX(), getY: () => robot.getY(),
+        });
+        this.addEntity(robot, WorldRenderLayer.GameplayActors);
+        this.physicsWorld.registerDynamicCollidable(
+            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
+        );
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot.getX(), getY: () => robot.getY(),
+            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                sourceKind: "water", sourceId, positionX: x, positionY: y,
+            }),
+        });
+        this.localWindSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot.getX(), getY: () => robot.getY(),
+            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                sourceKind: "wind", sourceId, positionX: x, positionY: y,
+            }),
+        });
+        const waterAttack = robot.getWaterAttackSource();
+        if (!waterAttack) throw new Error("Second Water Robot did not create its Water attack source.");
+        this.secondWaterRobotHoseVfx = new HoseWaterVfx(
+            waterAttack, this.airborneWaterSystem, this.waterVfxSystem,
+            this.waterVfxSystem.getDefinition().hose,
+        );
+        this.airborneWaterVisualizer?.setSourceHidden(waterAttack.getWaterSourceId(), true);
+        if (this.ball) {
+            this.secondWaterRobotJetBallForceSystem = new HoseJetBallForceSystem(
+                waterAttack, this.ball, ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
+                this.airborneWaterSystem, this.physicsWorld,
+            );
+        }
+    }
+
+    /** Ensures temporary multi-Robot test spawns do not begin inside static geometry. */
+    private resolveTemporaryRobotSpawn(
+        requestedX: number, requestedY: number, radius: number,
+    ): { x: number; y: number } {
+        const candidates = [
+            { x: requestedX, y: requestedY },
+            { x: requestedX - 180, y: requestedY },
+            { x: requestedX, y: requestedY - 180 },
+            { x: requestedX - 180, y: requestedY - 180 },
+            { x: 1450, y: 780 },
+            { x: 900, y: 760 },
+        ];
+
+        const isClear = (x: number, y: number): boolean => {
+            for (const obstacle of this.physicsWorld.getRigidStaticDefinitions()) {
+                if (obstacle.shape === "circle") {
+                    const dx = x - obstacle.positionX;
+                    const dy = y - obstacle.positionY;
+                    if (dx * dx + dy * dy < (radius + obstacle.radius) ** 2) return false;
+                    continue;
+                }
+                if (obstacle.shape === "rectangle") {
+                    const halfWidth = obstacle.width / 2;
+                    const halfHeight = obstacle.height / 2;
+                    const closestX = Math.max(obstacle.positionX - halfWidth, Math.min(x, obstacle.positionX + halfWidth));
+                    const closestY = Math.max(obstacle.positionY - halfHeight, Math.min(y, obstacle.positionY + halfHeight));
+                    const dx = x - closestX;
+                    const dy = y - closestY;
+                    if (dx * dx + dy * dy < radius * radius) return false;
+                }
+            }
+            return true;
+        };
+
+        return candidates.find((candidate) => isClear(candidate.x, candidate.y)) ?? { x: requestedX, y: requestedY };
     }
 
     /** R-4: mechanisms are explicitly classified once, not hard-coded in Robot AI. */

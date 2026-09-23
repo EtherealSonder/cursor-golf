@@ -39,6 +39,11 @@ export class FireSourceSystem {
     private readonly directionalSuppressionDistanceBySourceId =
         new Map<string, number>();
 
+    /** Current-frame solid-obstacle cutoff. Kept separate from Water so both
+     * authorities can contribute and the earliest contact always wins. */
+    private readonly directionalObstacleDistanceBySourceId =
+        new Map<string, number>();
+
     constructor(
         private readonly environmentField: EnvironmentField,
     ) { }
@@ -228,6 +233,30 @@ export class FireSourceSystem {
         this.directionalSuppressionDistanceBySourceId.clear();
     }
 
+    /** Clears transient solid-obstacle cutoffs before current-frame queries. */
+    public beginDirectionalObstacleSuppressionFrame(): void {
+        this.directionalObstacleDistanceBySourceId.clear();
+    }
+
+    /** Records the nearest solid obstacle reached by one directional source. */
+    public suppressDirectionalSourceFromObstacleDistance(
+        sourceId: string,
+        distanceFromSource: number,
+    ): boolean {
+        const source = this.sourceById.get(sourceId);
+        if (!source || source.getType() !== FireSourceType.Directional || !Number.isFinite(distanceFromSource)) {
+            return false;
+        }
+        const definition = source.getDefinition();
+        if (definition.type !== FireSourceType.Directional) return false;
+        const clampedDistance = Math.max(0, Math.min(definition.length, distanceFromSource));
+        const previous = this.directionalObstacleDistanceBySourceId.get(sourceId);
+        if (previous === undefined || clampedDistance < previous) {
+            this.directionalObstacleDistanceBySourceId.set(sourceId, clampedDistance);
+        }
+        return true;
+    }
+
     /**
      * Applies a current-frame cutoff to one enabled directional source. The
      * source remains enabled and operational. Multiple Water contacts keep the
@@ -305,9 +334,8 @@ export class FireSourceSystem {
 
         return Math.min(
             fullLength,
-            this.directionalSuppressionDistanceBySourceId
-                .get(sourceId) ??
-            fullLength,
+            this.directionalSuppressionDistanceBySourceId.get(sourceId) ?? fullLength,
+            this.directionalObstacleDistanceBySourceId.get(sourceId) ?? fullLength,
         );
     }
 

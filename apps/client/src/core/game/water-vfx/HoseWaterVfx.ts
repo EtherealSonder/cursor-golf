@@ -2,9 +2,7 @@ import type {
     HoseWaterVfxDefinition,
 } from "../config/WaterVfxDefinition";
 
-import type {
-    HydrantHose,
-} from "../entities/mechanisms/HydrantHose";
+import { HydrantHose } from "../entities/mechanisms/HydrantHose";
 
 import type {
     AirborneWaterSystem,
@@ -17,6 +15,12 @@ import type {
 import type {
     WaterVfxSystem,
 } from "./WaterVfxSystem";
+
+export interface HoseWaterVfxSource {
+    getWaterSourceId(): string;
+    getNozzlePosition(): { readonly x: number; readonly y: number };
+    isWaterEnabled(): boolean;
+}
 
 interface HosePacketSample extends WaterStreamPoint {
     readonly ageSeconds: number;
@@ -34,7 +38,7 @@ export class HoseWaterVfx {
         string;
 
     public constructor(
-        private readonly hose: HydrantHose,
+        private readonly hose: HydrantHose | HoseWaterVfxSource,
         private readonly airborneWaterSystem: AirborneWaterSystem,
         private readonly waterVfxSystem: WaterVfxSystem,
         private readonly definition: HoseWaterVfxDefinition,
@@ -57,7 +61,7 @@ export class HoseWaterVfx {
             this.waterVfxSystem
                 .updateHoseGroundImpact(
                     deltaTime,
-                    this.hose,
+                    this.hose as HydrantHose,
                     this.airborneWaterSystem,
                 );
         }
@@ -136,15 +140,14 @@ export class HoseWaterVfx {
         if (
             this.hose.isWaterEnabled()
         ) {
-            const nozzle =
-                this.hose.getNozzlePosition();
-
-            points.push({
-                x:
-                    nozzle.x,
-                y:
-                    nozzle.y,
-            });
+            /*
+             * Use the exact authoritative source origin. RobotWaterAttackController
+             * places this just inside the nozzle lip, so the ribbon overlaps the
+             * artwork instead of beginning in open air. The same point is consumed
+             * by Robot Hose gameplay force geometry.
+             */
+            const nozzle = this.hose.getNozzlePosition();
+            points.push({ x: nozzle.x, y: nozzle.y });
         }
 
         for (

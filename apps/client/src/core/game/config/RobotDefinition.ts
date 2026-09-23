@@ -1,4 +1,7 @@
+export type RobotElement = "fire" | "water";
+
 export interface RobotDefinition {
+    readonly element: RobotElement;
     readonly id: string;
     readonly positionX: number;
     readonly positionY: number;
@@ -32,12 +35,28 @@ export interface RobotDefinition {
     readonly targetAlignmentToleranceDegrees: number;
     readonly targetLossGraceSeconds: number;
     readonly attackDurationSeconds: number;
+    readonly attackCooldownSeconds: number;
+    readonly attackWarningDurationSeconds: number;
+    readonly fireOutletOffset: number;
+    readonly waterOutletOffset: number;
+    readonly waterJetBallImpulseMultiplier: number;
+    /** Shared physical mass used when elemental forces such as Water/Wind move a Robot. */
+    readonly externalForceMass: number;
+    readonly bodyTextureKey: string;
+    readonly leg1TextureKey: string;
+    readonly leg2TextureKey: string;
+    readonly ledColor: number;
+    readonly ledScreenDiameter: number;
+    readonly impactReactionDurationSeconds: number;
+    readonly impactScanAngleDegrees: number;
+    readonly impactTurnSpeedRadiansPerSecond: number;
     readonly enabled: boolean;
     readonly debugEnabled: boolean;
 }
 
 export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     id: "fire-robot-1",
+    element: "fire",
     positionX: 1320,
     positionY: 420,
     roamRadius: 450,
@@ -73,7 +92,7 @@ export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     bodyCatchupSeconds: 0.21,
 
     // R-4 passive perception. Detection does not interrupt locomotion yet.
-    visionRange: 360,
+    visionRange: 450,
     visionHalfAngleDegrees: 42,
 
     // R-5 target orientation. Kept separate from wander turning so attack
@@ -85,6 +104,69 @@ export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     // R-6 generic attack commitment. Elemental output is added in a later phase.
     attackDurationSeconds: 5.0,
 
+    // R-7 attack availability cooldown. Navigation and perception continue
+    // normally while the elemental attack remains unavailable.
+    attackCooldownSeconds: 10.0,
+
+    // R-8.1 warning window before the actual elemental attack begins.
+    attackWarningDurationSeconds: 1.5,
+
+    // R-8 directional Fire originates at the visual nozzle tip.
+    fireOutletOffset: 72,
+    waterOutletOffset: 72,
+    waterJetBallImpulseMultiplier: 1,
+    // Robots should react to strong elemental forces, but only with a subtle shove.
+    externalForceMass: 16,
+    bodyTextureKey: "fireRobotBody",
+    leg1TextureKey: "fireRobotLeg1",
+    leg2TextureKey: "fireRobotLeg2",
+
+    // Shared robot LED presentation. All elemental robots use the same attack red.
+    ledColor: 0xDD3E80,
+    ledScreenDiameter: 31,
+
+    // R-9 shared impact-awareness response.
+    impactReactionDurationSeconds: 1.5,
+    impactScanAngleDegrees: 45,
+    impactTurnSpeedRadiansPerSecond: Math.PI * 2.2,
+
     enabled: true,
-    debugEnabled: true,
+    // Master Robot debug toggle. Set true whenever vision/AI diagnostics are needed.
+    debugEnabled: false,
+};
+
+
+/** Water Robot uses the completed shared Robot behaviour with Hose-style output. */
+export const DEFAULT_WATER_ROBOT_DEFINITION: RobotDefinition = {
+    ...DEFAULT_FIRE_ROBOT_DEFINITION,
+    id: "water-robot-1",
+    element: "water",
+    positionX: 1040,
+    positionY: 610,
+    bodyTextureKey: "waterRobotBody",
+    leg1TextureKey: "waterRobotLeg1",
+    leg2TextureKey: "waterRobotLeg2",
+    ledColor: 0x1E99FF,
+    waterJetBallImpulseMultiplier: 8,
+    // Water artwork has a slightly smaller circular LED aperture than Fire.
+    ledScreenDiameter: 28,
+    enabled: true,
+    debugEnabled: false,
+};
+
+
+/** Temporary second instances used to exercise multi-Robot interactions. */
+export const SECOND_FIRE_ROBOT_DEFINITION: RobotDefinition = {
+    ...DEFAULT_FIRE_ROBOT_DEFINITION,
+    id: "fire-robot-2",
+    positionX: 700,
+    positionY: 650,
+};
+
+export const SECOND_WATER_ROBOT_DEFINITION: RobotDefinition = {
+    ...DEFAULT_WATER_ROBOT_DEFINITION,
+    id: "water-robot-2",
+    // Clear fallback test location. World performs a final static-blocker check.
+    positionX: 1480,
+    positionY: 760,
 };

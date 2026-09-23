@@ -16,6 +16,9 @@ import waterSprinklerTexture from "../../assets/sprites/mechanisms/water_sprinkl
 import fireRobotBodyTexture from "../../assets/sprites/robots/fire_robot_body.png";
 import fireRobotLeg1Texture from "../../assets/sprites/robots/fire_robot_leg1.png";
 import fireRobotLeg2Texture from "../../assets/sprites/robots/fire_robot_leg2.png";
+import waterRobotBodyTexture from "../../assets/sprites/robots/water_robot_body.png";
+import waterRobotLeg1Texture from "../../assets/sprites/robots/water_robot_leg1.png";
+import waterRobotLeg2Texture from "../../assets/sprites/robots/water_robot_leg2.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
 
@@ -124,6 +127,11 @@ export class AssetLoader {
         await this.loadTexture("fireRobotBody", fireRobotBodyTexture);
         await this.loadTexture("fireRobotLeg1", fireRobotLeg1Texture);
         await this.loadTexture("fireRobotLeg2", fireRobotLeg2Texture);
+
+        // Water Robot composite presentation assets.
+        await this.loadTexture("waterRobotBody", waterRobotBodyTexture);
+        await this.loadTexture("waterRobotLeg1", waterRobotLeg1Texture);
+        await this.loadTexture("waterRobotLeg2", waterRobotLeg2Texture);
 
         await this.loadTexture(
             "grassTerrain",

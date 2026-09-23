@@ -104,12 +104,38 @@ interface MutableAirborneWaterPresentationImpact {
  * Phase 8B-7 adds authoritative global and local Wind coupling while
  * preserving presentation independence.
  */
+export interface AirborneWaterImpactAwareTarget {
+    readonly id: string;
+    readonly radius: number;
+    readonly getX: () => number;
+    readonly getY: () => number;
+    readonly notifyImpact: (positionX: number, positionY: number, sourceId: string) => void;
+    /** Optional ground-relative height ceiling for low targets such as the Ball. */
+    readonly maximumImpactHeight?: number;
+    readonly applyWaterImpulse?: (
+        velocityX: number, velocityY: number, waterAmount: number,
+        positionX: number, positionY: number, sourceId: string,
+    ) => void;
+}
+
+/** Airborne packets remain transport/deposition authority. Continuous Hose-to-Ball
+ * propulsion is intentionally owned by HoseJetBallForceSystem, not packet spacing. */
 export class AirborneWaterSystem {
     private readonly definition:
         AirborneWaterDefinition;
 
     private readonly activePackets:
         AirborneWaterPacket[] = [];
+
+    private readonly impactAwareTargets = new Map<string, AirborneWaterImpactAwareTarget>();
+
+    public registerImpactAwareTarget(target: AirborneWaterImpactAwareTarget): void {
+        this.impactAwareTargets.set(target.id, target);
+    }
+
+    public unregisterImpactAwareTarget(id: string): void {
+        this.impactAwareTargets.delete(id);
+    }
 
 
     /**
@@ -459,6 +485,17 @@ export class AirborneWaterSystem {
              * For 8D-5 a static hit terminates the airborne packet and records
              * its Water as rejected rather than allowing it through the solid.
              */
+            this.notifyImpactAwareTargets(
+                previousPositionX, previousPositionY,
+                proposedPositionX, proposedPositionY,
+                packet.getSourceId(),
+                packet.getVelocityX(),
+                packet.getVelocityY(),
+                packet.getWaterAmount(),
+                previousHeight,
+                impact ? 0 : packet.getHeight(),
+            );
+
             const staticHit =
                 this.staticCollisionField
                     ?.sweep(
@@ -930,4 +967,37 @@ export class AirborneWaterSystem {
         this.totalDepositedWaterAmount = 0;
         this.totalRejectedWaterAmount = 0;
     }
+    private notifyImpactAwareTargets(
+        ax: number, ay: number, bx: number, by: number, sourceId: string,
+        velocityX: number, velocityY: number, waterAmount: number,
+        startHeight: number, endHeight: number,
+    ): void {
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSquared = dx * dx + dy * dy;
+        for (const target of this.impactAwareTargets.values()) {
+            const cx = target.getX();
+            const cy = target.getY();
+            const t = lengthSquared > 0
+                ? Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / lengthSquared))
+                : 0;
+            const px = ax + dx * t;
+            const py = ay + dy * t;
+            const ox = px - cx;
+            const oy = py - cy;
+            if (ox * ox + oy * oy > target.radius * target.radius) continue;
+
+            // XY overlap alone is insufficient for an airborne jet. A packet
+            // visually passing over the Ball must not push it. Interpolate the
+            // packet height at the closest point of the swept segment.
+            if (target.maximumImpactHeight !== undefined) {
+                const contactHeight = startHeight + (endHeight - startHeight) * t;
+                if (contactHeight < 0 || contactHeight > target.maximumImpactHeight) continue;
+            }
+
+            target.notifyImpact(px, py, sourceId);
+            target.applyWaterImpulse?.(velocityX, velocityY, waterAmount, px, py, sourceId);
+        }
+    }
+
 }

@@ -1,63 +1,102 @@
-export type RobotAttackPhase = "IDLE" | "ATTACKING" | "COMPLETE";
+export type RobotAttackPhase = "IDLE" | "ATTACKING" | "COOLDOWN";
 
 export interface RobotAttackSnapshot {
     readonly phase: RobotAttackPhase;
     readonly elapsedSeconds: number;
     readonly remainingSeconds: number;
     readonly durationSeconds: number;
+    readonly cooldownElapsedSeconds: number;
+    readonly cooldownRemainingSeconds: number;
+    readonly cooldownDurationSeconds: number;
+    readonly ready: boolean;
     readonly targetId: string | null;
 }
 
 /**
- * R-6 generic attack-state timer.
+ * Generic robot attack lifecycle.
  *
- * This controller deliberately owns no elemental gameplay. It only commits a
- * robot to a locked target for a fixed duration and reports completion.
+ * R-6 owns the fixed attack commitment. R-7 extends the same controller with
+ * attack availability cooldown. Cooldown never owns locomotion, so a robot is
+ * free to wait, turn, wander and avoid obstacles while its attack recharges.
  */
 export class RobotAttackController {
     private phase: RobotAttackPhase = "IDLE";
     private elapsedSeconds = 0;
+    private cooldownElapsedSeconds = 0;
     private targetId: string | null = null;
-    private completedTargetId: string | null = null;
 
-    public constructor(private readonly durationSeconds: number) {}
+    public constructor(
+        private readonly durationSeconds: number,
+        private readonly cooldownDurationSeconds: number,
+    ) {}
 
-    public start(targetId: string): void {
-        if (this.phase === "ATTACKING" && this.targetId === targetId) return;
+    public start(targetId: string): boolean {
+        if (!this.isReady()) return false;
         this.phase = "ATTACKING";
         this.elapsedSeconds = 0;
+        this.cooldownElapsedSeconds = 0;
         this.targetId = targetId;
-    }
-
-    public update(deltaTime: number): boolean {
-        if (this.phase !== "ATTACKING") return false;
-        this.elapsedSeconds = Math.min(this.durationSeconds, this.elapsedSeconds + Math.max(0, deltaTime));
-        if (this.elapsedSeconds < this.durationSeconds) return false;
-        this.phase = "COMPLETE";
-        this.completedTargetId = this.targetId;
         return true;
     }
 
-    /** Prevent an immediately completed target from retriggering every frame. */
-    public isSuppressed(targetId: string): boolean { return this.completedTargetId === targetId; }
+    /** Advances only the active attack and returns true on the completion frame. */
+    public updateAttack(deltaTime: number): boolean {
+        if (this.phase !== "ATTACKING") return false;
+        this.elapsedSeconds = Math.min(this.durationSeconds, this.elapsedSeconds + Math.max(0, deltaTime));
+        if (this.elapsedSeconds < this.durationSeconds) return false;
 
-    /** Once the completed target leaves perception, it may be acquired again later. */
-    public releaseSuppressionIfAbsent(perceivedTargetId: string | null): void {
-        if (this.completedTargetId && perceivedTargetId !== this.completedTargetId) this.completedTargetId = null;
+        this.phase = "COOLDOWN";
+        this.cooldownElapsedSeconds = 0;
+        this.targetId = null;
+        return true;
     }
 
-    public reset(): void {
+    /** Cooldown runs independently while the robot resumes normal navigation. */
+    public updateCooldown(deltaTime: number): void {
+        if (this.phase !== "COOLDOWN") return;
+        this.cooldownElapsedSeconds = Math.min(
+            this.cooldownDurationSeconds,
+            this.cooldownElapsedSeconds + Math.max(0, deltaTime),
+        );
+        if (this.cooldownElapsedSeconds < this.cooldownDurationSeconds) return;
+
+        this.phase = "IDLE";
+        this.cooldownElapsedSeconds = 0;
+        this.elapsedSeconds = 0;
+    }
+
+    public isReady(): boolean { return this.phase === "IDLE"; }
+    public isCoolingDown(): boolean { return this.phase === "COOLDOWN"; }
+
+    /** Cancels an interrupted attack without starting cooldown. */
+    public cancelAttack(): void {
+        if (this.phase !== "ATTACKING") return;
         this.phase = "IDLE";
         this.elapsedSeconds = 0;
         this.targetId = null;
     }
 
+    public reset(): void {
+        this.phase = "IDLE";
+        this.elapsedSeconds = 0;
+        this.cooldownElapsedSeconds = 0;
+        this.targetId = null;
+    }
+
     public getSnapshot(): RobotAttackSnapshot {
+        const attacking = this.phase === "ATTACKING";
+        const coolingDown = this.phase === "COOLDOWN";
         return {
             phase: this.phase,
-            elapsedSeconds: this.elapsedSeconds,
-            remainingSeconds: Math.max(0, this.durationSeconds - this.elapsedSeconds),
+            elapsedSeconds: attacking ? this.elapsedSeconds : 0,
+            remainingSeconds: attacking ? Math.max(0, this.durationSeconds - this.elapsedSeconds) : 0,
             durationSeconds: this.durationSeconds,
+            cooldownElapsedSeconds: coolingDown ? this.cooldownElapsedSeconds : 0,
+            cooldownRemainingSeconds: coolingDown
+                ? Math.max(0, this.cooldownDurationSeconds - this.cooldownElapsedSeconds)
+                : 0,
+            cooldownDurationSeconds: this.cooldownDurationSeconds,
+            ready: this.isReady(),
             targetId: this.targetId,
         };
     }

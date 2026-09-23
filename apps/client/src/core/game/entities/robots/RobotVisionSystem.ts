@@ -14,16 +14,32 @@ export interface RobotVisionResult {
     readonly selectedTarget: RobotInteractionEntry | null;
 }
 
+/**
+ * R-8.1 vision scan. The authored range is supplied by RobotDefinition.
+ * Keep the cone angle unchanged while allowing the range to be tuned independently.
+ */
 export class RobotVisionSystem {
     public constructor(
         private readonly targetQuery: RobotTargetQuery,
         private readonly registry: RobotInteractionRegistry,
     ) {}
 
+    /** Scan using an explicit world-space heading, used by impact investigation. */
+    public scanHeading(
+        originX: number, originY: number, headingRadians: number,
+        range: number, halfAngleDegrees: number, excludedId?: string,
+    ): RobotVisionResult {
+        return this.scan(
+            originX, originY, Math.cos(headingRadians), Math.sin(headingRadians),
+            range, halfAngleDegrees, excludedId,
+        );
+    }
+
     public scan(
         originX: number, originY: number, forwardX: number, forwardY: number,
         range: number, halfAngleDegrees: number, excludedId?: string,
     ): RobotVisionResult {
+        const effectiveRange = Math.max(0, range);
         const candidates: RobotVisionCandidate[] = [];
         let selectedTarget: RobotInteractionEntry | null = null;
         let selectedDistance = Number.POSITIVE_INFINITY;
@@ -33,7 +49,7 @@ export class RobotVisionSystem {
             const tx = target.getX(); const ty = target.getY();
             const dx = tx - originX; const dy = ty - originY;
             const distance = Math.hypot(dx, dy);
-            if (distance <= 0.0001 || distance > range) continue;
+            if (distance <= 0.0001 || distance > effectiveRange) continue;
             const nx = dx / distance; const ny = dy / distance;
             const dot = Math.max(-1, Math.min(1, forwardX * nx + forwardY * ny));
             const angle = Math.acos(dot);

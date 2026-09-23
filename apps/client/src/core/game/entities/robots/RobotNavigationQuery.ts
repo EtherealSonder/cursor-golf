@@ -15,7 +15,14 @@ export class RobotNavigationQuery {
     public findDestination(centerX: number, centerY: number, roamRadius: number, clearanceRadius: number, maximumAttempts: number): RobotDestinationResult {
         for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
             const angle = Math.random() * Math.PI * 2;
-            const distance = roamRadius * Math.sqrt(Math.random());
+            // Sample uniformly by area from the outer half of the roam disc.
+            // This prevents tiny one/two-step destinations while preserving an
+            // unbiased spatial distribution for Fire, Water and future Wind Robots.
+            const minimumDistance = roamRadius * 0.5;
+            const distance = Math.sqrt(
+                minimumDistance * minimumDistance +
+                Math.random() * (roamRadius * roamRadius - minimumDistance * minimumDistance),
+            );
             const candidate = { x: centerX + Math.cos(angle) * distance, y: centerY + Math.sin(angle) * distance };
             if (this.isPositionClear(candidate.x, candidate.y, clearanceRadius)) return { point: candidate, attempts: attempt };
         }

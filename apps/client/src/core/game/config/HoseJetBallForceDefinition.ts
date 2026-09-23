@@ -9,11 +9,24 @@ export interface HoseJetBallForceDefinition {
     readonly baseAcceleration: number;
     readonly maximumAcceleration: number;
 
+    /** Reference mass used to turn jet acceleration into a fixed external impulse.
+     * Real target inverse mass then determines how strongly each object moves. */
+    readonly dynamicTargetReferenceMass: number;
+
     readonly minimumDistanceInfluence: number;
     readonly distanceFalloffExponent: number;
     readonly edgeFalloffExponent: number;
 
     readonly maximumDeltaTime: number;
+    /** Small longitudinal allowance for Ball radius/contact sampling. */
+    readonly authoritativeReachPadding: number;
+
+    /** Robot-Hose only. Radius around the live ground-impact point that captures the Ball. */
+    readonly impactCaptureRadius: number;
+    /** Robot-Hose only. Distance over which transport speed is reduced before capture. */
+    readonly impactBrakingRadius: number;
+    /** Robot-Hose only. Maximum desired transport speed toward the live impact point. */
+    readonly impactTransportSpeed: number;
 }
 
 export const DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION:
@@ -43,8 +56,9 @@ export const DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION:
          * Grass rolling resistance is substantial, so the Hose must exceed it
          * enough to become a real hazard/tool while remaining controllable.
          */
-        baseAcceleration: 1150,
-        maximumAcceleration: 1650,
+        baseAcceleration: 1450,
+        maximumAcceleration: 2200,
+        dynamicTargetReferenceMass: 1,
 
         /*
          * The stream remains useful near its far end but is strongest close to
@@ -59,7 +73,25 @@ export const DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION:
          * cannot turn into a single huge jet impulse.
          */
         maximumDeltaTime: 0.05,
+
+        authoritativeReachPadding: 2,
+
+        // Ignored by the normal Hydrant Hose because it does not request
+        // transport-to-impact behaviour.
+        impactCaptureRadius: 34,
+        impactBrakingRadius: 120,
+        impactTransportSpeed: 520,
     };
+
+/** Robot Water attacks use the same jet geometry but enable terminal capture. */
+export const ROBOT_HOSE_JET_BALL_FORCE_DEFINITION: HoseJetBallForceDefinition = {
+    ...DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION,
+    // A wider capture/braking envelope prevents residual Ball momentum from
+    // carrying it through the live deposition point on high-speed approaches.
+    impactCaptureRadius: 54,
+    impactBrakingRadius: 190,
+    impactTransportSpeed: 420,
+};
 
 export function validateHoseJetBallForceDefinition(
     definition:
@@ -73,9 +105,14 @@ export function validateHoseJetBallForceDefinition(
         definition.referenceLaunchSpeed,
         definition.baseAcceleration,
         definition.maximumAcceleration,
+        definition.dynamicTargetReferenceMass,
         definition.distanceFalloffExponent,
         definition.edgeFalloffExponent,
         definition.maximumDeltaTime,
+        definition.authoritativeReachPadding,
+        definition.impactCaptureRadius,
+        definition.impactBrakingRadius,
+        definition.impactTransportSpeed,
     ];
 
     if (

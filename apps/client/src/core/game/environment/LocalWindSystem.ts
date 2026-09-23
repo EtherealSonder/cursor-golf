@@ -40,6 +40,14 @@ export interface LocalWindSample {
  * point. Overlapping sources are combined by vector
  * addition.
  */
+export interface LocalWindImpactAwareTarget {
+    readonly id: string;
+    readonly radius: number;
+    readonly getX: () => number;
+    readonly getY: () => number;
+    readonly notifyImpact: (positionX: number, positionY: number, sourceId: string) => void;
+}
+
 export class LocalWindSystem {
     private performanceQueryCount = 0;
     private performanceQueryMilliseconds = 0;
@@ -47,6 +55,38 @@ export class LocalWindSystem {
     private performanceCacheMisses = 0;
     private readonly sampleCache = new Map<string, LocalWindSample>();
     private readonly sampleCacheCellSize = 4;
+    private readonly impactAwareTargets = new Map<string, LocalWindImpactAwareTarget>();
+    private readonly activeImpactSourcesByTarget = new Map<string, Set<string>>();
+
+    public registerImpactAwareTarget(target: LocalWindImpactAwareTarget): void {
+        this.impactAwareTargets.set(target.id, target);
+    }
+
+    public unregisterImpactAwareTarget(id: string): void {
+        this.impactAwareTargets.delete(id);
+        this.activeImpactSourcesByTarget.delete(id);
+    }
+
+    /** Edge-triggered authoritative Wind contact for AI awareness. */
+    public updateImpactAwareTargets(): void {
+        for (const target of this.impactAwareTargets.values()) {
+            const sample = this.sampleAt(target.getX(), target.getY());
+            const current = new Set(sample.contributingSourceIds);
+            const previous = this.activeImpactSourcesByTarget.get(target.id) ?? new Set<string>();
+            for (const sourceId of current) {
+                if (previous.has(sourceId)) continue;
+                const magnitude = Math.hypot(sample.acceleration.x, sample.acceleration.y);
+                const nx = magnitude > 0 ? sample.acceleration.x / magnitude : 1;
+                const ny = magnitude > 0 ? sample.acceleration.y / magnitude : 0;
+                target.notifyImpact(
+                    target.getX() - nx * target.radius,
+                    target.getY() - ny * target.radius,
+                    sourceId,
+                );
+            }
+            this.activeImpactSourcesByTarget.set(target.id, current);
+        }
+    }
 
     public beginPerformanceFrame(): void {
         this.performanceQueryCount = 0;

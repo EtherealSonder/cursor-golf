@@ -786,11 +786,20 @@ export class JetFireEmitter {
                 getMaximumForwardDistance:
                     (): number => {
 
-                        return this.fireSourceSystem
-                            .getDirectionalEffectiveLength(
-                                sourceId,
+                        // Simulation, Water suppression and solid-obstacle
+                        // suppression share this single authoritative cutoff.
+                        // Never allow presentation particles to use the authored
+                        // full length after a blocker has shortened the source.
+                        return Math.max(
+                            0,
+                            Math.min(
                                 authoredLength,
-                            );
+                                this.fireSourceSystem.getDirectionalEffectiveLength(
+                                    sourceId,
+                                    authoredLength,
+                                ),
+                            ),
+                        );
                     },
             },
 

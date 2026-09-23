@@ -6,9 +6,9 @@ import {
     DEFAULT_WATER_IMPACT_VFX_DEFINITION,
 } from "../config/WaterImpactVfxDefinition";
 
-import type {
-    HydrantHose,
-} from "../entities/mechanisms/HydrantHose";
+export interface HoseImpactSource {
+    getWaterSourceId(): string;
+}
 
 import type {
     AirborneWaterPresentationImpact,
@@ -69,7 +69,7 @@ export class HoseGroundImpactVfx {
 
     public update(
         deltaTime: number,
-        hose: HydrantHose,
+        hose: HoseImpactSource,
         airborneWaterSystem: AirborneWaterSystem,
         impactVfxSystem: WaterImpactVfxSystem,
     ): void {

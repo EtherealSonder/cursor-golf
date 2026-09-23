@@ -572,6 +572,7 @@ export class WaterFireInteraction {
     public updateStandingWaterDirectionalFire(
         waterField: WaterField,
         fireSourceSystem: FireSourceSystem,
+        deltaTime: number,
     ): StandingWaterDirectionalFireResult {
         const directionalSources =
             fireSourceSystem
@@ -589,6 +590,17 @@ export class WaterFireInteraction {
 
         const suppressedSourceIds =
             new Set<string>();
+
+        /*
+         * Keep the nearest standing-Water contact for each directional source.
+         * Suppression still receives every valid contact exactly as before, but
+         * evaporation is applied only around the actual first impact point.
+         */
+        const evaporationContactBySourceId =
+            new Map<string, {
+                readonly index: number;
+                readonly distance: number;
+            }>();
 
         const waterCellRadius =
             waterField
@@ -609,14 +621,17 @@ export class WaterFireInteraction {
                         waterCell.depth,
                     );
 
-                if (
-                    !contact.isMeaningfulContact ||
-                    !contact.shouldSuppressImmediately
-                ) {
+                // Keep the directional jet continuous: even a thin positive
+                // standing-Water edge must occlude Fire until evaporation has
+                // actually removed that cell. Otherwise the jet can appear to
+                // stop, then visually resume behind the same puddle.
+                if (waterCell.depth <= 0) {
                     return;
                 }
 
-                meaningfulWaterCellCount += 1;
+                if (contact.isMeaningfulContact) {
+                    meaningfulWaterCellCount += 1;
+                }
 
                 for (const source of directionalSources) {
                     const definition =
@@ -647,11 +662,30 @@ export class WaterFireInteraction {
 
                     contactCount += 1;
 
+                    const previousEvaporationContact =
+                        evaporationContactBySourceId.get(
+                            source.getId(),
+                        );
+
+                    if (
+                        previousEvaporationContact === undefined ||
+                        suppressionDistance <
+                        previousEvaporationContact.distance
+                    ) {
+                        evaporationContactBySourceId.set(
+                            source.getId(),
+                            {
+                                index: waterCell.index,
+                                distance: Math.max(0, suppressionDistance - 0.5),
+                            },
+                        );
+                    }
+
                     if (
                         fireSourceSystem
                             .suppressDirectionalSourceFromDistance(
                                 source.getId(),
-                                suppressionDistance,
+                                Math.max(0, suppressionDistance - 0.5),
                             )
                     ) {
                         suppressedSourceIds.add(
@@ -672,6 +706,21 @@ export class WaterFireInteraction {
             },
         );
 
+        if (
+            Number.isFinite(deltaTime) &&
+            deltaTime > 0 &&
+            this.definition
+                .directionalFireStandingWaterEvaporationPerSecond > 0
+        ) {
+            for (const contact of evaporationContactBySourceId.values()) {
+                this.evaporateStandingWaterAroundDirectionalFireContact(
+                    waterField,
+                    contact.index,
+                    deltaTime,
+                );
+            }
+        }
+
         return {
             inspectedWaterCellCount,
             inspectedDirectionalSourceCount:
@@ -681,6 +730,114 @@ export class WaterFireInteraction {
             suppressedSourceCount:
                 suppressedSourceIds.size,
         };
+    }
+
+    /**
+     * Applies a compact radial Water sink around the first standing-Water cell
+     * reached by directional Fire. WaterField remains the sole authority for
+     * depth/accounting. No raw Water storage is mutated here.
+     */
+    private evaporateStandingWaterAroundDirectionalFireContact(
+        waterField: WaterField,
+        contactIndex: number,
+        deltaTime: number,
+    ): void {
+        const columns =
+            waterField.getColumnCount();
+
+        const rows =
+            waterField.getRowCount();
+
+        const centerGridX =
+            contactIndex % columns;
+
+        const centerGridY =
+            Math.floor(contactIndex / columns);
+
+        const radiusCells =
+            this.definition
+                .directionalFireStandingWaterEvaporationRadiusCells;
+
+        const baseRemoval =
+            this.definition
+                .directionalFireStandingWaterEvaporationPerSecond *
+            deltaTime;
+
+        for (
+            let offsetY = -radiusCells;
+            offsetY <= radiusCells;
+            offsetY += 1
+        ) {
+            const gridY =
+                centerGridY + offsetY;
+
+            if (gridY < 0 || gridY >= rows) {
+                continue;
+            }
+
+            for (
+                let offsetX = -radiusCells;
+                offsetX <= radiusCells;
+                offsetX += 1
+            ) {
+                const gridX =
+                    centerGridX + offsetX;
+
+                if (gridX < 0 || gridX >= columns) {
+                    continue;
+                }
+
+                const distance =
+                    Math.sqrt(
+                        offsetX * offsetX +
+                        offsetY * offsetY,
+                    );
+
+                if (distance > radiusCells) {
+                    continue;
+                }
+
+                const falloff =
+                    radiusCells <= 0
+                        ? 1
+                        : Math.max(
+                            0.25,
+                            1 -
+                            distance /
+                            (radiusCells + 0.5),
+                        );
+
+                const index =
+                    gridY * columns +
+                    gridX;
+
+                const depth =
+                    waterField.getDepthByIndex(index);
+
+                if (depth <= 0) {
+                    continue;
+                }
+
+                const requestedRemoval =
+                    baseRemoval *
+                    falloff;
+
+                /*
+                 * Clear tiny remnants immediately once Fire has reduced them
+                 * below the meaningful standing-Water threshold.
+                 */
+                const removal =
+                    depth - requestedRemoval <
+                    this.definition.minimumMeaningfulStandingWaterDepth
+                        ? depth
+                        : requestedRemoval;
+
+                waterField.removeWaterByIndex(
+                    index,
+                    removal,
+                );
+            }
+        }
     }
 
     private getStandingWaterDirectionalFireContactDistance(

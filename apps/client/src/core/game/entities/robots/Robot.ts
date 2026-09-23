@@ -11,8 +11,17 @@ import { RobotTargetQuery } from "./RobotTargetQuery";
 import { RobotVisionSystem, type RobotVisionCandidate } from "./RobotVisionSystem";
 import { RobotTargetingController, type RobotTargetingPhase } from "./RobotTargetingController";
 import { RobotAttackController, type RobotAttackPhase } from "./RobotAttackController";
+import { RobotFireAttackController } from "./RobotFireAttackController";
+import { RobotWaterAttackController } from "./RobotWaterAttackController";
+import { RobotLedDisplay, type RobotLedState } from "./RobotLedDisplay";
+import type { FireSourceSystem } from "../../environment/FireSourceSystem";
+import type { WaterSourceSystem } from "../../environment/WaterSourceSystem";
+import type { DynamicObstacleDefinition } from "../../config/ObstacleDefinition";
+import type { DynamicCollidableImpact } from "../../physics/DynamicCollidable";
+import { RobotImpactReactionController } from "./RobotImpactReactionController";
+import { RigidBody2D } from "../../physics/RigidBody2D";
 
-export type RobotMovementState = "WAITING" | "TURNING" | "WANDERING" | "DETECTING" | "TARGET_LOCKED" | "ATTACKING";
+export type RobotMovementState = "WAITING" | "TURNING" | "WANDERING" | "DETECTING" | "TARGET_LOCKED" | "WARNING" | "ATTACKING";
 
 export interface RobotDebugSnapshot {
     readonly id: string; readonly state: RobotMovementState;
@@ -31,6 +40,10 @@ export interface RobotDebugSnapshot {
     readonly targetingPhase: RobotTargetingPhase; readonly targetLossSeconds: number;
     readonly attackPhase: RobotAttackPhase; readonly attackElapsedSeconds: number;
     readonly attackRemainingSeconds: number; readonly attackDurationSeconds: number;
+    readonly cooldownElapsedSeconds: number; readonly cooldownRemainingSeconds: number;
+    readonly cooldownDurationSeconds: number; readonly attackReady: boolean;
+    readonly warningActive: boolean; readonly warningElapsedSeconds: number;
+    readonly warningRemainingSeconds: number; readonly warningDurationSeconds: number;
 }
 
 export class Robot extends Entity {
@@ -58,6 +71,12 @@ export class Robot extends Entity {
     private readonly visionSystem: RobotVisionSystem;
     private readonly targetingController: RobotTargetingController;
     private readonly attackController: RobotAttackController;
+    private readonly elementAttackController: RobotFireAttackController | RobotWaterAttackController;
+    private readonly externalRigidBody: RigidBody2D;
+    private lastCommittedTargetX: number | null = null;
+    private lastCommittedTargetY: number | null = null;
+    private readonly ledDisplay: RobotLedDisplay;
+    private readonly impactReactionController: RobotImpactReactionController;
     private visionCandidates: readonly RobotVisionCandidate[] = [];
     private detectedTargetId: string | null = null;
     private detectedTargetLabel: string | null = null;
@@ -66,6 +85,8 @@ export class Robot extends Entity {
         private readonly definition: RobotDefinition,
         private readonly navigationQuery: RobotNavigationQuery,
         interactionRegistry: RobotInteractionRegistry,
+        fireSourceSystem: FireSourceSystem,
+        waterSourceSystem: WaterSourceSystem,
     ) {
         super();
         this.spawnX = definition.positionX;
@@ -77,16 +98,127 @@ export class Robot extends Entity {
         this.targetingController = new RobotTargetingController(
             definition.targetAlignmentToleranceDegrees, definition.targetLossGraceSeconds,
         );
-        this.attackController = new RobotAttackController(definition.attackDurationSeconds);
+        this.attackController = new RobotAttackController(
+            definition.attackDurationSeconds, definition.attackCooldownSeconds,
+        );
+        this.elementAttackController = definition.element === "water"
+            ? new RobotWaterAttackController(
+                definition.id, waterSourceSystem, definition.waterOutletOffset, definition.attackWarningDurationSeconds,
+            )
+            : new RobotFireAttackController(
+                definition.id, fireSourceSystem, definition.fireOutletOffset, definition.attackWarningDurationSeconds,
+            );
+        this.ledDisplay = new RobotLedDisplay(
+            definition.ledScreenDiameter,
+            definition.ledColor,
+        );
+        this.impactReactionController = new RobotImpactReactionController(
+            definition.impactReactionDurationSeconds,
+            definition.impactScanAngleDegrees * Math.PI / 180,
+        );
+        const externalMass = definition.externalForceMass;
+        this.externalRigidBody = new RigidBody2D({
+            bodyType: "dynamic",
+            mass: externalMass,
+            linearDamping: 4.5,
+            angularDamping: 8,
+            sleepLinearSpeedThreshold: 2,
+            sleepAngularSpeedThreshold: 0.05,
+            sleepDelay: 0.2,
+            maximumLinearSpeed: 180,
+            maximumAngularSpeed: Math.PI * 1.5,
+        }, 0.5 * externalMass * definition.navigationRadius * definition.navigationRadius);
+    }
+
+
+    public getWaterAttackSource(): RobotWaterAttackController | null {
+        return this.elementAttackController instanceof RobotWaterAttackController
+            ? this.elementAttackController
+            : null;
     }
 
     public getForwardX(): number { return Math.cos(this.visualRoot.rotation); }
     public getForwardY(): number { return Math.sin(this.visualRoot.rotation); }
 
+    // R-9 kinematic Robot collider. It can deflect dynamic bodies but never
+    // receives physical displacement or damage from the collision response.
+    public getDefinition(): DynamicObstacleDefinition {
+        return {
+            id: `${this.definition.id}-collider`,
+            shape: "circle",
+            positionX: this.getX(),
+            positionY: this.getY(),
+            rotationRadians: this.getRotationRadians(),
+            radius: this.definition.navigationRadius,
+            fillColor: 0xffffff,
+            outlineColor: 0x000000,
+            outlineWidth: 0,
+            material: { restitution: 0.62, friction: 0.18 },
+            rigidBody: {
+                bodyType: "dynamic",
+                mass: this.definition.externalForceMass,
+                linearDamping: 4.5,
+                angularDamping: 8,
+                sleepLinearSpeedThreshold: 2,
+                sleepAngularSpeedThreshold: 0.05,
+                sleepDelay: 0.2,
+                maximumLinearSpeed: 180,
+                maximumAngularSpeed: Math.PI * 1.5,
+            },
+        };
+    }
+    public getRotationRadians(): number { return this.visualRoot.rotation; }
+    public getVelocityX(): number { return this.externalRigidBody.getVelocityX(); }
+    public getVelocityY(): number { return this.externalRigidBody.getVelocityY(); }
+    public getAngularVelocity(): number { return this.externalRigidBody.getAngularVelocity(); }
+    public getInverseMass(): number { return this.externalRigidBody.getInverseMass(); }
+    public getInverseMomentOfInertia(): number { return this.externalRigidBody.getInverseMomentOfInertia(); }
+    public applyImpulseAtWorldPoint(
+        impulseX: number, impulseY: number, contactPointX: number, contactPointY: number,
+    ): void {
+        this.externalRigidBody.applyImpulseAtWorldPoint(
+            impulseX, impulseY, contactPointX - this.getX(), contactPointY - this.getY(),
+        );
+    }
+    public translate(deltaX: number, deltaY: number): void {
+        // Locomotion uses this same transform operation. Collision response will
+        // supply zero displacement because inverse mass is zero.
+        this.setPosition(this.getX() + deltaX, this.getY() + deltaY);
+    }
+
+    /** Shared impact-awareness entry point used identically by every Robot element.
+     * Physical collision routing is external; once reported here, Fire/Water use
+     * the exact same attention, turn and scan state machine. */
+    public notifyExternalImpact(impact: DynamicCollidableImpact): void {
+        // Always observe the source first. Continuous Water/Wind contacts keep
+        // the same episode alive even while the Robot is busy, so they cannot
+        // immediately retrigger another scan when the current one finishes.
+        const isNewContactEpisode = this.impactReactionController.observeContact(
+            impact.sourceKind,
+            impact.sourceId,
+        );
+
+        if (
+            !isNewContactEpisode ||
+            !this.attackController.isReady() ||
+            this.impactReactionController.isActive() ||
+            this.state === "ATTACKING" ||
+            this.state === "WARNING"
+        ) return;
+        this.targetingController.clear();
+        this.destination = null;
+        this.locomotion?.plantForTargeting();
+        this.resetAvoidanceState();
+        this.impactReactionController.begin(
+            this.getX(), this.getY(), impact.positionX, impact.positionY,
+        );
+    }
+
     public getDebugSnapshot(): RobotDebugSnapshot {
         const distanceToDestination = this.destination
             ? Math.hypot(this.destination.x - this.getX(), this.destination.y - this.getY()) : null;
         const attack = this.attackController.getSnapshot();
+        const fireWarning = this.elementAttackController.getSnapshot();
         return {
             id: this.definition.id, state: this.state, x: this.getX(), y: this.getY(),
             rotationRadians: this.visualRoot.rotation, roamCenterX: this.roamCenterX,
@@ -105,14 +237,18 @@ export class Robot extends Entity {
             targetingPhase: this.targetingController.getPhase(), targetLossSeconds: this.targetingController.getTargetLossSeconds(),
             attackPhase: attack.phase, attackElapsedSeconds: attack.elapsedSeconds,
             attackRemainingSeconds: attack.remainingSeconds, attackDurationSeconds: attack.durationSeconds,
+            cooldownElapsedSeconds: attack.cooldownElapsedSeconds, cooldownRemainingSeconds: attack.cooldownRemainingSeconds,
+            cooldownDurationSeconds: attack.cooldownDurationSeconds, attackReady: attack.ready,
+            warningActive: fireWarning.warningActive, warningElapsedSeconds: fireWarning.warningElapsedSeconds,
+            warningRemainingSeconds: fireWarning.warningRemainingSeconds, warningDurationSeconds: fireWarning.warningDurationSeconds,
         };
     }
 
     protected onInitialize(): void {
         this.setPosition(this.spawnX, this.spawnY);
-        this.leg1Sprite = new Sprite(AssetLoader.getTexture("fireRobotLeg1"));
-        this.leg2Sprite = new Sprite(AssetLoader.getTexture("fireRobotLeg2"));
-        this.bodySprite = new Sprite(AssetLoader.getTexture("fireRobotBody"));
+        this.leg1Sprite = new Sprite(AssetLoader.getTexture(this.definition.leg1TextureKey));
+        this.leg2Sprite = new Sprite(AssetLoader.getTexture(this.definition.leg2TextureKey));
+        this.bodySprite = new Sprite(AssetLoader.getTexture(this.definition.bodyTextureKey));
         this.bodySprite.anchor.set(0.5);
         this.bodySprite.width = this.definition.bodyWidth;
         this.bodySprite.scale.y = this.bodySprite.scale.x;
@@ -123,6 +259,9 @@ export class Robot extends Entity {
         this.leg1Sprite.position.set(this.definition.legOffsetX, -this.definition.legOffsetY);
         this.leg2Sprite.position.set(this.definition.legOffsetX, this.definition.legOffsetY);
         this.visualRoot.addChild(this.leg1Sprite, this.leg2Sprite, this.bodySprite);
+        // The source body already contains the circular black LED surface.
+        // Draw the UI over that surface, without creating a second screen.
+        this.visualRoot.addChild(this.ledDisplay.getContainer());
         this.container.addChild(this.visualRoot);
         this.locomotion = new RobotLocomotionController(
             this.leg1Sprite, this.leg2Sprite,
@@ -132,31 +271,101 @@ export class Robot extends Entity {
             this.definition.bodyCatchupSeconds,
         );
         this.beginWaiting(0);
+        this.elementAttackController.initialize(this.getX(), this.getY(), this.visualRoot.rotation);
     }
 
     protected onUpdate(deltaTime: number): void {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
+        const externalMotion = this.externalRigidBody.integrate(deltaTime);
+        if (externalMotion.positionDeltaX !== 0 || externalMotion.positionDeltaY !== 0) {
+            this.setPosition(
+                this.getX() + externalMotion.positionDeltaX,
+                this.getY() + externalMotion.positionDeltaY,
+            );
+        }
         this.obstacleAvoidance.update(deltaTime);
+        this.attackController.updateCooldown(deltaTime);
+        this.impactReactionController.updateContactEpisodes(deltaTime);
+        this.synchronizeElementAttack();
+
+        if (this.impactReactionController.isActive()) {
+            if (this.updateImpactReaction(deltaTime)) {
+                this.updateLedDisplay(deltaTime);
+                return;
+            }
+        }
+
         const vision = this.visionSystem.scan(this.getX(), this.getY(), this.getForwardX(), this.getForwardY(), this.definition.visionRange, this.definition.visionHalfAngleDegrees, this.definition.id);
         this.visionCandidates = vision.candidates;
 
-        this.attackController.releaseSuppressionIfAbsent(vision.selectedTarget?.id ?? null);
-        const perceivedTarget = vision.selectedTarget && !this.attackController.isSuppressed(vision.selectedTarget.id)
-            ? vision.selectedTarget : null;
+        // During cooldown perception still runs for debug/awareness, but it cannot
+        // interrupt locomotion. An active attack keeps tracking its committed target.
+        const perceivedTarget = this.state === "ATTACKING" || this.attackController.isReady()
+            ? vision.selectedTarget
+            : null;
         const targeting = this.targetingController.update(
             deltaTime, perceivedTarget, this.getX(), this.getY(), this.visualRoot.rotation,
         );
         this.detectedTargetId = targeting.target?.id ?? null;
         this.detectedTargetLabel = targeting.target?.label ?? null;
+        if (this.state === "ATTACKING" && perceivedTarget) {
+            this.lastCommittedTargetX = perceivedTarget.getX();
+            this.lastCommittedTargetY = perceivedTarget.getY();
+        }
 
-        if (this.state === "ATTACKING") {
+        if (this.state === "WARNING") {
             if (targeting.target && targeting.desiredAngle !== null) {
-                this.updateAttackTracking(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+                this.updateWarning(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+                this.updateLedDisplay(deltaTime);
                 return;
             }
-            // The R-5 loss grace still applies. If it expires, cancel the timer
-            // and return to wandering rather than attacking empty space.
-            this.attackController.reset();
+            this.elementAttackController.cancelWarning();
+            this.destination = null;
+            this.headingErrorDegrees = 0;
+            this.resetAvoidanceState();
+            this.beginWaiting(0);
+        }
+
+        if (this.state === "ATTACKING") {
+            const committedWaterAttack =
+                this.elementAttackController instanceof RobotWaterAttackController &&
+                this.elementAttackController.continuesAttackAfterTargetLoss();
+
+            // Water tracks only while the target is actually visible. The generic
+            // targeting controller may retain a lost target for its grace window,
+            // but committed Water must freeze at the last in-cone world point.
+            if (
+                targeting.target && targeting.desiredAngle !== null &&
+                (!committedWaterAttack || perceivedTarget !== null)
+            ) {
+                this.updateAttackTracking(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+                this.updateLedDisplay(deltaTime);
+                return;
+            }
+
+            // Water is a committed directional attack. Once firing begins it
+            // completes the full authored duration. If perception is lost, keep
+            // aiming at the last point at which the target was actually visible.
+            if (
+                committedWaterAttack &&
+                this.lastCommittedTargetX !== null &&
+                this.lastCommittedTargetY !== null
+            ) {
+                const desiredAngle = Math.atan2(
+                    this.lastCommittedTargetY - this.getY(),
+                    this.lastCommittedTargetX - this.getX(),
+                );
+                const error = Math.atan2(
+                    Math.sin(desiredAngle - this.visualRoot.rotation),
+                    Math.cos(desiredAngle - this.visualRoot.rotation),
+                );
+                this.updateAttackTracking(deltaTime, desiredAngle, Math.abs(error) * 180 / Math.PI);
+                this.updateLedDisplay(deltaTime);
+                return;
+            }
+
+            // Fire retains the existing target-loss cancellation behaviour.
+            this.attackController.cancelAttack();
             this.destination = null;
             this.headingErrorDegrees = 0;
             this.resetAvoidanceState();
@@ -165,12 +374,13 @@ export class Robot extends Entity {
 
         if (targeting.target && targeting.desiredAngle !== null) {
             this.updateTargeting(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+            this.updateLedDisplay(deltaTime);
             return;
         }
 
         // Target was released after the loss grace period. Start a fresh wander
         // decision instead of resuming a half-completed pre-detection step.
-        if (this.state === "DETECTING" || this.state === "TARGET_LOCKED") {
+        if (this.state === "DETECTING" || this.state === "TARGET_LOCKED" || this.state === "WARNING") {
             this.destination = null;
             this.headingErrorDegrees = 0;
             this.resetAvoidanceState();
@@ -180,13 +390,82 @@ export class Robot extends Entity {
         if (this.state === "WAITING") this.updateWaiting(deltaTime);
         else if (this.state === "TURNING") this.updateTurning(deltaTime);
         else this.updateWandering(deltaTime);
+
+        this.updateLedDisplay(deltaTime);
     }
 
     protected onDestroy(): void {
+        this.elementAttackController.destroy();
+        this.ledDisplay.destroy();
         this.locomotion = null; this.bodySprite = null; this.leg1Sprite = null; this.leg2Sprite = null;
         this.container.destroy({ children: true });
     }
 
+
+    private updateImpactReaction(deltaTime: number): boolean {
+        // Cooldown always wins. An impact received immediately before cooldown
+        // begins is discarded rather than delaying normal locomotion.
+        if (!this.attackController.isReady()) {
+            this.impactReactionController.clear();
+            return false;
+        }
+
+        this.locomotion?.plantForTargeting();
+        this.destination = null;
+        this.resetAvoidanceState();
+
+        if (this.impactReactionController.getPhase() === "TURN_TO_IMPACT") {
+            const desired = this.impactReactionController.getImpactHeadingRadians();
+            const error = Math.abs(this.shortestAngle(desired - this.visualRoot.rotation));
+            this.headingErrorDegrees = error * 180 / Math.PI;
+            this.rotateTowardsAtSpeed(desired, deltaTime, this.definition.impactTurnSpeedRadiansPerSecond);
+            if (this.headingErrorDegrees <= this.definition.targetAlignmentToleranceDegrees) {
+                this.visualRoot.rotation = desired;
+                this.headingErrorDegrees = 0;
+                this.impactReactionController.markFacingImpact();
+            }
+            return true;
+        }
+
+        const heading = this.impactReactionController.getScanHeadingRadians();
+        this.visualRoot.rotation = heading;
+        const vision = this.visionSystem.scanHeading(
+            this.getX(), this.getY(), heading, this.definition.visionRange,
+            this.definition.visionHalfAngleDegrees, this.definition.id,
+        );
+        this.visionCandidates = vision.candidates;
+
+        if (vision.selectedTarget) {
+            this.impactReactionController.clear();
+            const targeting = this.targetingController.update(
+                deltaTime, vision.selectedTarget, this.getX(), this.getY(), this.visualRoot.rotation,
+            );
+            this.detectedTargetId = targeting.target?.id ?? null;
+            this.detectedTargetLabel = targeting.target?.label ?? null;
+            if (targeting.target && targeting.desiredAngle !== null) {
+                this.updateTargeting(deltaTime, targeting.desiredAngle, targeting.headingErrorDegrees);
+            }
+            return true;
+        }
+
+        if (this.impactReactionController.updateScan(deltaTime)) {
+            this.headingErrorDegrees = 0;
+            this.beginWaiting(0);
+            return false;
+        }
+        return true;
+    }
+
+
+
+    private synchronizeElementAttack(): void {
+        this.elementAttackController.update(
+            this.getX(),
+            this.getY(),
+            this.visualRoot.rotation,
+            this.attackController.getSnapshot().phase === "ATTACKING",
+        );
+    }
 
     private updateTargeting(deltaTime: number, desiredAngle: number, headingErrorDegrees: number): void {
         this.locomotion?.plantForTargeting();
@@ -197,14 +476,42 @@ export class Robot extends Entity {
             this.headingErrorDegrees = 0;
             this.state = "TARGET_LOCKED";
             const target = this.targetingController.getTarget();
-            if (target) {
-                this.attackController.start(target.id);
-                this.state = "ATTACKING";
+            if (target && this.attackController.isReady()) {
+                if (this.elementAttackController.startWarning(target.id)) {
+                    this.state = "WARNING";
+                    this.synchronizeElementAttack();
+                }
             }
             return;
         }
         this.state = "DETECTING";
         this.rotateTowardsAtSpeed(desiredAngle, deltaTime, this.definition.targetTurnSpeedRadiansPerSecond);
+    }
+
+    private updateWarning(deltaTime: number, desiredAngle: number, headingErrorDegrees: number): void {
+        this.locomotion?.plantForTargeting();
+        this.resetAvoidanceState();
+        this.headingErrorDegrees = headingErrorDegrees;
+        this.rotateTowardsAtSpeed(desiredAngle, deltaTime, this.definition.targetTurnSpeedRadiansPerSecond);
+        if (headingErrorDegrees > this.definition.targetAlignmentToleranceDegrees) return;
+
+        this.visualRoot.rotation = desiredAngle;
+        this.headingErrorDegrees = 0;
+        if (!this.elementAttackController.updateWarning(deltaTime)) return;
+
+        const target = this.targetingController.getTarget();
+        if (!target || !this.attackController.start(target.id)) {
+            this.elementAttackController.cancelWarning();
+            this.targetingController.clear();
+            this.destination = null;
+            this.beginWaiting(0);
+            return;
+        }
+
+        this.lastCommittedTargetX = target.getX();
+        this.lastCommittedTargetY = target.getY();
+        this.state = "ATTACKING";
+        this.synchronizeElementAttack();
     }
 
     private updateAttackTracking(deltaTime: number, desiredAngle: number, headingErrorDegrees: number): void {
@@ -216,11 +523,15 @@ export class Robot extends Entity {
             this.visualRoot.rotation = desiredAngle;
             this.headingErrorDegrees = 0;
         }
-        if (!this.attackController.update(deltaTime)) return;
+        this.synchronizeElementAttack();
+        if (!this.attackController.updateAttack(deltaTime)) return;
+        this.synchronizeElementAttack();
 
-        // R-6 has no elemental output and no cooldown yet. Finish the timed
-        // commitment, release the target, and request a fresh wander cycle.
+        // R-7 begins cooldown inside the attack controller, but locomotion resumes
+        // immediately. Perception continues while target acquisition is gated.
         this.targetingController.clear();
+        this.lastCommittedTargetX = null;
+        this.lastCommittedTargetY = null;
         this.destination = null;
         this.headingErrorDegrees = 0;
         this.resetAvoidanceState();
@@ -352,6 +663,33 @@ export class Robot extends Entity {
         if (this.progressAnchorDistance - distance >= this.definition.stuckMinimumProgress) {
             this.progressAnchorDistance = distance; this.stuckSeconds = 0;
         } else this.stuckSeconds += deltaTime;
+    }
+
+    private updateLedDisplay(deltaTime: number): void {
+        const attack = this.attackController.getSnapshot();
+        const ledState = this.getLedState(attack.phase);
+
+        this.ledDisplay.update(deltaTime, {
+            state: ledState,
+            cooldownElapsedSeconds: attack.cooldownElapsedSeconds,
+            cooldownDurationSeconds: attack.cooldownDurationSeconds,
+        });
+    }
+
+    private getLedState(attackPhase: RobotAttackPhase): RobotLedState {
+        if (attackPhase === "ATTACKING") return "ATTACKING";
+        if (attackPhase === "COOLDOWN") return "COOLDOWN";
+
+        // TARGET_LOCKED and WARNING share the same warning presentation.
+        if (
+            this.impactReactionController.isActive() ||
+            this.state === "TARGET_LOCKED" ||
+            this.state === "WARNING"
+        ) {
+            return "WARNING";
+        }
+
+        return "WANDERING";
     }
 
     private resetAvoidanceState(): void {

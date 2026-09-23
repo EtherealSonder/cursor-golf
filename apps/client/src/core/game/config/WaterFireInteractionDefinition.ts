@@ -70,6 +70,19 @@ export interface WaterFireInteractionDefinition {
      * cell itself contributes its half-diagonal footprint separately.
      */
     readonly standingWaterDirectionalFireContactRadius: number;
+
+    /**
+     * Standing-Water depth removed per second from the first Water cell reached
+     * by an active directional Fire source. This sink exists only while direct
+     * Fire/Water contact is present.
+     */
+    readonly directionalFireStandingWaterEvaporationPerSecond: number;
+
+    /**
+     * Number of Water-grid cells around the contact cell that also evaporate.
+     * Distance falloff keeps the contact cell strongest and neighbours weaker.
+     */
+    readonly directionalFireStandingWaterEvaporationRadiusCells: number;
 }
 
 export const DEFAULT_WATER_FIRE_INTERACTION_DEFINITION:
@@ -101,6 +114,14 @@ export const DEFAULT_WATER_FIRE_INTERACTION_DEFINITION:
 
     standingWaterDirectionalFireContactRadius:
         8,
+
+    // Sustained directional Fire rapidly dries the impact cell and a compact
+    // two-cell neighbourhood, allowing the jet to progressively eat into Water.
+    directionalFireStandingWaterEvaporationPerSecond:
+        4.5,
+
+    directionalFireStandingWaterEvaporationRadiusCells:
+        2,
 };
 
 export function validateWaterFireInteractionDefinition(
@@ -116,6 +137,8 @@ export function validateWaterFireInteractionDefinition(
         definition.airborneWaterDirectionalFireContactRadius,
         definition.airborneWaterDirectionalFireMaximumContactHeight,
         definition.standingWaterDirectionalFireContactRadius,
+        definition.directionalFireStandingWaterEvaporationPerSecond,
+        definition.directionalFireStandingWaterEvaporationRadiusCells,
     ];
 
     if (!values.every(Number.isFinite)) {
@@ -134,7 +157,12 @@ export function validateWaterFireInteractionDefinition(
         definition.airborneWaterGroundFireMaximumContactHeight <= 0 ||
         definition.airborneWaterDirectionalFireContactRadius < 0 ||
         definition.airborneWaterDirectionalFireMaximumContactHeight <= 0 ||
-        definition.standingWaterDirectionalFireContactRadius < 0
+        definition.standingWaterDirectionalFireContactRadius < 0 ||
+        definition.directionalFireStandingWaterEvaporationPerSecond < 0 ||
+        !Number.isInteger(
+            definition.directionalFireStandingWaterEvaporationRadiusCells
+        ) ||
+        definition.directionalFireStandingWaterEvaporationRadiusCells < 0
     ) {
         throw new Error(
             "Water/Fire interaction thresholds are invalid. Footprint inset fraction must remain in [0, 0.5), Water/Fire contact radii must be non-negative, and maximum contact heights must be greater than zero.",

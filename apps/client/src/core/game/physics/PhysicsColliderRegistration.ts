@@ -15,6 +15,7 @@ export interface PhysicsColliderParticipation {
     readonly hose: boolean;
     readonly groundWater: boolean;
     readonly airborneWater: boolean;
+    readonly impactAwareness: boolean;
 }
 
 export const FULL_SOLID_COLLIDER_PARTICIPATION:
@@ -24,6 +25,7 @@ export const FULL_SOLID_COLLIDER_PARTICIPATION:
     hose: true,
     groundWater: true,
     airborneWater: true,
+    impactAwareness: true,
 };
 
 export interface StaticPhysicsColliderRegistration {
@@ -92,6 +94,9 @@ export function resolvePhysicsColliderParticipation(
             true,
         airborneWater:
             partial.airborneWater ??
+            true,
+        impactAwareness:
+            partial.impactAwareness ??
             true,
     };
 }
