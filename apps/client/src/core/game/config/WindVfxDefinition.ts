@@ -25,6 +25,10 @@ export interface WindVfxDefinition {
         /** Extra density used only by pull/suction sources such as Wind Robot. */
         readonly pullParticlesPerSource: number;
 
+        /** Presentation-only travel speed for pull/suction particles. */
+        readonly pullMinimumSpeed: number;
+        readonly pullMaximumSpeed: number;
+
         /**
          * Presentation-only overlap at the narrow end of a pull field. It lets
          * the visible alpha mask travel slightly inside the nozzle aperture so
@@ -129,12 +133,17 @@ export const DEFAULT_WIND_VFX_DEFINITION: WindVfxDefinition = {
     local: {
         minimumParticleCount: 0,
         maximumParticleCount: 24,
-        particlesPerSource: 24,
+        // Fan Wind should read as the weaker, calmer local source.
+        particlesPerSource: 16,
+
+        // Wind Robot suction remains denser and travels substantially faster.
         pullParticlesPerSource: 40,
+        pullMinimumSpeed: 680,
+        pullMaximumSpeed: 980,
         pullNozzleOverlap: 18,
 
-        minimumSpeed: 380,
-        maximumSpeed: 620,
+        minimumSpeed: 340,
+        maximumSpeed: 520,
 
         minimumLength: 90,
         maximumLength: 180,

@@ -19,6 +19,17 @@ export interface BallPhysicsDefinition {
     readonly minimumShotPreparationTime:
     number;
 
+    /**
+     * Gameplay thresholds for deciding when the Ball is slow
+     * and stable enough for another club interaction.
+     * These are independent from the physical stop threshold.
+     */
+    readonly clubInteractionEnterSpeed: number;
+
+    readonly clubInteractionExitSpeed: number;
+
+    readonly clubInteractionSettleTime: number;
+
     // -------------------------------------------------------------------------
     // Launch Velocity
     // -------------------------------------------------------------------------
@@ -150,6 +161,12 @@ export const DEFAULT_BALL_PHYSICS_DEFINITION:
     minimumLaunchPower: 0.10,
 
     minimumShotPreparationTime: 0.15,
+
+    clubInteractionEnterSpeed: 16,
+
+    clubInteractionExitSpeed: 24,
+
+    clubInteractionSettleTime: 0.15,
 
     // -------------------------------------------------------------------------
     // Launch Velocity

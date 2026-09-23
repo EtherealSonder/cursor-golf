@@ -25,6 +25,7 @@ export class RobotTargetingController {
     public constructor(
         private readonly alignmentToleranceDegrees: number,
         private readonly targetLossGraceSeconds: number,
+        private readonly isTargetValid: (target: RobotInteractionEntry) => boolean = () => true,
     ) {}
 
     public update(
@@ -46,6 +47,14 @@ export class RobotTargetingController {
         }
 
         if (!this.target) return this.snapshot(null, 0);
+
+        // A World-owned target can be unregistered while this controller still
+        // retains it for the target-loss grace window. Never dereference an
+        // entry that is no longer present in the authoritative interaction set.
+        if (!this.isTargetValid(this.target)) {
+            this.clear();
+            return this.snapshot(null, 0);
+        }
 
         const dx = this.target.getX() - originX;
         const dy = this.target.getY() - originY;

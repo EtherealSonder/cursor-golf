@@ -49,6 +49,8 @@ export class Sprinkler extends Entity {
     private emissionAccumulator = 0;
     private emissionSequence = 0;
     private enabled = true;
+    private suctionCapturing = false;
+    private suctionCaptureComplete = false;
 
     private readonly rigidBody:
         RigidBody2D;
@@ -191,6 +193,40 @@ export class Sprinkler extends Entity {
         this.enabled = enabled;
     }
 
+    /** Stops authoritative Water/physics activity while the generic suction capture animates. */
+    public beginSuctionCapture(): void {
+        if (this.suctionCapturing) return;
+        this.suctionCapturing = true;
+        this.suctionCaptureComplete = false;
+        this.enabled = false;
+        this.emissionAccumulator = 0;
+    }
+
+    public setSuctionCaptureScale(scale: number): void {
+        const safeScale = Number.isFinite(scale) ? Math.max(0, Math.min(1, scale)) : 0;
+        this.container.scale.set(safeScale);
+    }
+
+    public isSuctionCapturing(): boolean {
+        return this.suctionCapturing;
+    }
+
+    /**
+     * Marks presentation capture complete without destroying Entity resources.
+     * World remains the sole authority for unregistering and final destruction.
+     */
+    public completeSuctionCapture(): void {
+        if (!this.suctionCapturing || this.suctionCaptureComplete) return;
+        this.suctionCaptureComplete = true;
+        this.enabled = false;
+        this.emissionAccumulator = 0;
+        this.container.scale.set(0);
+    }
+
+    public isSuctionCaptureComplete(): boolean {
+        return this.suctionCaptureComplete;
+    }
+
     public getRotationRadians(): number {
         return this.rotationRadians;
     }
@@ -276,6 +312,10 @@ export class Sprinkler extends Entity {
                 : 0;
 
         if (safeDeltaTime <= 0) {
+            return;
+        }
+
+        if (this.suctionCapturing) {
             return;
         }
 

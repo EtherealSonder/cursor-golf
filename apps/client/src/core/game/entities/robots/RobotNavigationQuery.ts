@@ -29,6 +29,39 @@ export class RobotNavigationQuery {
         return { point: null, attempts: maximumAttempts };
     }
 
+
+    /**
+     * Finds the nearest practical clear point around a physically wedged Robot.
+     * Recovery searches concentric rings so relocation stays local and uses the
+     * same authoritative NAVIGATION_BLOCKER clearance test as normal roaming.
+     */
+    public findRecoveryPosition(
+        centerX: number,
+        centerY: number,
+        clearanceRadius: number,
+        minimumRadius: number,
+        maximumRadius: number,
+        radiusStep: number,
+        attemptsPerRadius: number,
+    ): RobotNavigationPoint | null {
+        const safeMinimum = Math.max(clearanceRadius, minimumRadius);
+        const safeMaximum = Math.max(safeMinimum, maximumRadius);
+        const safeStep = Math.max(1, radiusStep);
+        const attempts = Math.max(4, Math.floor(attemptsPerRadius));
+        const phase = Math.random() * Math.PI * 2;
+
+        for (let radius = safeMinimum; radius <= safeMaximum + 0.001; radius += safeStep) {
+            for (let attempt = 0; attempt < attempts; attempt += 1) {
+                const angle = phase + attempt / attempts * Math.PI * 2;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                if (this.isPositionClear(x, y, clearanceRadius)) return { x, y };
+            }
+        }
+
+        return null;
+    }
+
     public isPositionClear(x: number, y: number, clearanceRadius: number): boolean {
         if (x - clearanceRadius < this.courseBoundary.minimumX || x + clearanceRadius > this.courseBoundary.maximumX || y - clearanceRadius < this.courseBoundary.minimumY || y + clearanceRadius > this.courseBoundary.maximumY) return false;
         for (const blocker of this.registry.getNavigationBlockers()) {

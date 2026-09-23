@@ -126,7 +126,7 @@ export class ShotController {
             return;
         }
 
-        if (ball.isMoving()) {
+        if (!ball.canInteractWithClub()) {
             this.cancelShot();
             return;
         }
@@ -489,7 +489,7 @@ export class ShotController {
 
         if (
             !ball ||
-            ball.isMoving()
+            !ball.canInteractWithClub()
         ) {
             return;
         }

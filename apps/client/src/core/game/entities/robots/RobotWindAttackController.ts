@@ -109,6 +109,12 @@ export class RobotWindAttackController {
     public continuesAttackAfterTargetLoss(): boolean { return true; }
     public getWindSourceId(): string { return this.sourceId; }
 
+    /** Exposes the authoritative pull-source identity/state for generic nozzle consumers. */
+    public getSuctionCaptureSourceSnapshot() {
+        const source = this.localWindSystem.getSources().find((candidate) => candidate.id === this.sourceId);
+        return source && source.enabled && source.flowMode === "pull" ? source : null;
+    }
+
     public destroy(): void {
         if (!this.initialized) return;
         this.localWindSystem.removeSource(this.sourceId);

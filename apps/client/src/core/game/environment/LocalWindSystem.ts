@@ -2,6 +2,8 @@ import type {
     LocalWindSourceDefinition,
 } from "../config/LocalWindDefinition";
 
+import type { LocalWindObstacleQuery } from "./LocalWindObstacleQuery";
+
 import {
     DEFAULT_LOCAL_WIND_SOURCE_DEFINITIONS,
 } from "../config/LocalWindDefinition";
@@ -50,6 +52,17 @@ export interface LocalWindImpactAwareTarget {
 }
 
 export class LocalWindSystem {
+    private obstacleQuery: LocalWindObstacleQuery | null = null;
+
+    public setObstacleQuery(query: LocalWindObstacleQuery | null): void {
+        this.obstacleQuery = query;
+        this.sampleCache.clear();
+    }
+
+    public getObstacleQuery(): LocalWindObstacleQuery | null {
+        return this.obstacleQuery;
+    }
+
     private performanceQueryCount = 0;
     private performanceQueryMilliseconds = 0;
     private performanceCacheHits = 0;
@@ -372,6 +385,21 @@ export class LocalWindSystem {
             Math.sin(
                 source.directionRadians,
             );
+
+        /*
+         * Static geometry is a hard Local Wind occluder. There is deliberately
+         * no edge wrapping or redirected airflow: if the straight source-to-
+         * sample path intersects a static blocker, this source contributes no
+         * Wind at the sample point.
+         */
+        if (this.obstacleQuery?.segmentBlocked(
+            source.positionX,
+            source.positionY,
+            worldX,
+            worldY,
+        )) {
+            return { x: 0, y: 0 };
+        }
 
         const accelerationMagnitude =
             source.acceleration *

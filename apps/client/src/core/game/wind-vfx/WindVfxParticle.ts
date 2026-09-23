@@ -78,6 +78,7 @@ export class WindVfxParticle {
     public sineFrequency =
         0;
 
+
     public sourceId:
         string | null =
         null;
@@ -105,11 +106,29 @@ export class WindVfxParticle {
 
         widthMultiplier:
             number,
+
+        visibleLengthMultiplier =
+            1,
     ): void {
+
+        /*
+         * Obstacle clipping is presentation-only. Keep the authored logical
+         * particle length unchanged so pooled particles can return to their
+         * normal size immediately after recycle.
+         */
+        const safeVisibleLengthMultiplier =
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    visibleLengthMultiplier,
+                ),
+            );
 
         this.sprite.width =
             this.length *
-            lengthMultiplier;
+            lengthMultiplier *
+            safeVisibleLengthMultiplier;
 
         this.sprite.height =
             this.width *
@@ -161,6 +180,7 @@ export class WindVfxParticle {
 
         this.sineFrequency =
             0;
+
 
         this.sourceId =
             null;

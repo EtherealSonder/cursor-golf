@@ -24,6 +24,12 @@ export interface RobotDefinition {
     readonly avoidanceReleaseClearFrames: number;
     readonly stuckTimeoutSeconds: number;
     readonly stuckMinimumProgress: number;
+    readonly stuckRecoveryShrinkSeconds: number;
+    readonly stuckRecoveryGrowSeconds: number;
+    readonly stuckRecoveryMinimumRadius: number;
+    readonly stuckRecoveryMaximumRadius: number;
+    readonly stuckRecoveryRadiusStep: number;
+    readonly stuckRecoveryAttemptsPerRadius: number;
     readonly turnSpeedRadiansPerSecond: number;
     readonly turnAlignmentToleranceDegrees: number;
     readonly stepDistance: number;
@@ -82,8 +88,16 @@ export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     // returning to direct travel. This suppresses left/right obstacle jitter.
     avoidanceCommitSeconds: 0.45,
     avoidanceReleaseClearFrames: 4,
-    stuckTimeoutSeconds: 1.5,
+    // A relocation is a last-resort recovery, so require a sustained lack of
+    // progress rather than reacting to short avoidance pauses.
+    stuckTimeoutSeconds: 4.0,
     stuckMinimumProgress: 5,
+    stuckRecoveryShrinkSeconds: 0.25,
+    stuckRecoveryGrowSeconds: 0.30,
+    stuckRecoveryMinimumRadius: 110,
+    stuckRecoveryMaximumRadius: 260,
+    stuckRecoveryRadiusStep: 50,
+    stuckRecoveryAttemptsPerRadius: 12,
 
     // R-3 turn-before-walk and discrete step locomotion.
     turnSpeedRadiansPerSecond: Math.PI * 1.65,

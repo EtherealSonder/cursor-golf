@@ -334,19 +334,114 @@ export class LocalWindEmitter {
                     .frontOffset +
                 particle.distance;
 
+            const proposedX =
+                source.positionX + directionX * forward + perpendicularX * lateral;
+            const proposedY =
+                source.positionY + directionY * forward + perpendicularY * lateral;
+            const obstacleQuery = this.localWindSystem.getObstacleQuery();
+
+            /*
+             * The authoritative Wind query treats particles as points, while
+             * the rendered masks are long centre-anchored streaks. A particle
+             * centre can therefore still be clear while its visible leading
+             * edge overlaps a blocker. First reject centres that have crossed
+             * the hard cutoff, then clip the rendered streak against the same
+             * obstacle boundary.
+             */
+            if (obstacleQuery?.segmentBlocked(
+                source.positionX,
+                source.positionY,
+                proposedX,
+                proposedY,
+            )) {
+                this.recycle(particle, source, false);
+                continue;
+            }
+
+            const travelDirectionX =
+                pullFlow
+                    ? -directionX
+                    : directionX;
+
+            const travelDirectionY =
+                pullFlow
+                    ? -directionY
+                    : directionY;
+
+            const renderedLength =
+                particle.length *
+                this.definition.local
+                    .spriteLengthMultiplier;
+
+            const halfRenderedLength =
+                renderedLength *
+                0.5;
+
+            const clearForwardLength =
+                obstacleQuery
+                    ? this.getClearForwardLength(
+                        obstacleQuery,
+                        proposedX,
+                        proposedY,
+                        travelDirectionX,
+                        travelDirectionY,
+                        halfRenderedLength,
+                    )
+                    : halfRenderedLength;
+
+            /*
+             * Leave a tiny visual clearance so antialiased mask pixels do not
+             * bleed over the static collider edge.
+             */
+            const collisionClearance =
+                1.5;
+
+            const clippedForwardLength =
+                Math.max(
+                    0,
+                    clearForwardLength -
+                    collisionClearance,
+                );
+
+            const visibleRenderedLength =
+                Math.min(
+                    renderedLength,
+                    halfRenderedLength +
+                    clippedForwardLength,
+                );
+
+            if (
+                visibleRenderedLength <=
+                1
+            ) {
+                this.recycle(
+                    particle,
+                    source,
+                    false,
+                );
+                continue;
+            }
+
+            /*
+             * Sprite width scales around its centre. Shift the clipped Sprite
+             * backwards by half of the removed leading length so its rear edge
+             * stays fixed and its leading edge terminates at the blocker.
+             */
+            const removedLeadingLength =
+                renderedLength -
+                visibleRenderedLength;
+
             particle.positionX =
-                source.positionX +
-                directionX *
-                forward +
-                perpendicularX *
-                lateral;
+                proposedX -
+                travelDirectionX *
+                removedLeadingLength *
+                0.5;
 
             particle.positionY =
-                source.positionY +
-                directionY *
-                forward +
-                perpendicularY *
-                lateral;
+                proposedY -
+                travelDirectionY *
+                removedLeadingLength *
+                0.5;
 
             particle.sprite.position.set(
                 particle.positionX,
@@ -361,6 +456,10 @@ export class LocalWindEmitter {
                     .spriteLengthMultiplier,
                 this.definition.local
                     .spriteWidthMultiplier,
+                renderedLength > 0
+                    ? visibleRenderedLength /
+                        renderedLength
+                    : 0,
             );
 
             const endFadeStart =
@@ -448,12 +547,17 @@ export class LocalWindEmitter {
         particle.sourceId =
             source.id;
 
+        const pullFlow =
+            source.flowMode === "pull";
+
         particle.speed =
             this.random(
-                this.definition.local
-                    .minimumSpeed,
-                this.definition.local
-                    .maximumSpeed,
+                pullFlow
+                    ? this.definition.local.pullMinimumSpeed
+                    : this.definition.local.minimumSpeed,
+                pullFlow
+                    ? this.definition.local.pullMaximumSpeed
+                    : this.definition.local.maximumSpeed,
             );
 
         particle.length =
@@ -524,7 +628,6 @@ export class LocalWindEmitter {
                     .maximumSineFrequency,
             );
 
-        const pullFlow = source.flowMode === "pull";
         const minimumCenterDistance =
             this.getMinimumCenterDistance(
                 particle,
@@ -646,6 +749,106 @@ export class LocalWindEmitter {
             this.definition.local
                 .frontOffset,
         );
+    }
+
+    /**
+     * Return the clear distance from a particle centre toward its visible
+     * leading edge. Binary search is used only when the full leading half is
+     * obstructed, keeping the common unobstructed path inexpensive.
+     */
+    private getClearForwardLength(
+        obstacleQuery:
+            NonNullable<ReturnType<LocalWindSystem["getObstacleQuery"]>>,
+
+        centerX:
+            number,
+
+        centerY:
+            number,
+
+        directionX:
+            number,
+
+        directionY:
+            number,
+
+        maximumLength:
+            number,
+    ): number {
+
+        if (
+            maximumLength <=
+            0
+        ) {
+            return 0;
+        }
+
+        const endX =
+            centerX +
+            directionX *
+            maximumLength;
+
+        const endY =
+            centerY +
+            directionY *
+            maximumLength;
+
+        if (!obstacleQuery.segmentBlocked(
+            centerX,
+            centerY,
+            endX,
+            endY,
+        )) {
+            return maximumLength;
+        }
+
+        let clearLength =
+            0;
+
+        let blockedLength =
+            maximumLength;
+
+        /*
+         * Eight iterations resolve a typical 40-100 px Wind mask to well
+         * below one pixel without adding per-frame collider allocations.
+         */
+        for (
+            let iteration = 0;
+            iteration < 8;
+            iteration += 1
+        ) {
+            const candidateLength =
+                (
+                    clearLength +
+                    blockedLength
+                ) *
+                0.5;
+
+            const candidateX =
+                centerX +
+                directionX *
+                candidateLength;
+
+            const candidateY =
+                centerY +
+                directionY *
+                candidateLength;
+
+            if (obstacleQuery.segmentBlocked(
+                centerX,
+                centerY,
+                candidateX,
+                candidateY,
+            )) {
+                blockedLength =
+                    candidateLength;
+            } else {
+                clearLength =
+                    candidateLength;
+            }
+        }
+
+        return clearLength;
     }
 
     private lerp(

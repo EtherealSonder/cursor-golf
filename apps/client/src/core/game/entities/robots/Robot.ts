@@ -22,6 +22,7 @@ import type { DynamicObstacleDefinition } from "../../config/ObstacleDefinition"
 import type { DynamicCollidableImpact } from "../../physics/DynamicCollidable";
 import { RobotImpactReactionController } from "./RobotImpactReactionController";
 import { RigidBody2D } from "../../physics/RigidBody2D";
+import { RobotStuckRecoveryController } from "./RobotStuckRecoveryController";
 
 export type RobotMovementState = "WAITING" | "TURNING" | "WANDERING" | "DETECTING" | "TARGET_LOCKED" | "WARNING" | "ATTACKING";
 
@@ -79,6 +80,7 @@ export class Robot extends Entity {
     private lastCommittedTargetY: number | null = null;
     private readonly ledDisplay: RobotLedDisplay;
     private readonly impactReactionController: RobotImpactReactionController;
+    private readonly stuckRecoveryController: RobotStuckRecoveryController;
     private visionCandidates: readonly RobotVisionCandidate[] = [];
     private detectedTargetId: string | null = null;
     private detectedTargetLabel: string | null = null;
@@ -99,7 +101,9 @@ export class Robot extends Entity {
         this.obstacleAvoidance = new RobotObstacleAvoidance(navigationQuery);
         this.visionSystem = new RobotVisionSystem(new RobotTargetQuery(interactionRegistry), interactionRegistry);
         this.targetingController = new RobotTargetingController(
-            definition.targetAlignmentToleranceDegrees, definition.targetLossGraceSeconds,
+            definition.targetAlignmentToleranceDegrees,
+            definition.targetLossGraceSeconds,
+            (target) => interactionRegistry.getAttackTargets().some((entry) => entry.id === target.id),
         );
         this.attackController = new RobotAttackController(
             definition.attackDurationSeconds, definition.attackCooldownSeconds,
@@ -122,6 +126,10 @@ export class Robot extends Entity {
         this.impactReactionController = new RobotImpactReactionController(
             definition.impactReactionDurationSeconds,
             definition.impactScanAngleDegrees * Math.PI / 180,
+        );
+        this.stuckRecoveryController = new RobotStuckRecoveryController(
+            definition.stuckRecoveryShrinkSeconds,
+            definition.stuckRecoveryGrowSeconds,
         );
         const externalMass = definition.externalForceMass;
         this.externalRigidBody = new RigidBody2D({
@@ -221,6 +229,26 @@ export class Robot extends Entity {
         );
     }
 
+    /**
+     * World lifecycle hook used before a targetable entity is destroyed.
+     * Clearing the retained target prevents the target-loss grace window from
+     * keeping callbacks to an Entity whose presentation has already been torn down.
+     */
+    public invalidateCurrentTarget(): void {
+        this.targetingController.clear();
+        this.detectedTargetId = null;
+        this.detectedTargetLabel = null;
+        this.visionCandidates = [];
+
+        if (this.state === "WARNING") {
+            this.elementAttackController.cancelWarning();
+            this.destination = null;
+            this.headingErrorDegrees = 0;
+            this.resetAvoidanceState();
+            this.beginWaiting(0);
+        }
+    }
+
     public getDebugSnapshot(): RobotDebugSnapshot {
         const distanceToDestination = this.destination
             ? Math.hypot(this.destination.x - this.getX(), this.destination.y - this.getY()) : null;
@@ -300,6 +328,12 @@ export class Robot extends Entity {
                 this.getY() + externalMotion.positionDeltaY,
             );
         }
+        if (this.stuckRecoveryController.isActive()) {
+            this.updateStuckRecovery(deltaTime);
+            this.updateLedDisplay(deltaTime);
+            return;
+        }
+
         this.obstacleAvoidance.update(deltaTime);
         this.attackController.updateCooldown(deltaTime);
         this.impactReactionController.updateContactEpisodes(deltaTime);
@@ -592,8 +626,16 @@ export class Robot extends Entity {
 
         this.updateProgressWatch(distance, deltaTime);
         if (this.stuckSeconds >= this.definition.stuckTimeoutSeconds) {
-            this.abandonedDestinations += 1; this.destination = null;
-            this.resetAvoidanceState(); this.locomotion?.reset(); this.beginWaiting(0.35); return;
+            if (this.beginStuckRecovery()) return;
+
+            // If no safe recovery point exists, retain the old conservative
+            // fallback and simply abandon this destination.
+            this.abandonedDestinations += 1;
+            this.destination = null;
+            this.resetAvoidanceState();
+            this.locomotion?.reset();
+            this.beginWaiting(0.35);
+            return;
         }
 
         const desiredX = dx / distance;
@@ -638,6 +680,56 @@ export class Robot extends Entity {
         } else {
             this.stuckSeconds += deltaTime;
             this.locomotion.reset();
+        }
+    }
+
+    private beginStuckRecovery(): boolean {
+        const recoveryPoint = this.navigationQuery.findRecoveryPosition(
+            this.getX(),
+            this.getY(),
+            this.getClearanceRadius(),
+            this.definition.stuckRecoveryMinimumRadius,
+            this.definition.stuckRecoveryMaximumRadius,
+            this.definition.stuckRecoveryRadiusStep,
+            this.definition.stuckRecoveryAttemptsPerRadius,
+        );
+
+        if (!recoveryPoint) return false;
+
+        this.abandonedDestinations += 1;
+        this.destination = null;
+        this.headingErrorDegrees = 0;
+        this.resetAvoidanceState();
+        this.locomotion?.reset();
+        this.externalRigidBody.setVelocity(0, 0);
+        this.externalRigidBody.setAngularVelocity(0);
+        this.state = "WAITING";
+        this.waitRemainingSeconds = 0;
+        return this.stuckRecoveryController.begin(recoveryPoint);
+    }
+
+    private updateStuckRecovery(deltaTime: number): void {
+        this.locomotion?.reset();
+        this.externalRigidBody.setVelocity(0, 0);
+        this.externalRigidBody.setAngularVelocity(0);
+
+        const update = this.stuckRecoveryController.update(deltaTime);
+        this.visualRoot.scale.set(update.visualScale);
+
+        if (update.relocationRequested) {
+            const point = this.stuckRecoveryController.getRecoveryPoint();
+            if (point) {
+                this.setPosition(point.x, point.y);
+                this.roamCenterX = point.x;
+                this.roamCenterY = point.y;
+            }
+            this.stuckRecoveryController.markRelocated();
+        }
+
+        if (update.completed) {
+            this.visualRoot.scale.set(1);
+            this.resetAvoidanceState();
+            this.beginWaiting(0);
         }
     }
 

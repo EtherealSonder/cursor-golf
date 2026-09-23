@@ -162,7 +162,7 @@ export class PlayerController {
         // Moving-Ball Interaction Lock
         // ---------------------------------------------------
 
-        if (ball.isMoving()) {
+        if (!ball.canInteractWithClub()) {
 
             if (this.dragging) {
                 this.dragging = false;
@@ -292,7 +292,7 @@ export class PlayerController {
         mouseWorldY: number,
     ): boolean {
 
-        if (ball.isMoving()) {
+        if (!ball.canInteractWithClub()) {
             return false;
         }
 

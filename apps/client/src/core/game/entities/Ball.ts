@@ -60,10 +60,6 @@ import type {
 } from "../environment/WindManager";
 
 import type {
-    LocalWindSystem,
-} from "../environment/LocalWindSystem";
-
-import type {
     SurfaceSystem,
 } from "../surface/SurfaceSystem";
 
@@ -248,13 +244,6 @@ export class Ball extends Entity {
         WindManager;
 
     /**
-     * Shared authoritative local-airflow query owned
-     * by World.
-     */
-    private readonly localWindSystem:
-        LocalWindSystem;
-
-    /**
      * Shared authoritative terrain query owned by
      * World.
      *
@@ -336,6 +325,15 @@ export class Ball extends Entity {
 
     private restStabilityElapsedTime = 0;
 
+    /**
+     * Gameplay interaction eligibility is separate from BallMotionState.
+     * Continuous environmental forces may keep the Ball physically moving
+     * while it is still slow and stable enough for another golf shot.
+     */
+    private clubInteractable = true;
+
+    private clubInteractionSettleElapsedTime = 0;
+
     private readonly impactListeners:
         Set<BallImpactListener> =
         new Set<BallImpactListener>();
@@ -388,9 +386,6 @@ export class Ball extends Entity {
         surfaceSystem:
             SurfaceSystem,
 
-        localWindSystem:
-            LocalWindSystem,
-
         waterField?:
             WaterField,
     ) {
@@ -429,9 +424,6 @@ export class Ball extends Entity {
 
         this.surfaceSystem =
             surfaceSystem;
-
-        this.localWindSystem =
-            localWindSystem;
 
         this.ballWaterSampler =
             waterField
@@ -514,6 +506,10 @@ export class Ball extends Entity {
             BallGameplayState.Active
         ) {
             this.updateMotion(
+                safeDeltaTime,
+            );
+
+            this.updateClubInteractionEligibility(
                 safeDeltaTime,
             );
 
@@ -613,6 +609,9 @@ export class Ball extends Entity {
         this.obstacleCollisionCount = 0;
 
         this.restStabilityElapsedTime = 0;
+
+        this.clubInteractable = true;
+        this.clubInteractionSettleElapsedTime = 0;
 
         this.interactionState =
             BallInteractionState.Normal;
@@ -742,8 +741,7 @@ export class Ball extends Entity {
     ): boolean {
 
         return (
-            this.isAvailableForInteraction() &&
-            this.isStationary() &&
+            this.canInteractWithClub() &&
             this.canLaunchWithPower(
                 normalizedPower,
             ) &&
@@ -766,8 +764,7 @@ export class Ball extends Entity {
     ): boolean {
 
         if (
-            !this.isAvailableForInteraction() ||
-            this.isMoving()
+            !this.canInteractWithClub()
         ) {
             return false;
         }
@@ -830,6 +827,9 @@ export class Ball extends Entity {
 
         this.motionState =
             BallMotionState.Moving;
+
+        this.clubInteractable = false;
+        this.clubInteractionSettleElapsedTime = 0;
 
         this.launchPositionX =
             this.getX();
@@ -914,6 +914,87 @@ export class Ball extends Entity {
             this.motionState ===
             BallMotionState.Stationary
         );
+    }
+
+    /**
+     * Gameplay-level club eligibility. This deliberately does not require
+     * the Ball to be physically stationary.
+     */
+    public canInteractWithClub():
+        boolean {
+
+        return (
+            this.isAvailableForInteraction() &&
+            this.clubInteractable
+        );
+    }
+
+    private updateClubInteractionEligibility(
+        deltaTime: number,
+    ): void {
+
+        if (!this.isAvailableForInteraction()) {
+            this.clubInteractable = false;
+            this.clubInteractionSettleElapsedTime = 0;
+            return;
+        }
+
+        const measuredSpeed =
+            this.getSpeed();
+
+        const speed =
+            Number.isFinite(measuredSpeed)
+                ? measuredSpeed
+                : Number.POSITIVE_INFINITY;
+
+        if (this.clubInteractable) {
+            if (
+                speed >=
+                this.physicsDefinition
+                    .clubInteractionExitSpeed
+            ) {
+                this.clubInteractable = false;
+                this.clubInteractionSettleElapsedTime = 0;
+            }
+
+            return;
+        }
+
+        if (
+            speed <=
+            this.physicsDefinition
+                .clubInteractionEnterSpeed
+        ) {
+            this.clubInteractionSettleElapsedTime +=
+                Math.max(0, deltaTime);
+
+            if (
+                this.clubInteractionSettleElapsedTime >=
+                this.physicsDefinition
+                    .clubInteractionSettleTime
+            ) {
+                this.clubInteractable = true;
+                this.clubInteractionSettleElapsedTime = 0;
+            }
+
+            return;
+        }
+
+        // Continuous environmental forces can make a nearly-resting Ball
+        // oscillate around the enter threshold without ever becoming physically
+        // stationary. While it remains below the exit threshold, decay the
+        // accumulated settle time instead of throwing it away in one frame.
+        // This keeps the club responsive in Fan + Water cases while the higher
+        // exit threshold still rejects clearly moving Balls immediately.
+        if (speed < this.physicsDefinition.clubInteractionExitSpeed) {
+            this.clubInteractionSettleElapsedTime = Math.max(
+                0,
+                this.clubInteractionSettleElapsedTime - Math.max(0, deltaTime) * 0.5,
+            );
+            return;
+        }
+
+        this.clubInteractionSettleElapsedTime = 0;
     }
 
     // -------------------------------------------------------
@@ -1182,6 +1263,8 @@ export class Ball extends Entity {
             impulseX !== 0 ||
             impulseY !== 0
         ) {
+            // Generic external forces, including Local Wind, invalidate rest
+            // stability without requiring a Ball-specific Wind code path.
             this.restStabilityElapsedTime = 0;
         }
 
@@ -1343,40 +1426,9 @@ export class Ball extends Entity {
                 }
             }
 
-            /*
-             * A stationary Ball must still respond to authoritative Local Wind.
-             * Previously updateMotion returned before the LocalWindSystem sample,
-             * so a Fan or Wind Robot could never wake a Ball that had settled.
-             * Global Wind keeps its existing speed-scaled behaviour; only local
-             * authored airflow is allowed to wake the stationary Ball here.
-             */
-            const restingLocalWind =
-                this.localWindSystem.getAccelerationAt(
-                    this.getX(),
-                    this.getY(),
-                );
-
-            const restingLocalWindMagnitude =
-                Math.hypot(
-                    restingLocalWind.x,
-                    restingLocalWind.y,
-                );
-
-            if (
-                restingLocalWindMagnitude > 0.001 &&
-                deltaTime > 0
-            ) {
-                this.velocityX += restingLocalWind.x * deltaTime;
-                this.velocityY += restingLocalWind.y * deltaTime;
-
-                if (
-                    this.getSpeed() >
-                    this.physicsDefinition.stopSpeedThreshold
-                ) {
-                    this.motionState = BallMotionState.Moving;
-                    this.setInteractionState(BallInteractionState.Normal);
-                }
-            }
+            // Local Wind is applied generically through LocalWindDynamicForceSystem.
+            // A Wind impulse above the normal stop threshold wakes this Ball via
+            // applyImpulseAtWorldPoint(), while sub-threshold drift remains physical.
 
             return;
         }
@@ -1583,32 +1635,14 @@ export class Ball extends Entity {
                     this.velocityY,
                 );
 
-        /*
-         * Local airflow is sampled inside every
-         * internal physics sub-step so fast movement
-         * cannot skip a narrow Fan stream.
-         */
-        const localWindAcceleration =
-            this.localWindSystem
-                .getAccelerationAt(
-                    this.getX(),
-                    this.getY(),
-                );
-
-        const combinedWindAccelerationX =
-            globalWindAcceleration.x +
-            localWindAcceleration.x;
-
-        const combinedWindAccelerationY =
-            globalWindAcceleration.y +
-            localWindAcceleration.y;
-
+        // Local Wind is applied once, generically, by
+        // LocalWindDynamicForceSystem. Global course Wind remains Ball-specific.
         this.velocityX +=
-            combinedWindAccelerationX *
+            globalWindAcceleration.x *
             deltaTime;
 
         this.velocityY +=
-            combinedWindAccelerationY *
+            globalWindAcceleration.y *
             deltaTime;
 
         const speedAfterWind =
@@ -1634,11 +1668,6 @@ export class Ball extends Entity {
                     globalWindAccelerationY:
                         globalWindAcceleration.y,
 
-                    localWindAccelerationX:
-                        localWindAcceleration.x,
-
-                    localWindAccelerationY:
-                        localWindAcceleration.y,
                 },
             );
 

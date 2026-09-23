@@ -223,6 +223,25 @@ export const DEFAULT_LOCAL_WIND_VISUAL_DEFINITION:
     recyclePadding: 24,
 };
 
+
+
+/** Static-only Local Wind hard-occlusion tuning. */
+export interface LocalWindObstacleDefinition {
+    readonly sampleSpacing: number;
+    readonly collisionTolerance: number;
+    /** @deprecated Hard cutoff keeps this at zero for query compatibility. */
+    readonly edgeWrapDistance: number;
+    /** @deprecated Hard cutoff keeps this at zero for query compatibility. */
+    readonly edgeWrapStrengthMultiplier: number;
+}
+
+export const DEFAULT_LOCAL_WIND_OBSTACLE_DEFINITION: LocalWindObstacleDefinition = {
+    sampleSpacing: 12,
+    collisionTolerance: 3,
+    edgeWrapDistance: 0,
+    edgeWrapStrengthMultiplier: 0,
+};
+
 /**
  * Development-only rendering definition for the exact Local Wind simulation
  * volume. This is presentation/debug data only and never changes airflow.
@@ -275,4 +294,63 @@ export const DEFAULT_LOCAL_WIND_DEBUG_VISUAL_DEFINITION:
     directionArrowLength: 28,
     arrowHeadLength: 12,
     directionArrowAlpha: 0.95,
+};
+
+
+/**
+ * Generic Local Wind coupling for registered movable rigid bodies.
+ *
+ * LocalWindSystem exposes an authored acceleration field. Treating that value
+ * as the acceleration of a reference-mass body lets the same field become a
+ * physical force for every DynamicCollidable, so heavier bodies respond less
+ * without entity-specific Wind multipliers.
+ */
+export interface LocalWindDynamicForceDefinition {
+    /** Body mass that preserves the authored Local Wind acceleration exactly. */
+    readonly referenceMass: number;
+
+    /** Ignore extremely small residual field values. Units: px/s^2. */
+    readonly minimumAcceleration: number;
+
+    /** Safety cap for one body's accumulated Wind impulse in one update. */
+    readonly maximumImpulsePerStep: number;
+
+    /** Extra pull authority that ramps in only for heavier bodies. */
+    readonly pullHeavyBodyMaximumMultiplier: number;
+    readonly pullHeavyBodyReferenceMass: number;
+}
+
+export const DEFAULT_LOCAL_WIND_DYNAMIC_FORCE_DEFINITION:
+    LocalWindDynamicForceDefinition = {
+
+    // Ball mass is 1, preserving the Ball's previous Local Wind response.
+    referenceMass: 1,
+
+    minimumAcceleration: 0.001,
+
+    // High enough not to alter current Fan/Robot tuning during normal frames,
+    // while still protecting physics from pathological delta-time spikes.
+    maximumImpulsePerStep: 240,
+
+    // Keeps Ball/light props near existing tuning while making Wind Robot
+    // suction more playful against Fans/Fire Tubes/other Robots.
+    pullHeavyBodyMaximumMultiplier: 1.55,
+    pullHeavyBodyReferenceMass: 16,
+};
+
+
+/** Generic capture presentation/geometry for enabled pull-type Local Wind sources. */
+export interface WindSuctionCaptureDefinition {
+    /** Radial tolerance around the authoritative nozzle mouth. */
+    readonly nozzleCaptureRadius: number;
+    /** How far in front of the nozzle a target may be captured. */
+    readonly nozzleCaptureDepth: number;
+    /** Seconds for a captured object to shrink from full size to zero. */
+    readonly shrinkDurationSeconds: number;
+}
+
+export const DEFAULT_WIND_SUCTION_CAPTURE_DEFINITION: WindSuctionCaptureDefinition = {
+    nozzleCaptureRadius: 34,
+    nozzleCaptureDepth: 30,
+    shrinkDurationSeconds: 0.28,
 };

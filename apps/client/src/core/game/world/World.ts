@@ -129,6 +129,12 @@ import {
 import {
     HoseJetBallForceSystem,
 } from "../physics/water/HoseJetBallForceSystem";
+import {
+    LocalWindDynamicForceSystem,
+} from "../physics/wind/LocalWindDynamicForceSystem";
+import {
+    WindSuctionCaptureSystem,
+} from "../physics/wind/WindSuctionCaptureSystem";
 import { ROBOT_HOSE_JET_BALL_FORCE_DEFINITION } from "../config/HoseJetBallForceDefinition";
 import { FireSourceType } from "../config/FireSourceDefinition";
 
@@ -442,6 +448,12 @@ export class World {
     private readonly localWindSystem:
         LocalWindSystem;
 
+    private readonly localWindDynamicForceSystem:
+        LocalWindDynamicForceSystem;
+
+    private readonly windSuctionCaptureSystem:
+        WindSuctionCaptureSystem;
+
     private readonly fans:
         Fan[] = [];
 
@@ -451,6 +463,10 @@ export class World {
     /** Phase 8B-3 Water mechanisms. Stationary until the later physics step. */
     private readonly sprinklers:
         Sprinkler[] = [];
+
+    /** Unregister callbacks for Sprinklers exposed to Robot perception/navigation. */
+    private readonly sprinklerRobotInteractionUnregister =
+        new Map<Sprinkler, () => void>();
 
     /** Phase 8B-10A fixed Hydrant with physical segmented Hose. */
     private hydrantHose:
@@ -725,6 +741,17 @@ export class World {
                 ).sources,
             );
 
+        this.localWindDynamicForceSystem =
+            new LocalWindDynamicForceSystem(
+                this.localWindSystem,
+                this.physicsWorld,
+            );
+
+        this.windSuctionCaptureSystem =
+            new WindSuctionCaptureSystem(
+                this.localWindSystem,
+            );
+
         this.surfaceSystem =
             new SurfaceSystem(
                 SurfaceType.Grass,
@@ -909,7 +936,6 @@ export class World {
                     .getRigidDynamicCollidables(),
                 this.windManager,
                 this.surfaceSystem,
-                this.localWindSystem,
                 this.waterField,
             );
 
@@ -917,6 +943,15 @@ export class World {
             this.ball,
             WorldRenderLayer.GameplayActors,
         );
+
+        // Ball intentionally remains outside PhysicsWorld's dynamic-collider list
+        // because it consumes that list for obstacle collision. Register it only
+        // with the generic Local Wind force bridge to avoid self-collision.
+        this.localWindDynamicForceSystem
+            .registerAdditionalBody(
+                this.ball,
+            );
+
         this.createBallTrail();
 
         this.robotInteractionRegistry.register({
@@ -1491,6 +1526,15 @@ export class World {
             }
         });
 
+        /*
+         * Apply Local Wind after entities synchronize their current-frame source
+         * transforms. Impulses are consumed by each body's normal physics update;
+         * mass response comes from DynamicCollidable inverse mass.
+         */
+        this.localWindDynamicForceSystem.update(deltaTime);
+        this.windSuctionCaptureSystem.update(deltaTime);
+        this.processCompletedWindSuctionCaptures();
+
         this.robotDebugVisualizer
             ?.update();
 
@@ -1816,6 +1860,7 @@ export class World {
             0;
 
         this.robotInteractionRegistry.clear();
+        this.sprinklerRobotInteractionUnregister.clear();
 
         this.physicsWorld
             .clear();
@@ -2941,6 +2986,22 @@ export class World {
                     },
                 );
 
+            this.windSuctionCaptureSystem.registerTarget({
+                id: placement.id,
+                body: sprinkler,
+                beginCapture: (): void => {
+                    sprinkler.beginSuctionCapture();
+                    // Remove gameplay obstruction immediately at nozzle contact.
+                    // The visual Entity remains alive until the shrink completes.
+                    this.physicsWorld.unregisterDynamicBody(sprinkler);
+                    this.sprinklerRobotInteractionUnregister.get(sprinkler)?.();
+                    this.sprinklerRobotInteractionUnregister.delete(sprinkler);
+                },
+                setCaptureScale: (scale: number): void => {
+                    sprinkler.setSuctionCaptureScale(scale);
+                },
+            });
+
             this.addEntity(sprinkler);
         }
     }
@@ -3550,12 +3611,28 @@ export class World {
         for (let index = 0; index < this.sprinklers.length; index += 1) {
             const sprinkler = this.sprinklers[index];
             if (!sprinkler) continue;
-            this.robotInteractionRegistry.register({
+            const unregister = this.robotInteractionRegistry.register({
                 id: `sprinkler-${index}`, label: "Sprinkler",
                 capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
                 shape: { kind: "circle", radius: 30 },
                 getX: (): number => sprinkler.getX(), getY: (): number => sprinkler.getY(),
             });
+            this.sprinklerRobotInteractionUnregister.set(sprinkler, unregister);
+        }
+    }
+
+    /**
+     * Finalizes capture only after the shrink animation has completed. World
+     * unregisters every live reference before Entity.destroy() can invalidate
+     * the Sprinkler transform used by Robot vision/navigation.
+     */
+    private processCompletedWindSuctionCaptures(): void {
+        for (const target of this.windSuctionCaptureSystem.consumeCompletedTargets()) {
+            const sprinkler = this.sprinklers.find((candidate) => candidate === target.body);
+            if (!sprinkler) continue;
+
+            sprinkler.completeSuctionCapture();
+            this.removeEntity(sprinkler);
         }
     }
 
@@ -3606,6 +3683,28 @@ export class World {
             return;
         }
 
+        // World-owned registrations must be released before destroy() nulls
+        // presentation state that Robot vision/navigation callbacks may read.
+        if (entity instanceof Sprinkler) {
+            this.sprinklerRobotInteractionUnregister.get(entity)?.();
+            this.sprinklerRobotInteractionUnregister.delete(entity);
+
+            // The registry entry is gone now, but a Robot targeting controller may
+            // still retain that entry during its target-loss grace window. Release
+            // those direct references before destroy() invalidates Entity.getX/Y().
+            this.fireRobot?.invalidateCurrentTarget();
+            this.waterRobot?.invalidateCurrentTarget();
+            this.secondFireRobot?.invalidateCurrentTarget();
+            this.secondWaterRobot?.invalidateCurrentTarget();
+            this.windRobot?.invalidateCurrentTarget();
+            this.windSuctionCaptureSystem.unregisterTarget(entity.getSourceId());
+            this.physicsWorld.unregisterDynamicBody(entity);
+            this.waterSourceSystem.removeSource(entity.getSourceId());
+
+            const sprinklerIndex = this.sprinklers.indexOf(entity);
+            if (sprinklerIndex !== -1) this.sprinklers.splice(sprinklerIndex, 1);
+        }
+
         entity.destroy();
 
         this.entities.splice(
@@ -3636,32 +3735,12 @@ export class World {
         if (
             entity instanceof DynamicObstacle ||
             entity instanceof Fan ||
-            entity instanceof FireTube ||
-            entity instanceof Sprinkler
+            entity instanceof FireTube
         ) {
             this.physicsWorld
                 .unregisterDynamicBody(
                     entity,
                 );
-        }
-
-        if (
-            entity instanceof Sprinkler
-        ) {
-            const sprinklerIndex =
-                this.sprinklers.indexOf(
-                    entity,
-                );
-
-            if (
-                sprinklerIndex !==
-                -1
-            ) {
-                this.sprinklers.splice(
-                    sprinklerIndex,
-                    1,
-                );
-            }
         }
 
         if (
