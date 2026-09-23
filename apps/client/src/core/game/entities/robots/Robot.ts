@@ -268,7 +268,17 @@ export class Robot extends Entity {
         this.visualRoot.addChild(this.leg1Sprite, this.leg2Sprite, this.bodySprite);
         // The source body already contains the circular black LED surface.
         // Draw the UI over that surface, without creating a second screen.
-        this.visualRoot.addChild(this.ledDisplay.getContainer());
+        const ledContainer = this.ledDisplay.getContainer();
+        // Water and Wind body sheets are wider than Fire because their nozzles
+        // extend farther from the circular chassis. Re-anchor the procedural LED
+        // to the actual black display aperture after the body has been scaled.
+        // Fire retains the already-approved RobotLedDisplay calibration.
+        if (this.definition.element === "water") {
+            ledContainer.position.set(-13.7, 0.25);
+        } else if (this.definition.element === "wind") {
+            ledContainer.position.set(-14.0, 0.0);
+        }
+        this.visualRoot.addChild(ledContainer);
         this.container.addChild(this.visualRoot);
         this.locomotion = new RobotLocomotionController(
             this.leg1Sprite, this.leg2Sprite,

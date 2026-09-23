@@ -317,6 +317,36 @@ export class RigidBody2D {
         this.sleepElapsedTime = 0;
     }
 
+    /**
+     * Shared hook for environmental force systems. A sleeping dynamic body
+     * should remain asleep until a meaningful external acceleration reaches it,
+     * then wake without requiring an impact impulse first.
+     */
+    public wakeForExternalAcceleration(
+        accelerationX: number,
+        accelerationY: number,
+        minimumMagnitude = 0.001,
+    ): boolean {
+        if (
+            this.isStatic() ||
+            !Number.isFinite(accelerationX) ||
+            !Number.isFinite(accelerationY) ||
+            !Number.isFinite(minimumMagnitude)
+        ) {
+            return false;
+        }
+
+        if (
+            Math.hypot(accelerationX, accelerationY) <=
+            Math.max(0, minimumMagnitude)
+        ) {
+            return false;
+        }
+
+        this.wake();
+        return true;
+    }
+
     public sleep(): void {
 
         if (this.isStatic()) {

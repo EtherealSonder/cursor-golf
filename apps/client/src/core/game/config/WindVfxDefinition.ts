@@ -22,6 +22,16 @@ export interface WindVfxDefinition {
     readonly local: WindVfxEmitterDefinition & {
         readonly particlesPerSource: number;
 
+        /** Extra density used only by pull/suction sources such as Wind Robot. */
+        readonly pullParticlesPerSource: number;
+
+        /**
+         * Presentation-only overlap at the narrow end of a pull field. It lets
+         * the visible alpha mask travel slightly inside the nozzle aperture so
+         * suction never appears to stop in mid-air.
+         */
+        readonly pullNozzleOverlap: number;
+
         /**
          * Small presentation-only offset from the authoritative Local Wind
          * source origin. The source itself already sits at the Fan outlet, so
@@ -94,7 +104,8 @@ export const DEFAULT_WIND_VFX_DEFINITION: WindVfxDefinition = {
      * 128 therefore retains useful headroom without needing runtime Sprite
      * allocation during normal testing.
      */
-    poolCapacity: 128,
+    // Extra headroom for the denser Wind Robot suction stream.
+    poolCapacity: 160,
 
     global: {
         minimumParticleCount: 6,
@@ -119,6 +130,8 @@ export const DEFAULT_WIND_VFX_DEFINITION: WindVfxDefinition = {
         minimumParticleCount: 0,
         maximumParticleCount: 24,
         particlesPerSource: 24,
+        pullParticlesPerSource: 40,
+        pullNozzleOverlap: 18,
 
         minimumSpeed: 380,
         maximumSpeed: 620,

@@ -180,10 +180,12 @@ export class LocalWindEmitter {
             );
         }
 
+        const pullFlow = source.flowMode === "pull";
         const target =
             source.enabled
-                ? this.definition.local
-                    .particlesPerSource
+                ? pullFlow
+                    ? this.definition.local.pullParticlesPerSource
+                    : this.definition.local.particlesPerSource
                 : 0;
 
         while (
@@ -246,7 +248,6 @@ export class LocalWindEmitter {
             particle.age +=
                 deltaTime;
 
-            const pullFlow = source.flowMode === "pull";
             particle.distance +=
                 (pullFlow ? -1 : 1) *
                 particle.speed *
@@ -258,7 +259,10 @@ export class LocalWindEmitter {
                     source,
                 );
 
-            const minimumTravelDistance = this.getMinimumCenterDistance(particle);
+            const minimumTravelDistance = this.getMinimumCenterDistance(
+                particle,
+                pullFlow,
+            );
             if (
                 (!pullFlow && particle.distance > maximumCenterDistance) ||
                 (pullFlow && particle.distance < minimumTravelDistance)
@@ -396,6 +400,7 @@ export class LocalWindEmitter {
             const minimumCenterDistance =
                 this.getMinimumCenterDistance(
                     particle,
+                    pullFlow,
                 );
 
             const inletFade =
@@ -415,10 +420,11 @@ export class LocalWindEmitter {
              * Retain a non-zero initial visibility so the first wisps visually
              * connect to the Fan mouth while still fading in smoothly.
              */
-            const inletVisibility =
-                0.38 +
-                0.62 *
-                inletFade;
+            const inletVisibility = pullFlow
+                ? 1
+                : 0.38 +
+                    0.62 *
+                    inletFade;
 
             particle.sprite.alpha =
                 particle.opacity *
@@ -518,9 +524,11 @@ export class LocalWindEmitter {
                     .maximumSineFrequency,
             );
 
+        const pullFlow = source.flowMode === "pull";
         const minimumCenterDistance =
             this.getMinimumCenterDistance(
                 particle,
+                pullFlow,
             );
 
         const maximumCenterDistance =
@@ -587,19 +595,26 @@ export class LocalWindEmitter {
     private getMinimumCenterDistance(
         particle:
             WindVfxParticle,
+
+        pullFlow = false,
     ): number {
 
         /*
-         * The Sprite is centre-anchored. Position its centre by half of the
-         * compensated rendered length so the visible mask begins at the exact
-         * authoritative Local Wind tube origin rather than leaving a gap.
+         * The Sprite is centre-anchored. Push streams keep their visible rear
+         * edge at the Fan outlet. Pull streams deliberately travel a little
+         * farther so the visible mask terminates inside the suction nozzle.
          */
+        const halfRenderedLength =
+            particle.length *
+            this.definition.local.spriteLengthMultiplier *
+            0.50;
+
         return Math.max(
             0,
-            particle.length *
-            this.definition.local
-                .spriteLengthMultiplier *
-            0.50,
+            halfRenderedLength -
+            (pullFlow
+                ? this.definition.local.pullNozzleOverlap
+                : 0),
         );
     }
 
@@ -618,6 +633,7 @@ export class LocalWindEmitter {
         const minimumCenterDistance =
             this.getMinimumCenterDistance(
                 particle,
+                source.flowMode === "pull",
             );
 
         return Math.max(

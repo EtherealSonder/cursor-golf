@@ -16,7 +16,8 @@ export interface RobotWindAttackDefinition {
 
 export const DEFAULT_ROBOT_WIND_ATTACK_DEFINITION: RobotWindAttackDefinition = {
     range: 520,
-    nozzleHalfWidth: 16,
+    // Match the narrow suction field to the visible nozzle mouth.
+    nozzleHalfWidth: 13,
     farHalfWidth: 118,
     acceleration: 2600,
     endStrengthMultiplier: 0.72,

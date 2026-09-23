@@ -151,6 +151,11 @@ export const DEFAULT_WATER_ROBOT_DEFINITION: RobotDefinition = {
     ledColor: 0x1E99FF,
     waterJetBallImpulseMultiplier: 8,
     // Water artwork has a slightly smaller circular LED aperture than Fire.
+    // Match the Fire Robot chassis scale despite the wider Water nozzle artwork.
+    bodyWidth: 122,
+    legScale: 0.085,
+    legOffsetX: -6,
+    legOffsetY: 31,
     ledScreenDiameter: 28,
     enabled: true,
     debugEnabled: false,
@@ -168,8 +173,17 @@ export const DEFAULT_WIND_ROBOT_DEFINITION: RobotDefinition = {
     leg1TextureKey: "windRobotLeg1",
     leg2TextureKey: "windRobotLeg2",
     ledColor: 0xF4F0D8,
-    ledScreenDiameter: 31,
-    windOutletOffset: 48,
+    // Wind artwork is wider than Fire because of its large suction nozzle.
+    // Scale the complete sprite so the circular chassis matches Fire, then
+    // keep the shared legs at the approved Fire proportions.
+    bodyWidth: 120,
+    legScale: 0.085,
+    legOffsetX: -6,
+    legOffsetY: 31,
+    ledScreenDiameter: 25,
+    // With bodyWidth=120 the nozzle lip sits close to local +60. Keep the
+    // authoritative source just inside the painted rim so VFX can overlap it.
+    windOutletOffset: 58,
     enabled: true,
     debugEnabled: false,
 };

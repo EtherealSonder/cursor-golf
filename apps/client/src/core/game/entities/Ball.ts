@@ -1343,6 +1343,41 @@ export class Ball extends Entity {
                 }
             }
 
+            /*
+             * A stationary Ball must still respond to authoritative Local Wind.
+             * Previously updateMotion returned before the LocalWindSystem sample,
+             * so a Fan or Wind Robot could never wake a Ball that had settled.
+             * Global Wind keeps its existing speed-scaled behaviour; only local
+             * authored airflow is allowed to wake the stationary Ball here.
+             */
+            const restingLocalWind =
+                this.localWindSystem.getAccelerationAt(
+                    this.getX(),
+                    this.getY(),
+                );
+
+            const restingLocalWindMagnitude =
+                Math.hypot(
+                    restingLocalWind.x,
+                    restingLocalWind.y,
+                );
+
+            if (
+                restingLocalWindMagnitude > 0.001 &&
+                deltaTime > 0
+            ) {
+                this.velocityX += restingLocalWind.x * deltaTime;
+                this.velocityY += restingLocalWind.y * deltaTime;
+
+                if (
+                    this.getSpeed() >
+                    this.physicsDefinition.stopSpeedThreshold
+                ) {
+                    this.motionState = BallMotionState.Moving;
+                    this.setInteractionState(BallInteractionState.Normal);
+                }
+            }
+
             return;
         }
 
