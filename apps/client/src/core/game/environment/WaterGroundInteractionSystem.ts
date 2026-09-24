@@ -1,3 +1,4 @@
+// O6 final Water optimization: preserve O5 staggered maintenance and authoritative ground-interaction semantics.
 import {
     DEFAULT_WATER_GROUND_INTERACTION_DEFINITION,
     validateWaterGroundInteractionDefinition,
@@ -53,6 +54,15 @@ export interface WaterGroundInteractionPerformanceBreakdown {
     readonly moistureDiffusionMilliseconds: number;
     readonly groundDryingMilliseconds: number;
     readonly shallowWaterDissipationMilliseconds: number;
+}
+
+export interface WaterGroundInteractionWorkload {
+    readonly waterCandidates: number;
+    readonly infiltratingCells: number;
+    readonly moistureCandidates: number;
+    readonly diffusionPasses: number;
+    readonly dryingPasses: number;
+    readonly shallowWaterCandidates: number;
 }
 
 /**
@@ -126,7 +136,10 @@ export class WaterGroundInteractionSystem {
     private contactWettingEnabled =
         true;
 
-    private moistureMaintenanceAccumulator =
+    private moistureDiffusionMaintenanceAccumulator =
+        0;
+
+    private moistureDryingMaintenanceAccumulator =
         0;
 
     private shallowWaterMaintenanceAccumulator =
@@ -149,11 +162,40 @@ export class WaterGroundInteractionSystem {
     private readonly waterIndexScratch:
         number[] = [];
 
+    /**
+     * Reused moisture snapshot for maintenance passes that can untrack cells.
+     * Avoids allocating a spread-copy of the sparse moisture registry every
+     * maintenance tick.
+     */
+    private readonly moistureIndexScratch:
+        number[] = [];
+
     private readonly surfaceProfileByType:
         ReadonlyMap<SurfaceType, SurfaceInfiltrationDefinition>;
 
-    private performanceBreakdown:
-        WaterGroundInteractionPerformanceBreakdown = {
+    private workload: {
+        waterCandidates: number;
+        infiltratingCells: number;
+        moistureCandidates: number;
+        diffusionPasses: number;
+        dryingPasses: number;
+        shallowWaterCandidates: number;
+    } = {
+        waterCandidates: 0,
+        infiltratingCells: 0,
+        moistureCandidates: 0,
+        diffusionPasses: 0,
+        dryingPasses: 0,
+        shallowWaterCandidates: 0,
+    };
+
+    private performanceBreakdown: {
+        contactWettingMilliseconds: number;
+        infiltrationMilliseconds: number;
+        moistureDiffusionMilliseconds: number;
+        groundDryingMilliseconds: number;
+        shallowWaterDissipationMilliseconds: number;
+    } = {
             contactWettingMilliseconds: 0,
             infiltrationMilliseconds: 0,
             moistureDiffusionMilliseconds: 0,
@@ -175,6 +217,10 @@ export class WaterGroundInteractionSystem {
 
         this.definition =
             definition;
+
+        this.moistureDryingMaintenanceAccumulator =
+            this.definition.moistureMaintenanceInterval *
+            this.definition.moistureDryingPhaseFraction;
 
         this.moistureDiffusionDeltas =
             new Float64Array(
@@ -224,6 +270,15 @@ export class WaterGroundInteractionSystem {
 
         this.lastSubstepCount =
             0;
+
+        this.workload = {
+            waterCandidates: 0,
+            infiltratingCells: 0,
+            moistureCandidates: 0,
+            diffusionPasses: 0,
+            dryingPasses: 0,
+            shallowWaterCandidates: 0,
+        };
 
         this.performanceBreakdown = {
             contactWettingMilliseconds: 0,
@@ -279,16 +334,8 @@ export class WaterGroundInteractionSystem {
 
             this.runContactWettingStep();
 
-            this.performanceBreakdown = {
-                ...this.performanceBreakdown,
-                contactWettingMilliseconds:
-                    this.performanceBreakdown
-                        .contactWettingMilliseconds +
-                    (
-                        performance.now() -
-                        stepStart
-                    ),
-            };
+            this.performanceBreakdown.contactWettingMilliseconds +=
+                performance.now() - stepStart;
 
             stepStart =
                 performance.now();
@@ -297,67 +344,50 @@ export class WaterGroundInteractionSystem {
                 fixedTimeStep,
             );
 
-            this.performanceBreakdown = {
-                ...this.performanceBreakdown,
-                infiltrationMilliseconds:
-                    this.performanceBreakdown
-                        .infiltrationMilliseconds +
-                    (
-                        performance.now() -
-                        stepStart
-                    ),
-            };
+            this.performanceBreakdown.infiltrationMilliseconds +=
+                performance.now() - stepStart;
 
-            this.moistureMaintenanceAccumulator +=
+            /*
+             * O5 spike control: diffusion and drying are both O(N) sparse
+             * maintenance passes. They previously fired on the same 100 ms
+             * boundary, concentrating both scans in one frame. Keep their
+             * authoritative fixed-step elapsed time, but phase-stagger them.
+             */
+            this.moistureDiffusionMaintenanceAccumulator +=
+                fixedTimeStep;
+            this.moistureDryingMaintenanceAccumulator +=
                 fixedTimeStep;
 
             if (
-                this.moistureMaintenanceAccumulator +
+                this.moistureDiffusionMaintenanceAccumulator +
                 stepEpsilon >=
-                this.definition
-                    .moistureMaintenanceInterval
+                this.definition.moistureMaintenanceInterval
             ) {
-                const elapsedMaintenanceTime =
-                    this.moistureMaintenanceAccumulator;
+                const elapsedDiffusionTime =
+                    this.moistureDiffusionMaintenanceAccumulator;
+                this.moistureDiffusionMaintenanceAccumulator = 0;
 
-                this.moistureMaintenanceAccumulator =
-                    0;
+                stepStart = performance.now();
+                this.runMoistureDiffusionStep(elapsedDiffusionTime);
+                this.performanceBreakdown.moistureDiffusionMilliseconds +=
+                    performance.now() - stepStart;
+                this.workload.diffusionPasses += 1;
+            }
 
-                stepStart =
-                    performance.now();
+            if (
+                this.moistureDryingMaintenanceAccumulator +
+                stepEpsilon >=
+                this.definition.moistureMaintenanceInterval
+            ) {
+                const elapsedDryingTime =
+                    this.moistureDryingMaintenanceAccumulator;
+                this.moistureDryingMaintenanceAccumulator = 0;
 
-                this.runMoistureDiffusionStep(
-                    elapsedMaintenanceTime,
-                );
-
-                this.performanceBreakdown = {
-                    ...this.performanceBreakdown,
-                    moistureDiffusionMilliseconds:
-                        this.performanceBreakdown
-                            .moistureDiffusionMilliseconds +
-                        (
-                            performance.now() -
-                            stepStart
-                        ),
-                };
-
-                stepStart =
-                    performance.now();
-
-                this.runGroundDryingStep(
-                    elapsedMaintenanceTime,
-                );
-
-                this.performanceBreakdown = {
-                    ...this.performanceBreakdown,
-                    groundDryingMilliseconds:
-                        this.performanceBreakdown
-                            .groundDryingMilliseconds +
-                        (
-                            performance.now() -
-                            stepStart
-                        ),
-                };
+                stepStart = performance.now();
+                this.runGroundDryingStep(elapsedDryingTime);
+                this.performanceBreakdown.groundDryingMilliseconds +=
+                    performance.now() - stepStart;
+                this.workload.dryingPasses += 1;
             }
 
             this.shallowWaterMaintenanceAccumulator +=
@@ -382,16 +412,8 @@ export class WaterGroundInteractionSystem {
                     elapsedShallowTime,
                 );
 
-                this.performanceBreakdown = {
-                    ...this.performanceBreakdown,
-                    shallowWaterDissipationMilliseconds:
-                        this.performanceBreakdown
-                            .shallowWaterDissipationMilliseconds +
-                        (
-                            performance.now() -
-                            stepStart
-                        ),
-                };
+                this.performanceBreakdown.shallowWaterDissipationMilliseconds +=
+                    performance.now() - stepStart;
             }
 
             this.lastSubstepCount +=
@@ -448,13 +470,26 @@ export class WaterGroundInteractionSystem {
         this.lastSubstepCount =
             0;
 
-        this.moistureMaintenanceAccumulator =
+        this.moistureDiffusionMaintenanceAccumulator =
             0;
+
+        this.moistureDryingMaintenanceAccumulator =
+            this.definition.moistureMaintenanceInterval *
+            this.definition.moistureDryingPhaseFraction;
 
         this.shallowWaterMaintenanceAccumulator =
             0;
 
         this.clearMoistureDiffusionScratch();
+
+        this.workload = {
+            waterCandidates: 0,
+            infiltratingCells: 0,
+            moistureCandidates: 0,
+            diffusionPasses: 0,
+            dryingPasses: 0,
+            shallowWaterCandidates: 0,
+        };
 
         this.performanceBreakdown = {
             contactWettingMilliseconds: 0,
@@ -468,6 +503,10 @@ export class WaterGroundInteractionSystem {
     public getPerformanceBreakdown():
         WaterGroundInteractionPerformanceBreakdown {
         return this.performanceBreakdown;
+    }
+
+    public getWorkload(): WaterGroundInteractionWorkload {
+        return this.workload;
     }
 
     public getDefinition():
@@ -606,6 +645,9 @@ export class WaterGroundInteractionSystem {
             },
         );
 
+        this.workload.waterCandidates +=
+            this.waterIndexScratch.length;
+
         const maximumMoisture =
             this.environmentField
                 .getDefinition()
@@ -628,6 +670,28 @@ export class WaterGroundInteractionSystem {
                 continue;
             }
 
+            /*
+             * O4 sparse fast-reject: saturated cells cannot accept Water, so
+             * reject them before world-coordinate conversion and SurfaceSystem
+             * sampling. This preserves the exact transfer result while avoiding
+             * expensive work for dormant/saturated ground.
+             */
+            const environmentMoisture =
+                this.environmentField.getMoistureByIndex(
+                    index,
+                );
+
+            const remainingMoistureCapacity =
+                Math.max(
+                    0,
+                    maximumMoisture -
+                    environmentMoisture,
+                );
+
+            if (remainingMoistureCapacity <= 0) {
+                continue;
+            }
+
             const waterCenter =
                 this.waterField.getWorldCenterByIndex(index);
 
@@ -645,22 +709,6 @@ export class WaterGroundInteractionSystem {
                 this.getSurfaceProfile(
                     surfaceSample.surfaceType,
                 );
-
-            const environmentMoisture =
-                this.environmentField.getMoistureByIndex(
-                    index,
-                );
-
-            const remainingMoistureCapacity =
-                Math.max(
-                    0,
-                    maximumMoisture -
-                    environmentMoisture,
-                );
-
-            if (remainingMoistureCapacity <= 0) {
-                continue;
-            }
 
             const waterCapacity =
                 remainingMoistureCapacity /
@@ -725,6 +773,7 @@ export class WaterGroundInteractionSystem {
                 );
 
             this.lastInfiltratingCellCount += 1;
+            this.workload.infiltratingCells += 1;
             this.lastWaterTransferred += removedWater;
             this.lastMoistureAdded += acceptedMoisture;
             this.totalWaterTransferred += removedWater;
@@ -745,6 +794,9 @@ export class WaterGroundInteractionSystem {
         const trackedIndices =
             this.environmentField
                 .getTrackedMoistureIndices();
+
+        this.workload.moistureCandidates +=
+            trackedIndices.length;
 
         if (
             trackedIndices.length === 0 ||
@@ -999,14 +1051,20 @@ export class WaterGroundInteractionSystem {
     private runGroundDryingStep(
         deltaTime: number,
     ): void {
-        const trackedIndices =
-            [
-                ...this.environmentField
-                    .getTrackedMoistureIndices(),
-            ];
+        this.moistureIndexScratch.length = 0;
+
+        for (
+            const index
+            of this.environmentField.getTrackedMoistureIndices()
+        ) {
+            this.moistureIndexScratch.push(index);
+        }
+
+        this.workload.moistureCandidates +=
+            this.moistureIndexScratch.length;
 
         if (
-            trackedIndices.length === 0
+            this.moistureIndexScratch.length === 0
         ) {
             return;
         }
@@ -1024,7 +1082,7 @@ export class WaterGroundInteractionSystem {
 
         for (
             const index
-            of trackedIndices
+            of this.moistureIndexScratch
         ) {
             const center =
                 this.environmentField
@@ -1134,6 +1192,9 @@ export class WaterGroundInteractionSystem {
                 this.waterIndexScratch.push(index);
             },
         );
+
+        this.workload.shallowWaterCandidates +=
+            this.waterIndexScratch.length;
 
         for (
             let offset = 0;

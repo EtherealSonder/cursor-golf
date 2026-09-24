@@ -128,6 +128,8 @@ export class AirborneWaterSystem {
         AirborneWaterPacket[] = [];
 
     private readonly impactAwareTargets = new Map<string, AirborneWaterImpactAwareTarget>();
+    // O6: reused per-emission batch to avoid allocating a Map on every source handoff.
+    private readonly emissionOrdinalScratch = new Map<string, number>();
 
     public registerImpactAwareTarget(target: AirborneWaterImpactAwareTarget): void {
         this.impactAwareTargets.set(target.id, target);
@@ -210,7 +212,8 @@ export class AirborneWaterSystem {
         requests:
             readonly WaterEmissionRequest[],
     ): void {
-        const ordinalByPulse = new Map<string, number>();
+        const ordinalByPulse = this.emissionOrdinalScratch;
+        ordinalByPulse.clear();
         for (
             const request
             of requests
@@ -407,6 +410,16 @@ export class AirborneWaterSystem {
     private stepPackets(
         deltaTime: number,
     ): void {
+        /*
+         * O4: global Wind is course-wide and identical for every packet in
+         * this fixed step. Resolve it once rather than once per live packet.
+         * Local Wind remains packet-position dependent and is sampled below.
+         */
+        const globalWind =
+            this.windManager
+                ?.getAcceleration() ??
+            { x: 0, y: 0 };
+
         for (
             let index =
                 this.activePackets.length - 1;
@@ -427,11 +440,6 @@ export class AirborneWaterSystem {
              * Ball-speed-scaled APIs. Airborne Water has its own source-authored
              * windResponse and must not inherit Ball rest/reversal behaviour.
              */
-            const globalWind =
-                this.windManager
-                    ?.getAcceleration() ??
-                { x: 0, y: 0 };
-
             const localWind =
                 this.localWindSystem
                     ?.getAccelerationAt(

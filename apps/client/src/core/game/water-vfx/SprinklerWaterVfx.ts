@@ -21,9 +21,7 @@ import type {
 import type { PresentationVisibilityQuery } from "../../rendering/PresentationVisibilityQuery";
 
 export interface SprinklerWaterVfxPerformanceDetails {
-    readonly totalSources: number;
     readonly activeSources: number;
-    readonly culledSources: number;
     readonly inspectedPackets: number;
     readonly preparedPackets: number;
     readonly renderedElements: number;
@@ -56,10 +54,10 @@ interface PreparedSprinklerDroplet {
 
 export class SprinklerWaterVfx {
     private readonly sourceHashCache = new Map<string, number>();
+    // O6: frame-local source lookup storage is retained and cleared instead of reallocated.
+    private readonly enabledSourceHashesScratch = new Map<string, number>();
     private readonly preparedDroplets: PreparedSprinklerDroplet[] = [];
-    private lastTotalSources = 0;
     private lastActiveSources = 0;
-    private lastCulledSources = 0;
     private lastInspectedPackets = 0;
     private lastPreparedPackets = 0;
     private lastRenderedDroplets = 0;
@@ -92,9 +90,8 @@ export class SprinklerWaterVfx {
             return;
         }
 
-        const enabledSourceHashes = new Map<string, number>();
-        this.lastTotalSources = 0;
-        this.lastCulledSources = 0;
+        const enabledSourceHashes = this.enabledSourceHashesScratch;
+        enabledSourceHashes.clear();
         this.lastInspectedPackets = 0;
         this.lastPreparedPackets = 0;
         this.lastRenderedDroplets = 0;
@@ -106,7 +103,6 @@ export class SprinklerWaterVfx {
             if (!sprinkler.isEnabled()) {
                 continue;
             }
-            this.lastTotalSources += 1;
             if (
                 this.presentationVisibilityQuery &&
                 !this.presentationVisibilityQuery.isPointNearViewport(
@@ -115,7 +111,6 @@ export class SprinklerWaterVfx {
                     160,
                 )
             ) {
-                this.lastCulledSources += 1;
                 continue;
             }
 
@@ -128,17 +123,6 @@ export class SprinklerWaterVfx {
 
         this.lastActiveSources = enabledSourceHashes.size;
         this.lastSourceBookkeepingMilliseconds = performance.now() - startedAt;
-
-        // O3.2: when every Sprinkler source is outside the presentation region,
-        // do not traverse authoritative airborne packets at all.
-        if (enabledSourceHashes.size === 0) {
-            renderer.renderFrame([]);
-            this.lastRendererSyncMilliseconds = 0;
-            this.lastPacketTraversalMilliseconds = 0;
-            this.lastPacketPreparationMilliseconds = 0;
-            this.lastLegacyHideMilliseconds = 0;
-            return;
-        }
 
         const stride =
             Math.max(
@@ -267,9 +251,7 @@ export class SprinklerWaterVfx {
 
     public getPerformanceDetails(): SprinklerWaterVfxPerformanceDetails {
         return {
-            totalSources: this.lastTotalSources,
             activeSources: this.lastActiveSources,
-            culledSources: this.lastCulledSources,
             inspectedPackets: this.lastInspectedPackets,
             preparedPackets: this.lastPreparedPackets,
             renderedElements: this.lastRenderedDroplets,

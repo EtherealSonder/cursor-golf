@@ -1,3 +1,4 @@
+// O6 final Water optimization: preserve the O4 sparse-field solver semantics and allocation profile.
 import {
     DEFAULT_COURSE_BOUNDARY_DEFINITION,
 } from "../config/CourseBoundaryDefinition";
@@ -339,8 +340,16 @@ export class WaterField {
             this.lastProcessedCellCount =
                 result.processedCellCount;
 
-            this.rebuildTrackedWaterCells();
-            this.rebuildActiveCells();
+            /*
+             * O4 sparse fast path. A zero-work solver step cannot have changed
+             * Water membership, so avoid rebuilding the tracked/active sparse
+             * registries. Normal non-zero solver steps retain the exact prior
+             * lifecycle and neighbour reactivation behaviour.
+             */
+            if (result.processedCellCount > 0) {
+                this.rebuildTrackedWaterCells();
+                this.rebuildActiveCells();
+            }
 
             this.simulationAccumulator -=
                 fixedStep;

@@ -110,6 +110,10 @@ import type {
     DynamicCollidable,
 } from "../physics/DynamicCollidable";
 
+import type {
+    StaticCollisionResponderRegistry,
+} from "../physics/StaticCollisionResponder";
+
 export enum BallInteractionState {
     Normal,
     Hovered,
@@ -236,6 +240,9 @@ export class Ball extends Entity {
 
     private readonly staticObstacleDefinitions:
         readonly StaticObstacleDefinition[];
+
+    private readonly staticCollisionResponders:
+        StaticCollisionResponderRegistry | null;
 
     private readonly dynamicCollidables:
         readonly DynamicCollidable[];
@@ -377,6 +384,9 @@ export class Ball extends Entity {
         staticObstacleDefinitions:
             readonly StaticObstacleDefinition[] = [],
 
+        staticCollisionResponders:
+            StaticCollisionResponderRegistry | null = null,
+
         dynamicCollidables:
             readonly DynamicCollidable[] = [],
 
@@ -411,6 +421,9 @@ export class Ball extends Entity {
 
         this.staticObstacleDefinitions =
             staticObstacleDefinitions;
+
+        this.staticCollisionResponders =
+            staticCollisionResponders;
 
         this.validateDynamicCollidables(
             dynamicCollidables,
@@ -2331,6 +2344,42 @@ export class Ball extends Entity {
             return;
         }
 
+        const speedBeforeCollision =
+            this.getSpeed();
+
+        const specialResponder =
+            this.staticCollisionResponders
+                ?.get(manifold.obstacleId);
+
+        if (specialResponder) {
+            // Special static responders run only after penetration correction and
+            // inward-contact validation. Mechanisms such as the Radial Bumper
+            // can therefore trigger presentation from this authoritative impact.
+            const response = specialResponder({
+                manifold,
+                incomingVelocityX: this.velocityX,
+                incomingVelocityY: this.velocityY,
+                incomingSpeed: speedBeforeCollision,
+            });
+
+            this.velocityX = response.velocityX;
+            this.velocityY = response.velocityY;
+            this.obstacleCollisionCount += 1;
+
+            const speedAfterCollision = this.getSpeed();
+            this.notifyImpact(
+                "static-obstacle",
+                speedBeforeCollision,
+                speedAfterCollision,
+            );
+            this.logStaticObstacleCollision(
+                manifold,
+                speedBeforeCollision,
+                speedAfterCollision,
+            );
+            return;
+        }
+
         const tangentVelocityX =
             this.velocityX -
             normalVelocity *
@@ -2348,9 +2397,6 @@ export class Ball extends Entity {
         const reflectedNormalSpeed =
             -normalVelocity *
             manifold.restitution;
-
-        const speedBeforeCollision =
-            this.getSpeed();
 
         this.velocityX =
             tangentVelocityX *

@@ -5,6 +5,8 @@ export interface WorldPerformanceProfileDefinition {
     readonly consoleReportIntervalSeconds: number;
 }
 
+// Normal development runtime keeps performance profiling and its HUD disabled.
+// The profiler implementation remains available for explicit future profiling passes.
 export const DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION:
     WorldPerformanceProfileDefinition = {
     enabled: false,

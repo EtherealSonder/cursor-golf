@@ -1,3 +1,4 @@
+// O6 final Water optimization: direct Water/Fire interaction behavior is frozen; avoid speculative semantic changes.
 import {
     DEFAULT_WATER_FIRE_INTERACTION_DEFINITION,
     validateWaterFireInteractionDefinition,
@@ -279,9 +280,8 @@ export class WaterFireInteraction {
          * us a small authoritative footprint, so query only Water grid cells
          * whose centres can lie inside that footprint.
          */
-        const activeCells = [
-            ...fireManager.getActiveCells(),
-        ];
+        const activeCells =
+            fireManager.getActiveCells();
 
         if (activeCells.length === 0) {
             return {

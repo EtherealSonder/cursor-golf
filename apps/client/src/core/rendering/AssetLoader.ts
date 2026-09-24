@@ -13,6 +13,7 @@ import fireHydrantTexture from "../../assets/sprites/mechanisms/fire_hydrant.png
 import fireHydrantDamagedTexture from "../../assets/sprites/mechanisms/fire_hydrant_damaged.png";
 import fireHydrantBrokenTexture from "../../assets/sprites/mechanisms/fire_hydrant_broken.png";
 import waterSprinklerTexture from "../../assets/sprites/mechanisms/water_sprinkler.png";
+import radialBumperTexture from "../../assets/sprites/mechanisms/radial_bumper.png";
 import fireRobotBodyTexture from "../../assets/sprites/robots/fire_robot_body.png";
 import fireRobotLeg1Texture from "../../assets/sprites/robots/fire_robot_leg1.png";
 import fireRobotLeg2Texture from "../../assets/sprites/robots/fire_robot_leg2.png";
@@ -124,6 +125,11 @@ export class AssetLoader {
         await this.loadTexture(
             "waterSprinkler",
             waterSprinklerTexture,
+        );
+
+        await this.loadTexture(
+            "radialBumper",
+            radialBumperTexture,
         );
 
         // R-1 Fire Robot composite presentation assets.

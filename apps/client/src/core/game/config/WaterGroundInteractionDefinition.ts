@@ -40,6 +40,10 @@ export interface SurfaceInfiltrationDefinition {
  * 8C-2 introduced deterministic Water -> moisture transfer plus shallow-Water
  * attenuation. 8C-3 adds saturation-dependent absorption and material-specific
  * infiltration profiles.
+ *
+ * O4 invariant: maintenance cadence and retirement thresholds remain based on
+ * authoritative substrate state, never camera visibility. Sparse processing may
+ * skip impossible/no-op work but must preserve the same per-second rates.
  */
 export interface WaterGroundInteractionDefinition {
     readonly enabled: boolean;
@@ -119,6 +123,15 @@ export interface WaterGroundInteractionDefinition {
      * at this cadence while preserving the same per-second rates.
      */
     readonly moistureMaintenanceInterval: number;
+
+    /**
+     * O5 phase offset for the drying maintenance pass, expressed as a
+     * fraction of moistureMaintenanceInterval. Diffusion remains on the
+     * original phase; drying is staggered so both O(N) sparse scans do not
+     * normally land in the same render frame. Rates and fixed-step elapsed
+     * time remain authoritative.
+     */
+    readonly moistureDryingPhaseFraction: number;
 
     /**
      * Thin-film cleanup cadence. This remains faster than substrate moisture
@@ -236,6 +249,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
      * standing-Water interaction loop.
      */
     moistureMaintenanceInterval: 0.1,
+    moistureDryingPhaseFraction: 0.5,
     shallowWaterMaintenanceInterval: 1 / 30,
 
     /*
@@ -459,6 +473,16 @@ export function validateWaterGroundInteractionDefinition(
     ) {
         throw new Error(
             "Water ground interaction moistureMaintenanceInterval must be finite and greater than zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(definition.moistureDryingPhaseFraction) ||
+        definition.moistureDryingPhaseFraction < 0 ||
+        definition.moistureDryingPhaseFraction >= 1
+    ) {
+        throw new Error(
+            "Water ground interaction moistureDryingPhaseFraction must be finite in [0, 1).",
         );
     }
 

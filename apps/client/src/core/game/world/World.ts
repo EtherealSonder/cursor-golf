@@ -1,7 +1,9 @@
+// O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
     Container,
     Graphics,
+    Text,
     TilingSprite,
 } from "pixi.js";
 
@@ -94,20 +96,12 @@ import {
 } from "../debug/WindValidationMetrics";
 
 import {
-    PerformanceDebugOverlay,
-} from "../debug/PerformanceDebugOverlay";
-
-import {
     PerformanceMetrics,
 } from "../debug/PerformanceMetrics";
 
 import {
     WaterPerformanceProfiler,
 } from "../debug/WaterPerformanceProfiler";
-
-import {
-    WaterPerformanceOverlay,
-} from "../debug/WaterPerformanceOverlay";
 
 
 import {
@@ -199,6 +193,10 @@ import {
 } from "../entities/mechanisms/Fan";
 
 import {
+    RadialBumper,
+} from "../entities/mechanisms/RadialBumper";
+
+import {
     FireTube,
 } from "../entities/mechanisms/FireTube";
 
@@ -225,6 +223,10 @@ import {
 import {
     PhysicsWorld,
 } from "../physics/PhysicsWorld";
+
+import {
+    StaticCollisionResponderRegistry,
+} from "../physics/StaticCollisionResponder";
 
 import {
     HoseCollisionSystem,
@@ -371,9 +373,9 @@ export class World {
     private cameraActivationDebugGraphics:
         Graphics | null = null;
 
-    private performanceDebugOverlay:
-        PerformanceDebugOverlay | null =
-        null;
+    private performanceSummaryText:
+        Text | null = null;
+
     private readonly performanceMetrics:
         PerformanceMetrics =
         new PerformanceMetrics();
@@ -381,19 +383,8 @@ export class World {
     private readonly waterPerformanceProfiler:
         WaterPerformanceProfiler =
         new WaterPerformanceProfiler(
-            {
-                ...DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
-                // Stress-test profiling is intentionally forced on here so the
-                // compact HUD is available in the normal runtime without relying
-                // on the old disabled debug-definition defaults.
-                enabled: true,
-                overlayEnabled: true,
-            },
+            DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
         );
-
-    private waterPerformanceOverlay:
-        WaterPerformanceOverlay | null =
-        null;
 
     private readonly contourRefreshScheduler =
         new ContourRefreshScheduler();
@@ -470,6 +461,10 @@ export class World {
 
     private readonly fans:
         Fan[] = [];
+
+    /** RB-2 fixed kinetic bumper test mechanism with impact presentation. */
+    private radialBumper:
+        RadialBumper | null = null;
 
     private readonly fireTubes:
         FireTube[] = [];
@@ -634,6 +629,9 @@ export class World {
     private readonly physicsWorld:
         PhysicsWorld;
 
+    private readonly staticCollisionResponders:
+        StaticCollisionResponderRegistry;
+
     private readonly robotInteractionRegistry:
         RobotInteractionRegistry;
 
@@ -757,6 +755,9 @@ export class World {
 
         this.physicsWorld =
             new PhysicsWorld();
+
+        this.staticCollisionResponders =
+            new StaticCollisionResponderRegistry();
 
         this.robotInteractionRegistry =
             new RobotInteractionRegistry();
@@ -886,6 +887,8 @@ export class World {
         this.app.stage.addChild(
             this.screenOverlayContainer,
         );
+
+        this.createPerformanceSummaryText();
         this.createCourse();
 
 
@@ -926,8 +929,6 @@ export class World {
         this.createFireDirectionalValidation();
         this.createCameraActivationDebugGraphics();
 
-        this.createPerformanceDebugOverlay();
-        this.createWaterPerformanceOverlay();
         ScalarFieldTexture
             .setPerformanceProfiler(
                 this.waterPerformanceProfiler,
@@ -958,6 +959,45 @@ export class World {
             this.addEntity(new StaticObstacle(definition));
         }
 
+        // ---------------------------------------------------
+        // RB-2 Radial Bumper test mechanism
+        // ---------------------------------------------------
+
+        this.radialBumper = new RadialBumper(
+            "radial-bumper-test-1",
+            1280,
+            520,
+        );
+
+        const radialBumperCollision =
+            this.radialBumper.getCollisionDefinition();
+
+        this.physicsWorld.registerStaticDefinition(
+            radialBumperCollision,
+        );
+        this.robotInteractionRegistry.register({
+            id: radialBumperCollision.id,
+            label: "Radial Bumper",
+            capabilities: {
+                navigationBlocker: true,
+                attackTarget: true,
+                visionOccluder: true,
+            },
+            shape: {
+                kind: "circle",
+                radius: radialBumperCollision.shape === "circle"
+                    ? radialBumperCollision.radius
+                    : 39,
+            },
+            getX: (): number => this.radialBumper?.getX() ?? -100000,
+            getY: (): number => this.radialBumper?.getY() ?? -100000,
+        });
+        this.staticCollisionResponders.register(
+            radialBumperCollision.id,
+            this.radialBumper.getCollisionResponder(),
+        );
+        this.addEntity(this.radialBumper);
+
 
         // ---------------------------------------------------
         // Create Ball
@@ -969,6 +1009,7 @@ export class World {
                 undefined,
                 this.physicsWorld
                     .getRigidStaticDefinitions(),
+                this.staticCollisionResponders,
                 this.physicsWorld
                     .getRigidDynamicCollidables(),
                 this.windManager,
@@ -1018,10 +1059,7 @@ export class World {
         this.createWaterRobot();
         this.createWindRobot();
 
-        // Expanded stress-test population: two Robots of each element.
-        this.createSecondFireRobot();
-        this.createSecondWaterRobot();
-        this.createSecondWindRobot();
+        // Normal development population: one Robot of each element.
 
         this.connectBallWaterSplashVfx();
         this.createWaterDepositDebugController();
@@ -1031,13 +1069,6 @@ export class World {
         if (waterRobotAttackSource) {
             this.airborneWaterVisualizer?.setSourceHidden(
                 waterRobotAttackSource.getWaterSourceId(),
-                true,
-            );
-        }
-        const secondWaterRobotAttackSource = this.secondWaterRobot?.getWaterAttackSource();
-        if (secondWaterRobotAttackSource) {
-            this.airborneWaterVisualizer?.setSourceHidden(
-                secondWaterRobotAttackSource.getWaterSourceId(),
                 true,
             );
         }
@@ -1220,18 +1251,6 @@ export class World {
             this.drawCameraActivationDebugGraphics();
         }
 
-        this.performanceDebugOverlay
-            ?.setViewportSize(
-                viewportWidth,
-                viewportHeight,
-            );
-
-        this.waterPerformanceOverlay
-            ?.setViewportSize(
-                viewportWidth,
-                viewportHeight,
-            );
-
     }
 
     public updateCamera(
@@ -1394,6 +1413,9 @@ export class World {
 
         this.waterPerformanceProfiler.recordGroundInteractionBreakdown(
             this.waterGroundInteractionSystem.getPerformanceBreakdown(),
+        );
+        this.waterPerformanceProfiler.recordGroundInteractionWorkload(
+            this.waterGroundInteractionSystem.getWorkload(),
         );
 
         this.waterPerformanceProfiler.measure(
@@ -1796,56 +1818,7 @@ export class World {
                     deltaTime,
                 );
 
-            this.performanceDebugOverlay
-                ?.update(
-                    deltaTime,
-                    this.performanceMetrics
-                        .getSnapshot(),
-                    {
-                        benchmarkLabel:
-                            this.activePerformanceBenchmark
-                                ?.label ??
-                            "Normal Runtime",
-
-                        windVfxEnabled:
-                            this.windVfxSystem
-                                ?.isEnabled() ??
-                            false,
-
-                        fireVfxEnabled:
-                            this.fireVfxEnabled,
-
-                        fanCount:
-                            this.fans.length,
-
-                        fireTubeCount:
-                            this.fireTubes.length,
-
-                        windParticleCount:
-                            this.windVfxSystem
-                                ?.getActiveParticleCount() ??
-                            0,
-
-                        windParticleCapacity:
-                            this.windVfxSystem
-                                ?.getParticleCapacity() ??
-                            0,
-
-                        fireParticleCount:
-                            this.fireVfxSystem
-                                ?.getActiveParticleCount() ??
-                            0,
-
-                        fireParticleCapacity:
-                            this.fireVfxSystem
-                                ?.getParticleCapacity() ??
-                            0,
-
-                        fireCellCount:
-                            this.fireManager
-                                .getActiveCellCount(),
-                    },
-                );
+            this.updatePerformanceSummaryText();
         });
 
         this.waterPerformanceProfiler.setGlobalWaterCounts(
@@ -1872,11 +1845,6 @@ export class World {
                 deltaTime,
             );
 
-        this.waterPerformanceOverlay
-            ?.update(
-                this.waterPerformanceProfiler
-                    .getSnapshot(),
-            );
 
     }
 
@@ -2089,18 +2057,6 @@ export class World {
         this.cameraActivationDebugGraphics =
             null;
 
-        this.performanceDebugOverlay
-            ?.destroy();
-
-        this.performanceDebugOverlay =
-            null;
-
-        this.waterPerformanceOverlay
-            ?.destroy();
-
-        this.waterPerformanceOverlay =
-            null;
-
         ScalarFieldTexture
             .setPerformanceProfiler(
                 null,
@@ -2136,6 +2092,12 @@ export class World {
             children:
                 false,
         });
+
+        this.performanceSummaryText
+            ?.destroy();
+
+        this.performanceSummaryText =
+            null;
 
         this.screenOverlayContainer.destroy({
             children:
@@ -2315,8 +2277,6 @@ export class World {
                 benchmark.profiling,
             );
 
-        this.performanceDebugOverlay
-            ?.resetDisplay();
     }
 
     public clearPerformanceBenchmark():
@@ -2371,8 +2331,6 @@ export class World {
         this.performanceMetrics
             .reset();
 
-        this.performanceDebugOverlay
-            ?.resetDisplay();
     }
 
     public getActivePerformanceBenchmarkId():
@@ -3057,13 +3015,10 @@ export class World {
         }
 
         const placements = [
-            // Deterministic, broadly separated stress-test placements.
+            // Deterministic development-scene placements.
             { id: "sprinkler-1", x: this.ball.getX() + 280, y: this.ball.getY() - 180, rotation: 0 },
             { id: "sprinkler-2", x: this.ball.getX() + 300, y: this.ball.getY() + 180, rotation: Math.PI / 4 },
             { id: "sprinkler-3", x: this.ball.getX() - 320, y: this.ball.getY() - 210, rotation: Math.PI / 2 },
-            { id: "sprinkler-4", x: this.ball.getX() - 340, y: this.ball.getY() + 210, rotation: -Math.PI / 4 },
-            { id: "sprinkler-5", x: this.ball.getX() + 560, y: this.ball.getY() - 40, rotation: Math.PI },
-            { id: "sprinkler-6", x: this.ball.getX() - 560, y: this.ball.getY() + 40, rotation: 0 },
         ];
 
         for (const placement of placements) {
@@ -4477,7 +4432,6 @@ export class World {
         const fanPlacements = [
             { id: "stress-fan-wind-1", x: 520, y: 180, directionRadians: Math.PI / 2 },
             { id: "stress-fan-wind-2", x: 1240, y: 620, directionRadians: -Math.PI / 2 },
-            { id: "stress-fan-wind-3", x: 2020, y: 420, directionRadians: Math.PI },
         ];
 
         const preservedSources = existingSources.filter(
@@ -4792,66 +4746,59 @@ export class World {
             ?.clear();
     }
 
-    private createWaterPerformanceOverlay():
+
+    // -------------------------------------------------------
+    // Lightweight Runtime Performance Summary
+    // -------------------------------------------------------
+
+    private createPerformanceSummaryText():
         void {
 
-        if (
-            !this.waterPerformanceProfiler
-                .isOverlayEnabled()
-        ) {
+        if (this.performanceSummaryText) {
             return;
         }
 
-        this.waterPerformanceOverlay =
-            new WaterPerformanceOverlay();
+        this.performanceSummaryText =
+            new Text({
+                text: "FPS: --  |  Frame: -- ms",
+                style: {
+                    fontFamily: "monospace",
+                    fontSize: 14,
+                    fill: 0xffffff,
+                    stroke: {
+                        color: 0x000000,
+                        width: 3,
+                    },
+                },
+            });
 
-        this.waterPerformanceOverlay
-            .setViewportSize(
-                this.camera
-                    .getViewportWidth(),
-                this.camera
-                    .getViewportHeight(),
-            );
+        this.performanceSummaryText.position.set(
+            12,
+            12,
+        );
+
+        this.performanceSummaryText.zIndex =
+            10000;
 
         this.screenOverlayContainer
             .addChild(
-                this.waterPerformanceOverlay
-                    .getContainer(),
+                this.performanceSummaryText,
             );
     }
 
-    // -------------------------------------------------------
-    // Performance Debug Overlay
-    // -------------------------------------------------------
-
-    private createPerformanceDebugOverlay():
+    private updatePerformanceSummaryText():
         void {
 
-        if (
-            this.performanceDebugOverlay
-        ) {
-            throw new Error(
-                "World performance debug overlay has already been created.",
-            );
+        if (!this.performanceSummaryText) {
+            return;
         }
 
-        this.performanceDebugOverlay =
-            new PerformanceDebugOverlay();
+        const snapshot =
+            this.performanceMetrics
+                .getSnapshot();
 
-        this.performanceDebugOverlay
-            .setViewportSize(
-                this.camera
-                    .getViewportWidth(),
-
-                this.camera
-                    .getViewportHeight(),
-            );
-
-        this.screenOverlayContainer
-            .addChild(
-                this.performanceDebugOverlay
-                    .getContainer(),
-            );
+        this.performanceSummaryText.text =
+            `FPS: ${snapshot.currentFps.toFixed(0)}  |  Frame: ${snapshot.currentFrameTimeMilliseconds.toFixed(2)} ms`;
     }
 
     // -------------------------------------------------------

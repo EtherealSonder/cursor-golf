@@ -1,6 +1,10 @@
 /**
  * Authoritative WaterField grid, flow, momentum, damping, and sparse activity
  * tuning.
+ *
+ * O4 invariant: sparse membership thresholds describe physical dormancy only.
+ * They are never camera/viewport LOD controls, so off-screen Water remains
+ * authoritative and can reactivate immediately when meaningful flow returns.
  */
 export interface WaterFieldDefinition {
     readonly cellSize: number;
