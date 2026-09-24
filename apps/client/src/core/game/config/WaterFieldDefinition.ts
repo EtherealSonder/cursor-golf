@@ -36,6 +36,17 @@ export interface WaterFieldDefinition {
     readonly activeVelocityThreshold: number;
 
     /**
+     * Numerical tail below which a nearly stationary Water cell is retired
+     * completely. This is intentionally orders of magnitude below visible
+     * thin-film depths and exists only to prevent historical floating-point
+     * residue from remaining in sparse Water membership forever.
+     */
+    readonly residualRetirementDepth: number;
+
+    /** Maximum speed allowed when retiring residual Water. */
+    readonly residualRetirementVelocity: number;
+
+    /**
      * Phase 8B-4C shallow-Water mobility curve.
      *
      * Water below thinWaterDepth moves at thinWaterMinimumMobility.
@@ -78,6 +89,8 @@ export const DEFAULT_WATER_FIELD_DEFINITION: WaterFieldDefinition = {
     minimumVelocity: 0.02,
     activeDepthThreshold: 0.0005,
     activeVelocityThreshold: 0.05,
+    residualRetirementDepth: 0.00001,
+    residualRetirementVelocity: 0.02,
 
     /*
      * Sprinkler-scale Water begins as a very shallow film. Keep that film
@@ -105,6 +118,8 @@ export function validateWaterFieldDefinition(
         definition.velocityDamping,
         definition.activeDepthThreshold,
         definition.activeVelocityThreshold,
+        definition.residualRetirementDepth,
+        definition.residualRetirementVelocity,
         definition.thinWaterDepth,
         definition.fullMobilityDepth,
         definition.shallowMobilityExponent,

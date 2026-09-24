@@ -1666,10 +1666,43 @@ export class WaterField {
         let writeIndex =
             0;
 
+        const residualRetirementDepth =
+            this.definition.residualRetirementDepth;
+
+        const residualRetirementVelocitySquared =
+            this.definition.residualRetirementVelocity *
+            this.definition.residualRetirementVelocity;
+
         for (
             const index of
             this.trackedWaterIndices
         ) {
+            const cellDepth = this.depth[index];
+            const cellVelocityX = this.velocityX[index];
+            const cellVelocityY = this.velocityY[index];
+            const speedSquared =
+                cellVelocityX * cellVelocityX +
+                cellVelocityY * cellVelocityY;
+
+            if (
+                cellDepth > 0 &&
+                cellDepth <= residualRetirementDepth &&
+                speedSquared <= residualRetirementVelocitySquared
+            ) {
+                /*
+                 * Retire only the microscopic numerical tail. Keep total
+                 * accounting coherent and clear momentum so this cell leaves
+                 * both tracked and active sparse membership deterministically.
+                 */
+                this.totalWaterAmount = Math.max(
+                    0,
+                    this.totalWaterAmount - cellDepth,
+                );
+                this.depth[index] = 0;
+                this.velocityX[index] = 0;
+                this.velocityY[index] = 0;
+            }
+
             if (
                 this.depth[
                 index

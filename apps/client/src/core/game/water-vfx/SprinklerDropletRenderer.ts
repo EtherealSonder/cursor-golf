@@ -18,6 +18,9 @@ export interface SprinklerDropletRendererPerformanceDetails {
     readonly reusedSlots: number;
     readonly hiddenSlots: number;
     readonly totalSlots: number;
+    readonly activeSlots: number;
+    readonly updatedSlots: number;
+    readonly renderedSlots: number;
 }
 
 export interface SprinklerDropletPresentation {
@@ -59,6 +62,9 @@ export class SprinklerDropletRenderer {
     private frameCreatedSlots = 0;
     private frameReusedSlots = 0;
     private frameHiddenSlots = 0;
+    private frameActiveSlots = 0;
+    private frameUpdatedSlots = 0;
+    private frameRenderedSlots = 0;
 
     public constructor(
         private readonly definition: SprinklerWaterVfxDefinition,
@@ -76,12 +82,13 @@ export class SprinklerDropletRenderer {
         this.frameCreatedSlots = 0;
         this.frameReusedSlots = 0;
         this.frameHiddenSlots = 0;
+        this.frameActiveSlots = 0;
+        this.frameUpdatedSlots = 0;
+        this.frameRenderedSlots = 0;
 
-        const startedAt = performance.now();
-        this.slots.forEach((slot): void => {
-            slot.seenThisFrame = false;
-        });
-        this.frameBeginMilliseconds = performance.now() - startedAt;
+        // O3.2: do not sweep the historical pool at frame start. Slots that are
+        // not seen are retired in endFrame, so the map contains only live visual work.
+        this.frameBeginMilliseconds = 0;
     }
 
     /**
@@ -164,6 +171,9 @@ export class SprinklerDropletRenderer {
             slot.container.scale.set(pulse, pulse);
         }
         this.frameStyleMilliseconds = performance.now() - startedAt;
+        this.frameActiveSlots = presentations.length;
+        this.frameUpdatedSlots = presentations.length;
+        this.frameRenderedSlots = presentations.length;
 
         this.endFrame();
     }
@@ -229,14 +239,22 @@ export class SprinklerDropletRenderer {
 
     public endFrame(): void {
         const startedAt = performance.now();
-        this.slots.forEach((slot): void => {
-            if (!slot.seenThisFrame) {
-                if (slot.container.visible) {
-                    this.frameHiddenSlots += 1;
-                }
-                slot.container.visible = false;
+        // O3.2: packet ids are transient. Keeping one Graphics pair for every packet
+        // ever seen made the slot map grow forever and forced O(N-history) sweeps.
+        // Retire unseen presentation slots immediately. Authoritative packets live
+        // in AirborneWaterSystem and can recreate a slot if they become visible again.
+        for (const [id, slot] of this.slots) {
+            if (slot.seenThisFrame) {
+                slot.seenThisFrame = false;
+                continue;
             }
-        });
+            this.frameHiddenSlots += 1;
+            slot.body.destroy();
+            slot.highlight.destroy();
+            slot.container.removeFromParent();
+            slot.container.destroy({ children: false });
+            this.slots.delete(id);
+        }
         this.frameEndMilliseconds = performance.now() - startedAt;
     }
 
@@ -252,6 +270,9 @@ export class SprinklerDropletRenderer {
             reusedSlots: this.frameReusedSlots,
             hiddenSlots: this.frameHiddenSlots,
             totalSlots: this.slots.size,
+            activeSlots: this.frameActiveSlots,
+            updatedSlots: this.frameUpdatedSlots,
+            renderedSlots: this.frameRenderedSlots,
         };
     }
 

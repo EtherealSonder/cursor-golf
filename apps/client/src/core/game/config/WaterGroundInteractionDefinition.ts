@@ -106,6 +106,14 @@ export interface WaterGroundInteractionDefinition {
     readonly minimumDiffusionDifference: number;
 
     /**
+     * Excess moisture at or below this amount is snapped exactly to the
+     * immutable terrain baseline during maintenance. This gives sparse
+     * moisture a deterministic terminal state instead of preserving tiny
+     * floating-point tails indefinitely.
+     */
+    readonly moistureBaselineSnapEpsilon: number;
+
+    /**
      * Moisture diffusion and drying are slow substrate processes and do not
      * require a 60 Hz update. They accumulate elapsed fixed-step time and run
      * at this cadence while preserving the same per-second rates.
@@ -221,6 +229,7 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
 
     moistureDiffusionRate: 0.16,
     minimumDiffusionDifference: 0.001,
+    moistureBaselineSnapEpsilon: 0.0001,
 
     /*
      * Slow environmental state is intentionally decoupled from the 60 Hz
@@ -428,6 +437,17 @@ export function validateWaterGroundInteractionDefinition(
     ) {
         throw new Error(
             "Water ground interaction minimumDiffusionDifference must be finite and greater than or equal to zero.",
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            definition.moistureBaselineSnapEpsilon,
+        ) ||
+        definition.moistureBaselineSnapEpsilon < 0
+    ) {
+        throw new Error(
+            "Water ground interaction moistureBaselineSnapEpsilon must be finite and greater than or equal to zero.",
         );
     }
 

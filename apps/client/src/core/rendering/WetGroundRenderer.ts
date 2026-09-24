@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { ContainerChild } from "pixi.js";
 import type { WaterPerformanceProfiler } from "../game/debug/WaterPerformanceProfiler";
 import type { ContourRefreshScheduler } from "./ContourRefreshScheduler";
+import type { PresentationVisibilityQuery } from "./PresentationVisibilityQuery";
 
 import {
     DEFAULT_WET_SURFACE_VISUAL_DEFINITION,
@@ -55,6 +56,7 @@ export class WetGroundRenderer {
             DEFAULT_WET_SURFACE_VISUAL_DEFINITION,
         private readonly performanceProfiler: WaterPerformanceProfiler | null = null,
         private readonly contourRefreshScheduler: ContourRefreshScheduler | null = null,
+        private readonly presentationVisibilityQuery: PresentationVisibilityQuery | null = null,
     ) {
         validateWetSurfaceVisualDefinition(definition);
         this.container.visible = definition.enabled;
@@ -157,6 +159,16 @@ export class WetGroundRenderer {
 
             const center = this.environmentField.getWorldCenterByIndex(index);
             if (!center) continue;
+            if (
+                this.presentationVisibilityQuery &&
+                !this.presentationVisibilityQuery.intersectsExpandedViewport(
+                    center.x - cellSize * 0.5,
+                    center.y - cellSize * 0.5,
+                    center.x + cellSize * 0.5,
+                    center.y + cellSize * 0.5,
+                    cellSize * 2,
+                )
+            ) continue;
             const surface = this.surfaceSystem.getSurfaceAt(center.x, center.y);
             if (surface.surfaceState === SurfaceState.Scorched) continue;
 

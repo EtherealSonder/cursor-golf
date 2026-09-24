@@ -124,6 +124,18 @@ export class ProceduralObstacleFieldGenerator {
                     .seed,
             );
 
+        /*
+         * Expanded gameplay stress-test population. Keep the original dynamic
+         * obstacle budget intact and add deterministic static brown blockers
+         * around it so repeated performance runs remain comparable.
+         */
+        const additionalStaticObstacleCount =
+            8;
+
+        const generatedObstacleCount =
+            this.definition.obstacleCount +
+            additionalStaticObstacleCount;
+
         const generationMinimumX =
             courseBoundaryDefinition
                 .minimumX +
@@ -158,8 +170,7 @@ export class ProceduralObstacleFieldGenerator {
 
         const gridDimensions =
             this.calculateGridDimensions(
-                this.definition
-                    .obstacleCount,
+                generatedObstacleCount,
 
                 generationWidth,
 
@@ -192,8 +203,7 @@ export class ProceduralObstacleFieldGenerator {
                 )
                 .slice(
                     0,
-                    this.definition
-                        .obstacleCount,
+                    generatedObstacleCount,
                 );
 
         const generatedPoints:
@@ -228,15 +238,17 @@ export class ProceduralObstacleFieldGenerator {
                 generatedPoints,
             );
 
+        const originalStaticObstacleCount =
+            Math.round(
+                this.definition.obstacleCount *
+                this.definition.staticObstacleRatio,
+            );
+
         const staticObstacleCount =
             Math.min(
                 shuffledPoints.length,
-
-                Math.round(
-                    shuffledPoints.length *
-                    this.definition
-                        .staticObstacleRatio,
-                ),
+                originalStaticObstacleCount +
+                additionalStaticObstacleCount,
             );
 
         const staticDefinitions:

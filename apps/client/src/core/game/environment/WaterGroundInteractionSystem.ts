@@ -1016,6 +1016,12 @@ export class WaterGroundInteractionSystem {
                 .getDefinition()
                 .minimumTrackedMoistureExcess;
 
+        const baselineSnapThreshold =
+            Math.max(
+                trackingThreshold,
+                this.definition.moistureBaselineSnapEpsilon,
+            );
+
         for (
             const index
             of trackedIndices
@@ -1080,7 +1086,7 @@ export class WaterGroundInteractionSystem {
              */
             if (
                 projectedRemaining <=
-                trackingThreshold
+                baselineSnapThreshold
             ) {
                 requestedDrying =
                     excessMoisture;
@@ -1147,11 +1153,21 @@ export class WaterGroundInteractionSystem {
                 continue;
             }
 
-            const requestedRemoval =
+            let requestedRemoval =
                 Math.min(
                     depth,
                     rate * deltaTime,
                 );
+
+            const projectedRemaining =
+                Math.max(0, depth - requestedRemoval);
+
+            if (
+                projectedRemaining <=
+                this.waterField.getDefinition().residualRetirementDepth
+            ) {
+                requestedRemoval = depth;
+            }
 
             if (requestedRemoval <= 0) {
                 continue;

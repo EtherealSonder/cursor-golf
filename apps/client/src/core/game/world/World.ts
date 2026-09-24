@@ -347,6 +347,10 @@ import {
 } from "../../rendering/WetGroundRenderer";
 
 import {
+    PresentationVisibilityQuery,
+} from "../../rendering/PresentationVisibilityQuery";
+
+import {
     ContourRefreshScheduler,
 } from "../../rendering/ContourRefreshScheduler";
 
@@ -377,7 +381,14 @@ export class World {
     private readonly waterPerformanceProfiler:
         WaterPerformanceProfiler =
         new WaterPerformanceProfiler(
-            DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
+            {
+                ...DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
+                // Stress-test profiling is intentionally forced on here so the
+                // compact HUD is available in the normal runtime without relying
+                // on the old disabled debug-definition defaults.
+                enabled: true,
+                overlayEnabled: true,
+            },
         );
 
     private waterPerformanceOverlay:
@@ -415,6 +426,9 @@ export class World {
 
     private readonly camera:
         Camera;
+
+    private readonly presentationVisibilityQuery:
+        PresentationVisibilityQuery;
 
     private readonly cameraShake:
         CameraShake;
@@ -654,6 +668,9 @@ export class World {
     /** Wind elemental variant using shared Robot AI and Local Wind suction. */
     private windRobot: Robot | null = null;
 
+    /** Second Wind Robot used by the expanded environmental stress-test scene. */
+    private secondWindRobot: Robot | null = null;
+
     private robotDebugVisualizer:
         RobotDebugVisualizer | null = null;
 
@@ -714,6 +731,20 @@ export class World {
             new Camera(
                 undefined,
                 DEFAULT_COURSE_BOUNDARY_DEFINITION,
+            );
+
+        this.presentationVisibilityQuery =
+            new PresentationVisibilityQuery(
+                () => ({
+                    minimumX: this.camera.getPositionX(),
+                    minimumY: this.camera.getPositionY(),
+                    maximumX:
+                        this.camera.getPositionX() +
+                        this.camera.getVisibleWorldWidth(),
+                    maximumY:
+                        this.camera.getPositionY() +
+                        this.camera.getVisibleWorldHeight(),
+                }),
             );
 
         this.cameraShake =
@@ -913,6 +944,12 @@ export class World {
             { id: "robot-test-square-4", shape: "rectangle", positionX: 1620, positionY: 610, width: 128, height: 128, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
             { id: "robot-test-square-5", shape: "rectangle", positionX: 1180, positionY: 720, width: 64, height: 64, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
             { id: "robot-test-square-6", shape: "rectangle", positionX: 1840, positionY: 390, width: 96, height: 96, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            // Expanded stress-test blockers. These remain deterministic so FPS and
+            // interaction comparisons are repeatable between runs.
+            { id: "robot-test-square-7", shape: "rectangle", positionX: 560, positionY: 600, width: 88, height: 88, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-8", shape: "rectangle", positionX: 1320, positionY: 300, width: 76, height: 112, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-9", shape: "rectangle", positionX: 2050, positionY: 650, width: 112, height: 76, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-10", shape: "rectangle", positionX: 2140, positionY: 220, width: 72, height: 104, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
         ];
 
         for (const definition of this.staticObstacleDefinitions) {
@@ -980,6 +1017,12 @@ export class World {
         this.createWaterVfxSystem();
         this.createWaterRobot();
         this.createWindRobot();
+
+        // Expanded stress-test population: two Robots of each element.
+        this.createSecondFireRobot();
+        this.createSecondWaterRobot();
+        this.createSecondWindRobot();
+
         this.connectBallWaterSplashVfx();
         this.createWaterDepositDebugController();
 
@@ -1200,6 +1243,10 @@ export class World {
             deltaTime,
         );
 
+        // O3.1: Camera position is authoritative now. Refresh presentation
+        // world bounds here so culling never uses the previous Camera frame.
+        this.presentationVisibilityQuery.refresh();
+
         this.cameraShake.update(
             deltaTime,
         );
@@ -1211,6 +1258,10 @@ export class World {
         deltaTime:
             number,
     ): void {
+
+        // O3 presentation culling: snapshot Camera bounds once per frame.
+        // Simulation remains world-authoritative and never consumes this query.
+        this.presentationVisibilityQuery.refresh();
 
         this.applyPresentationDiagnosticMode();
 
@@ -1292,7 +1343,13 @@ export class World {
         this.waterPerformanceProfiler.measure("sprinklerWaterVfx", (): void => {
             this.sprinklerWaterVfx?.update(deltaTime);
         });
-        this.waterVfxSystem?.updateSprinklerImpacts(deltaTime, this.sprinklers, this.airborneWaterSystem);
+        this.waterPerformanceProfiler.measure("waterImpactVfx", (): void => {
+            this.waterVfxSystem?.updateSprinklerImpacts(
+                deltaTime,
+                this.sprinklers,
+                this.airborneWaterSystem,
+            );
+        });
         if (this.sprinklerWaterVfx) {
             this.waterPerformanceProfiler.recordSprinklerDeepProfileDetails(
                 this.sprinklerWaterVfx.getPerformanceDetails(),
@@ -1309,10 +1366,12 @@ export class World {
          * Phase 8I-5: advance presentation-only Water particles and the
          * stable downstream material animation used by current-state Sprinkler ribbons.
          */
-        this.waterVfxSystem
-            ?.update(
-                deltaTime,
-            );
+        this.waterPerformanceProfiler.measure("waterVfxCore", (): void => {
+            this.waterVfxSystem
+                ?.update(
+                    deltaTime,
+                );
+        });
         this.waterPerformanceProfiler
             .measure(
                 "waterSimulation",
@@ -1520,20 +1579,37 @@ export class World {
 
 
 
-        this.waterPerformanceProfiler.measure("entities", (): void => {
-            for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
-                this.entities[entityIndex]?.update(deltaTime);
+        /*
+         * Stress-test profiling keeps Robot AI separate from ordinary entity
+         * updates while preserving the original entity-list update order.
+         */
+        for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
+            const entity = this.entities[entityIndex];
+            if (!entity) continue;
+
+            if (entity instanceof Robot) {
+                this.waterPerformanceProfiler.measure("robotAI", (): void => {
+                    entity.update(deltaTime);
+                });
+            } else {
+                this.waterPerformanceProfiler.measure("entities", (): void => {
+                    entity.update(deltaTime);
+                });
             }
-        });
+        }
 
         /*
          * Apply Local Wind after entities synchronize their current-frame source
          * transforms. Impulses are consumed by each body's normal physics update;
          * mass response comes from DynamicCollidable inverse mass.
          */
-        this.localWindDynamicForceSystem.update(deltaTime);
-        this.windSuctionCaptureSystem.update(deltaTime);
-        this.processCompletedWindSuctionCaptures();
+        this.waterPerformanceProfiler.measure("localWindForces", (): void => {
+            this.localWindDynamicForceSystem.update(deltaTime);
+        });
+        this.waterPerformanceProfiler.measure("windSuction", (): void => {
+            this.windSuctionCaptureSystem.update(deltaTime);
+            this.processCompletedWindSuctionCaptures();
+        });
 
         this.robotDebugVisualizer
             ?.update();
@@ -1777,6 +1853,20 @@ export class World {
             this.environmentField.getTrackedMoistureIndices().length,
         );
 
+        this.waterPerformanceProfiler.setStressTestCounts(
+            [
+                this.fireRobot,
+                this.secondFireRobot,
+                this.waterRobot,
+                this.secondWaterRobot,
+                this.windRobot,
+                this.secondWindRobot,
+            ].filter((robot): robot is Robot => robot !== null).length,
+            this.physicsWorld.getRigidDynamicCollidables().length,
+            this.fans.length,
+            this.sprinklers.length,
+        );
+
         this.waterPerformanceProfiler
             .endFrame(
                 deltaTime,
@@ -1845,6 +1935,7 @@ export class World {
         this.secondFireRobot = null;
         this.secondWaterRobot = null;
         this.windRobot = null;
+        this.secondWindRobot = null;
 
         for (
             const entity
@@ -2839,6 +2930,7 @@ export class World {
                 undefined,
                 this.waterPerformanceProfiler,
                 this.contourRefreshScheduler,
+                this.presentationVisibilityQuery,
             );
 
         this.presentationLayers
@@ -2965,8 +3057,13 @@ export class World {
         }
 
         const placements = [
-            { id: "sprinkler-1", x: this.ball.getX() + 280, y: this.ball.getY() - 120, rotation: 0 },
-            { id: "sprinkler-2", x: this.ball.getX() + 280, y: this.ball.getY() + 120, rotation: Math.PI / 4 },
+            // Deterministic, broadly separated stress-test placements.
+            { id: "sprinkler-1", x: this.ball.getX() + 280, y: this.ball.getY() - 180, rotation: 0 },
+            { id: "sprinkler-2", x: this.ball.getX() + 300, y: this.ball.getY() + 180, rotation: Math.PI / 4 },
+            { id: "sprinkler-3", x: this.ball.getX() - 320, y: this.ball.getY() - 210, rotation: Math.PI / 2 },
+            { id: "sprinkler-4", x: this.ball.getX() - 340, y: this.ball.getY() + 210, rotation: -Math.PI / 4 },
+            { id: "sprinkler-5", x: this.ball.getX() + 560, y: this.ball.getY() - 40, rotation: Math.PI },
+            { id: "sprinkler-6", x: this.ball.getX() - 560, y: this.ball.getY() + 40, rotation: 0 },
         ];
 
         for (const placement of placements) {
@@ -3020,6 +3117,7 @@ export class World {
             this.airborneWaterSystem,
             this.waterVfxSystem,
             this.waterVfxSystem.getDefinition().sprinkler,
+            this.presentationVisibilityQuery,
         );
         for (const sprinkler of this.sprinklers) {
             this.airborneWaterVisualizer?.setSourceHidden(sprinkler.getSourceId(), true);
@@ -3465,7 +3563,11 @@ export class World {
 
     /** Temporary second Fire Robot for multi-enemy gameplay testing. */
     private createSecondFireRobot(): void {
-        const definition = SECOND_FIRE_ROBOT_DEFINITION;
+        const requestedDefinition = SECOND_FIRE_ROBOT_DEFINITION;
+        const safeSpawn = this.resolveTemporaryRobotSpawn(
+            requestedDefinition.positionX, requestedDefinition.positionY, requestedDefinition.navigationRadius,
+        );
+        const definition = { ...requestedDefinition, positionX: safeSpawn.x, positionY: safeSpawn.y };
         const navigationQuery = new RobotNavigationQuery(
             this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
         );
@@ -3557,6 +3659,56 @@ export class World {
                 this.airborneWaterSystem, this.physicsWorld,
             );
         }
+    }
+
+    /** Second Wind Robot for the expanded environmental stress-test scene. */
+    private createSecondWindRobot(): void {
+        const requestedDefinition = {
+            ...DEFAULT_WIND_ROBOT_DEFINITION,
+            id: "wind-robot-2",
+            positionX: 1960,
+            positionY: 700,
+        };
+        const safeSpawn = this.resolveTemporaryRobotSpawn(
+            requestedDefinition.positionX, requestedDefinition.positionY, requestedDefinition.navigationRadius,
+        );
+        const definition = {
+            ...requestedDefinition,
+            positionX: safeSpawn.x,
+            positionY: safeSpawn.y,
+        };
+        const navigationQuery = new RobotNavigationQuery(
+            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
+        );
+        this.secondWindRobot = new Robot(
+            definition, navigationQuery, this.robotInteractionRegistry,
+            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
+        );
+        const robot = this.secondWindRobot;
+        this.robotInteractionRegistry.register({
+            id: definition.id, label: "Wind Robot 2",
+            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            shape: { kind: "circle", radius: definition.navigationRadius },
+            getX: () => robot.getX(), getY: () => robot.getY(),
+        });
+        this.addEntity(robot, WorldRenderLayer.GameplayActors);
+        this.physicsWorld.registerDynamicCollidable(
+            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
+        );
+        this.airborneWaterSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot.getX(), getY: () => robot.getY(),
+            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                sourceKind: "water", sourceId, positionX: x, positionY: y,
+            }),
+        });
+        this.localWindSystem.registerImpactAwareTarget({
+            id: definition.id, radius: definition.navigationRadius,
+            getX: () => robot.getX(), getY: () => robot.getY(),
+            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                sourceKind: "wind", sourceId, positionX: x, positionY: y,
+            }),
+        });
     }
 
     /** Ensures temporary multi-Robot test spawns do not begin inside static geometry. */
@@ -3696,6 +3848,7 @@ export class World {
             this.waterRobot?.invalidateCurrentTarget();
             this.secondFireRobot?.invalidateCurrentTarget();
             this.secondWaterRobot?.invalidateCurrentTarget();
+            this.secondWindRobot?.invalidateCurrentTarget();
             this.windRobot?.invalidateCurrentTarget();
             this.windSuctionCaptureSystem.unregisterTarget(entity.getSourceId());
             this.physicsWorld.unregisterDynamicBody(entity);
@@ -4312,152 +4465,65 @@ export class World {
     private createFanEntities():
         void {
 
-        if (
-            this.fans.length >
-            0
-        ) {
-            throw new Error(
-                "World Fan entities have already been created.",
+        if (this.fans.length > 0) {
+            throw new Error("World Fan entities have already been created.");
+        }
+
+        const existingSources = this.localWindSystem.getSources();
+        const template = existingSources.find((candidate): boolean =>
+            candidate.enabled && !candidate.id.startsWith("fire-validation-field-"),
+        ) ?? existingSources.find((candidate): boolean => candidate.enabled) ?? existingSources[0];
+
+        const fanPlacements = [
+            { id: "stress-fan-wind-1", x: 520, y: 180, directionRadians: Math.PI / 2 },
+            { id: "stress-fan-wind-2", x: 1240, y: 620, directionRadians: -Math.PI / 2 },
+            { id: "stress-fan-wind-3", x: 2020, y: 420, directionRadians: Math.PI },
+        ];
+
+        const preservedSources = existingSources.filter(
+            (candidate): boolean => !candidate.id.startsWith("stress-fan-wind-") && candidate.id !== "8d7-test-fan-wind",
+        );
+        const fanSources = fanPlacements.map((placement) => ({
+            id: placement.id,
+            positionX: placement.x,
+            positionY: placement.y,
+            directionRadians: placement.directionRadians,
+            range: template?.range ?? 560,
+            startHalfWidth: template?.startHalfWidth ?? 55,
+            endHalfWidth: template?.endHalfWidth ?? 55,
+            acceleration: template?.acceleration ?? 1100,
+            endStrengthMultiplier: template?.endStrengthMultiplier ?? 0.60,
+            edgeFalloffFraction: template?.edgeFalloffFraction ?? 0.22,
+            flowMode: "push" as const,
+            enabled: true,
+        }));
+
+        this.localWindSystem.replaceSources([
+            ...preservedSources,
+            ...fanSources,
+        ]);
+
+        for (const placement of fanPlacements) {
+            const source = this.localWindSystem.getSources().find(
+                (candidate): boolean => candidate.id === placement.id,
             );
-        }
+            if (!source) {
+                throw new Error(`World could not create stress-test Fan source ${placement.id}.`);
+            }
 
-        /*
-         * Phase 8D-7 deterministic Fan fixture.
-         *
-         * Fan requires its Local Wind source id to exist inside
-         * LocalWindSystem because the physical mechanism continuously
-         * synchronizes the source transform as it moves and rotates.
-         *
-         * Normal Fire/Wind configurations are allowed to contain only
-         * validation-field sources, so do not make World startup depend on
-         * finding a pre-existing gameplay Fan source. Preserve every current
-         * source and append one dedicated 8D-7 source when necessary.
-         */
-        const existingSources =
-            this.localWindSystem
-                .getSources();
-
-        let source =
-            existingSources
-                .find(
-                    (candidate): boolean =>
-                        candidate.enabled &&
-                        !candidate.id.startsWith(
-                            "fire-validation-field-",
-                        ),
-                );
-
-        if (
-            !source
-        ) {
-            const template =
-                existingSources
-                    .find(
-                        (candidate): boolean =>
-                            candidate.enabled,
-                    ) ??
-                existingSources[0];
-
-            const sourceId =
-                "8d7-test-fan-wind";
-
-            const deterministicSource = {
-                id:
-                    sourceId,
-
-                positionX:
-                    900,
-
-                positionY:
-                    180,
-
-                directionRadians:
-                    Math.PI / 2,
-
-                range:
-                    template?.range ??
-                    560,
-
-                startHalfWidth:
-                    template?.startHalfWidth ??
-                    55,
-
-                endHalfWidth:
-                    template?.endHalfWidth ??
-                    55,
-
-                acceleration:
-                    template?.acceleration ??
-                    1100,
-
-                endStrengthMultiplier:
-                    template?.endStrengthMultiplier ??
-                    0.60,
-
-                edgeFalloffFraction:
-                    template?.edgeFalloffFraction ??
-                    0.22,
-
-                enabled:
-                    true,
-            };
-
-            this.localWindSystem
-                .replaceSources([
-                    ...existingSources,
-                    deterministicSource,
-                ]);
-
-            source =
-                this.localWindSystem
-                    .getSources()
-                    .find(
-                        (candidate): boolean =>
-                            candidate.id ===
-                            sourceId,
-                    );
-        }
-
-        if (
-            !source
-        ) {
-            throw new Error(
-                "World could not create the deterministic 8D-7 Fan Local Wind source.",
-            );
-        }
-
-        /*
-         * Use a copy for the Fan's initial transform while keeping the same
-         * registered source id. Fan.initialize() immediately synchronizes the
-         * authoritative LocalWindSystem source to the physical outlet.
-         */
-        const fan =
-            new Fan(
+            const fan = new Fan(
                 {
                     ...source,
-                    positionX:
-                        900,
-                    positionY:
-                        180,
-                    directionRadians:
-                        Math.PI / 2,
+                    positionX: placement.x,
+                    positionY: placement.y,
+                    directionRadians: placement.directionRadians,
                 },
                 this.localWindSystem,
             );
-
-        this.fans.push(
-            fan,
-        );
-
-        this.physicsWorld
-            .registerDynamicCollidable(
-                `fan-${source.id}`,
-                fan,
-            );
-
-        this.addEntity(
-            fan,
-        );
+            this.fans.push(fan);
+            this.physicsWorld.registerDynamicCollidable(`fan-${source.id}`, fan);
+            this.addEntity(fan);
+        }
     }
 
     // -------------------------------------------------------
@@ -4674,6 +4740,7 @@ export class World {
                 undefined,
                 this.waterPerformanceProfiler,
                 this.contourRefreshScheduler,
+                this.presentationVisibilityQuery,
             );
 
         /*

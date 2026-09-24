@@ -8,8 +8,9 @@ export type ProfileTimingName =
     | "waterFireStandingGround" | "waterFireStandingDirectional"
     | "waterSimulation" | "waterGroundInteraction" | "moistureSurfaceBridge"
     | "wetGround" | "standingWater" | "hoseWaterVfx" | "sprinklerWaterVfx"
+    | "waterVfxCore" | "waterImpactVfx"
     | "fireSimulation" | "firePresentation" | "fireDirectionalValidation"
-    | "fireSourceVisualizer" | "fireVfxUpdate" | "entities" | "hoseBallForce"
+    | "fireSourceVisualizer" | "fireVfxUpdate" | "robotAI" | "entities" | "localWindForces" | "windSuction" | "hoseBallForce"
     | "ballTrail" | "dynamicCollisions" | "hoseCollisions" | "mechanismSync"
     | "waterObstacleSync" | "windPresentation" | "gameplayPresentation" | "debugAndMetrics";
 
@@ -38,6 +39,8 @@ export interface WaterVfxProfileDetails {
     readonly renderedElements: number;
 }
 export interface SprinklerDeepProfileDetails extends WaterVfxProfileDetails {
+    readonly totalSources: number;
+    readonly culledSources: number;
     readonly preparedPackets: number;
     readonly sourceBookkeepingMilliseconds: number;
     readonly packetTraversalMilliseconds: number;
@@ -55,6 +58,9 @@ export interface SprinklerDeepProfileDetails extends WaterVfxProfileDetails {
         readonly reusedSlots: number;
         readonly hiddenSlots: number;
         readonly totalSlots: number;
+        readonly activeSlots: number;
+        readonly updatedSlots: number;
+        readonly renderedSlots: number;
     };
 }
 
@@ -143,7 +149,10 @@ export interface WaterPerformanceSnapshot {
     readonly standingWaterPeakMilliseconds: number; readonly wetGroundAverageMilliseconds: number;
     readonly wetGroundPeakMilliseconds: number; readonly hoseWaterVfxAverageMilliseconds: number;
     readonly hoseWaterVfxPeakMilliseconds: number; readonly sprinklerWaterVfxAverageMilliseconds: number;
-    readonly sprinklerWaterVfxPeakMilliseconds: number; readonly surfaceAverageMilliseconds: number;
+    readonly sprinklerWaterVfxPeakMilliseconds: number;
+    readonly waterVfxCoreAverageMilliseconds: number; readonly waterVfxCorePeakMilliseconds: number;
+    readonly waterImpactVfxAverageMilliseconds: number; readonly waterImpactVfxPeakMilliseconds: number;
+    readonly surfaceAverageMilliseconds: number;
     readonly waterSourcesAverageMilliseconds: number; readonly waterFireInteractionAverageMilliseconds: number;
     readonly waterFireAirborneDirectionalAverageMilliseconds: number;
     readonly waterFireAirborneGroundAverageMilliseconds: number;
@@ -153,7 +162,8 @@ export interface WaterPerformanceSnapshot {
     readonly contactWettingAverageMilliseconds: number; readonly infiltrationAverageMilliseconds: number;
     readonly moistureDiffusionAverageMilliseconds: number; readonly groundDryingAverageMilliseconds: number;
     readonly shallowWaterDissipationAverageMilliseconds: number; readonly fireSimulationAverageMilliseconds: number;
-    readonly firePresentationAverageMilliseconds: number; readonly entitiesAverageMilliseconds: number;
+    readonly firePresentationAverageMilliseconds: number; readonly robotAIAverageMilliseconds: number; readonly entitiesAverageMilliseconds: number;
+    readonly localWindForcesAverageMilliseconds: number; readonly windSuctionAverageMilliseconds: number;
     readonly hoseBallForceAverageMilliseconds: number; readonly ballTrailAverageMilliseconds: number;
     readonly dynamicCollisionsAverageMilliseconds: number; readonly hoseCollisionsAverageMilliseconds: number;
     readonly mechanismSyncAverageMilliseconds: number; readonly waterObstacleSyncAverageMilliseconds: number;
@@ -162,6 +172,7 @@ export interface WaterPerformanceSnapshot {
     readonly worldRemainderAverageMilliseconds: number; readonly trackedWaterCells: number;
     readonly visibleWaterCells: number; readonly activeRenderRegions: number;
     readonly activeAirbornePackets: number; readonly trackedMoistureCells: number;
+    readonly robotCount: number; readonly dynamicBodyCount: number; readonly fanCount: number; readonly sprinklerCount: number;
     readonly standingScanAverageMilliseconds: number; readonly standingContourAverageMilliseconds: number;
     readonly standingContourPeakMilliseconds: number;
     readonly standingGraphicsAverageMilliseconds: number; readonly standingReflectionAverageMilliseconds: number;
@@ -174,6 +185,9 @@ export interface WaterPerformanceSnapshot {
     readonly hoseActiveSources: number; readonly hoseInspectedPackets: number; readonly hoseRenderedElements: number;
     readonly sprinklerActiveSources: number; readonly sprinklerInspectedPackets: number; readonly sprinklerRenderedElements: number;
     readonly sprinklerPreparedPackets: number;
+    readonly standingCellsInCullRegion: number; readonly standingCellsActuallyScanned: number;
+    readonly sprinklerTotalSources: number; readonly sprinklerCulledSources: number;
+    readonly sprinklerActiveSlots: number; readonly sprinklerUpdatedSlots: number; readonly sprinklerRenderedSlots: number;
     readonly sprinklerSourceBookkeepingAverageMilliseconds: number;
     readonly sprinklerPacketTraversalAverageMilliseconds: number;
     readonly sprinklerPacketPreparationAverageMilliseconds: number;
@@ -228,7 +242,9 @@ export class WaterPerformanceProfiler {
     private presentationDiagnosticMode = "all";
     private firePresentationObjects = 0; private windPresentationObjects = 0; private waterPresentationObjects = 0;
     private trackedWaterCells = 0; private visibleWaterCells = 0; private activeRenderRegions = 0;
+    private standingCellsInCullRegion = 0; private standingCellsActuallyScanned = 0;
     private activeAirbornePackets = 0; private trackedMoistureCells = 0;
+    private robotCount = 0; private dynamicBodyCount = 0; private fanCount = 0; private sprinklerCount = 0;
     private standingTexture: TextureAccumulator = { commits: 0, texels: 0 };
     private wetTexture: TextureAccumulator = { commits: 0, texels: 0 };
     private otherTexture: TextureAccumulator = { commits: 0, texels: 0 };
@@ -241,7 +257,8 @@ export class WaterPerformanceProfiler {
         packetPreparation:{total:0,samples:0}, rendererSync:{total:0,samples:0}, legacyHide:{total:0,samples:0},
         dropletBegin:{total:0,samples:0}, slotLookupCreate:{total:0,samples:0}, transform:{total:0,samples:0},
         geometry:{total:0,samples:0}, style:{total:0,samples:0}, dropletEnd:{total:0,samples:0},
-        preparedPackets:0, createdSlots:0, reusedSlots:0, hiddenSlots:0, totalSlots:0,
+        totalSources:0, culledSources:0, preparedPackets:0, createdSlots:0, reusedSlots:0, hiddenSlots:0, totalSlots:0,
+        activeSlots:0, updatedSlots:0, renderedSlots:0,
     };
     private groundBreakdown = { contactWetting:0, infiltration:0, moistureDiffusion:0, groundDrying:0, shallowWaterDissipation:0, samples:0 };
     private fireDeepDetails: FireDeepProfileDetails = this.createEmptyFireDeepProfile();
@@ -265,11 +282,23 @@ export class WaterPerformanceProfiler {
     public measure<T>(name:ProfileTimingName,action:()=>T):T { if(!this.definition.enabled)return action();const s=performance.now();this.measurementStack.push(name);try{return action();}finally{this.measurementStack.pop();const e=performance.now()-s;const a=this.timings.get(name)??{total:0,peak:0,samples:0};a.total+=e;a.peak=Math.max(a.peak,e);a.samples+=1;this.timings.set(name,a);this.currentFrameTimings.set(name,(this.currentFrameTimings.get(name)??0)+e);} }
     public setWaterCounts(tracked:number,visible:number,regions:number):void { this.trackedWaterCells=tracked;this.visibleWaterCells=visible;this.activeRenderRegions=regions; }
     public setGlobalWaterCounts(airborne:number,moisture:number):void { this.activeAirbornePackets=airborne;this.trackedMoistureCells=moisture; }
+    public setStandingCullingCounts(tracked:number,inCullRegion:number,actuallyScanned:number,visible:number):void {
+        this.trackedWaterCells=Math.max(0,tracked);
+        this.standingCellsInCullRegion=Math.max(0,inCullRegion);
+        this.standingCellsActuallyScanned=Math.max(0,actuallyScanned);
+        this.visibleWaterCells=Math.max(0,visible);
+    }
+    public setStressTestCounts(robots:number,dynamicBodies:number,fans:number,sprinklers:number):void {
+        this.robotCount=Math.max(0,robots);
+        this.dynamicBodyCount=Math.max(0,dynamicBodies);
+        this.fanCount=Math.max(0,fans);
+        this.sprinklerCount=Math.max(0,sprinklers);
+    }
     public recordStandingWaterDetails(d:StandingWaterProfileDetails):void { if(!this.definition.enabled)return;this.addDetail(this.standingDetails.scan,d.scanMilliseconds);this.addDetail(this.standingDetails.contour,d.contourMilliseconds);this.addDetail(this.standingDetails.graphics,d.graphicsMilliseconds);this.addDetail(this.standingDetails.reflection,d.reflectionMilliseconds);this.standingDetails.bodyContours=d.bodyContours;this.standingDetails.accentContours=d.accentContours;this.standingDetails.bodyVertices=d.bodyVertices;this.standingDetails.accentVertices=d.accentVertices; }
     public recordWetGroundDetails(d:WetGroundProfileDetails):void { if(!this.definition.enabled)return;this.addDetail(this.wetDetails.membership,d.membershipMilliseconds);this.addDetail(this.wetDetails.contour,d.contourMilliseconds);this.addDetail(this.wetDetails.graphics,d.graphicsMilliseconds);this.wetDetails.visibleWetCells=d.visibleWetCells;this.wetDetails.contours=d.contours;this.wetDetails.vertices=d.vertices; }
     public recordHoseVfxDetails(d:WaterVfxProfileDetails):void { this.hoseDetails=d; }
     public recordSprinklerDeepProfileDetails(d:SprinklerDeepProfileDetails):void {
-        this.sprinklerDetails=d;this.sprinklerDeepDetails.preparedPackets=d.preparedPackets;
+        this.sprinklerDetails=d;this.sprinklerDeepDetails.totalSources=d.totalSources;this.sprinklerDeepDetails.culledSources=d.culledSources;this.sprinklerDeepDetails.preparedPackets=d.preparedPackets;
         if(!this.definition.enabled)return;
         this.addDetail(this.sprinklerDeepDetails.sourceBookkeeping,d.sourceBookkeepingMilliseconds);
         this.addDetail(this.sprinklerDeepDetails.packetTraversal,d.packetTraversalMilliseconds);
@@ -286,6 +315,9 @@ export class WaterPerformanceProfiler {
         this.sprinklerDeepDetails.reusedSlots=d.dropletRenderer.reusedSlots;
         this.sprinklerDeepDetails.hiddenSlots=d.dropletRenderer.hiddenSlots;
         this.sprinklerDeepDetails.totalSlots=d.dropletRenderer.totalSlots;
+        this.sprinklerDeepDetails.activeSlots=d.dropletRenderer.activeSlots;
+        this.sprinklerDeepDetails.updatedSlots=d.dropletRenderer.updatedSlots;
+        this.sprinklerDeepDetails.renderedSlots=d.dropletRenderer.renderedSlots;
     }
     public recordGroundInteractionBreakdown(b:{readonly contactWettingMilliseconds:number;readonly infiltrationMilliseconds:number;readonly moistureDiffusionMilliseconds:number;readonly groundDryingMilliseconds:number;readonly shallowWaterDissipationMilliseconds:number;}):void { if(!this.definition.enabled)return;this.groundBreakdown.contactWetting+=b.contactWettingMilliseconds;this.groundBreakdown.infiltration+=b.infiltrationMilliseconds;this.groundBreakdown.moistureDiffusion+=b.moistureDiffusionMilliseconds;this.groundBreakdown.groundDrying+=b.groundDryingMilliseconds;this.groundBreakdown.shallowWaterDissipation+=b.shallowWaterDissipationMilliseconds;this.groundBreakdown.samples+=1; }
     public recordTextureCommit(texelCount:number):void { if(!this.definition.enabled)return;const c=this.measurementStack[this.measurementStack.length-1];const t=c==="standingWater"?this.standingTexture:c==="wetGround"?this.wetTexture:this.otherTexture;t.commits+=1;t.texels+=Math.max(0,texelCount); }
@@ -320,12 +352,12 @@ export class WaterPerformanceProfiler {
     private average(name:ProfileTimingName):number{const v=this.timings.get(name);return v&&this.worldFrameSamples>0?v.total/this.worldFrameSamples:0;}
     private peak(name:ProfileTimingName):number{return this.timings.get(name)?.peak??0;}
     private publishSnapshot():void {
-        const names:ProfileTimingName[]=["surface","waterSources","airborneWater","waterFireInteraction","waterFireAirborneDirectional","waterFireAirborneGround","waterFireStandingGround","waterFireStandingDirectional","waterSimulation","waterGroundInteraction","moistureSurfaceBridge","wetGround","standingWater","hoseWaterVfx","sprinklerWaterVfx","fireSimulation","firePresentation","fireDirectionalValidation","fireSourceVisualizer","fireVfxUpdate","entities","hoseBallForce","ballTrail","dynamicCollisions","hoseCollisions","mechanismSync","waterObstacleSync","windPresentation","gameplayPresentation","debugAndMetrics"];
+        const names:ProfileTimingName[]=["surface","waterSources","airborneWater","waterFireInteraction","waterFireAirborneDirectional","waterFireAirborneGround","waterFireStandingGround","waterFireStandingDirectional","waterSimulation","waterGroundInteraction","moistureSurfaceBridge","wetGround","standingWater","hoseWaterVfx","sprinklerWaterVfx","waterVfxCore","waterImpactVfx","fireSimulation","firePresentation","fireDirectionalValidation","fireSourceVisualizer","fireVfxUpdate","robotAI","entities","localWindForces","windSuction","hoseBallForce","ballTrail","dynamicCollisions","hoseCollisions","mechanismSync","waterObstacleSync","windPresentation","gameplayPresentation","debugAndMetrics"];
         const measured=names.reduce((s,n)=>s+this.average(n),0);const worldAverage=this.worldFrameSamples>0?this.worldFrameTotal/this.worldFrameSamples:0;const actual=this.actualFrameSamples>0?this.actualFrameTotal/this.actualFrameSamples:0;const gameUpdate=this.gameUpdateSamples>0?this.gameUpdateTotal/this.gameUpdateSamples:0;const pixiRender=this.pixiRenderSamples>0?this.pixiRenderTotal/this.pixiRenderSamples:0;const outside=Math.max(0,actual-gameUpdate-pixiRender);
         const scalarDeep=ScalarFieldContourBuilder.getLastDeepProfile();
         const standingDeep=ScalarFieldContourBuilder.getLastStandingPostProfile();
         const wetDeep=ScalarFieldContourBuilder.getLastWetPostProfile();
-        this.latestSnapshot={...this.createEmptySnapshot(),fireDeep:this.fireDeepDetails,spikeWorstFrameMilliseconds:this.spikeWorstFrameMilliseconds,spikeWorstMeasuredMilliseconds:this.spikeWorstMeasuredMilliseconds,spikeTopTimings:this.spikeTopTimings,spikeFrameCount:this.spikeFrameCount,windDeep:this.windDeepDetails,actualFps:actual>0?1000/actual:0,actualFrameAverageMilliseconds:actual,gameUpdateAverageMilliseconds:gameUpdate,pixiRenderAverageMilliseconds:pixiRender,pixiRenderPeakMilliseconds:this.pixiRenderPeak,frameOutsideGameAndRenderAverageMilliseconds:outside,presentationDiagnosticMode:this.presentationDiagnosticMode,firePresentationObjects:this.firePresentationObjects,windPresentationObjects:this.windPresentationObjects,waterPresentationObjects:this.waterPresentationObjects,worldUpdateAverageMilliseconds:worldAverage,worldUpdatePeakMilliseconds:this.worldFramePeak,waterSimulationAverageMilliseconds:this.average("waterSimulation"),waterSimulationPeakMilliseconds:this.peak("waterSimulation"),airborneWaterAverageMilliseconds:this.average("airborneWater"),standingWaterAverageMilliseconds:this.average("standingWater"),standingWaterPeakMilliseconds:this.peak("standingWater"),wetGroundAverageMilliseconds:this.average("wetGround"),wetGroundPeakMilliseconds:this.peak("wetGround"),hoseWaterVfxAverageMilliseconds:this.average("hoseWaterVfx"),hoseWaterVfxPeakMilliseconds:this.peak("hoseWaterVfx"),sprinklerWaterVfxAverageMilliseconds:this.average("sprinklerWaterVfx"),sprinklerWaterVfxPeakMilliseconds:this.peak("sprinklerWaterVfx"),surfaceAverageMilliseconds:this.average("surface"),waterSourcesAverageMilliseconds:this.average("waterSources"),
+        this.latestSnapshot={...this.createEmptySnapshot(),fireDeep:this.fireDeepDetails,spikeWorstFrameMilliseconds:this.spikeWorstFrameMilliseconds,spikeWorstMeasuredMilliseconds:this.spikeWorstMeasuredMilliseconds,spikeTopTimings:this.spikeTopTimings,spikeFrameCount:this.spikeFrameCount,windDeep:this.windDeepDetails,actualFps:actual>0?1000/actual:0,actualFrameAverageMilliseconds:actual,gameUpdateAverageMilliseconds:gameUpdate,pixiRenderAverageMilliseconds:pixiRender,pixiRenderPeakMilliseconds:this.pixiRenderPeak,frameOutsideGameAndRenderAverageMilliseconds:outside,presentationDiagnosticMode:this.presentationDiagnosticMode,firePresentationObjects:this.firePresentationObjects,windPresentationObjects:this.windPresentationObjects,waterPresentationObjects:this.waterPresentationObjects,worldUpdateAverageMilliseconds:worldAverage,worldUpdatePeakMilliseconds:this.worldFramePeak,waterSimulationAverageMilliseconds:this.average("waterSimulation"),waterSimulationPeakMilliseconds:this.peak("waterSimulation"),airborneWaterAverageMilliseconds:this.average("airborneWater"),standingWaterAverageMilliseconds:this.average("standingWater"),standingWaterPeakMilliseconds:this.peak("standingWater"),wetGroundAverageMilliseconds:this.average("wetGround"),wetGroundPeakMilliseconds:this.peak("wetGround"),hoseWaterVfxAverageMilliseconds:this.average("hoseWaterVfx"),hoseWaterVfxPeakMilliseconds:this.peak("hoseWaterVfx"),sprinklerWaterVfxAverageMilliseconds:this.average("sprinklerWaterVfx"),sprinklerWaterVfxPeakMilliseconds:this.peak("sprinklerWaterVfx"),waterVfxCoreAverageMilliseconds:this.average("waterVfxCore"),waterVfxCorePeakMilliseconds:this.peak("waterVfxCore"),waterImpactVfxAverageMilliseconds:this.average("waterImpactVfx"),waterImpactVfxPeakMilliseconds:this.peak("waterImpactVfx"),surfaceAverageMilliseconds:this.average("surface"),waterSourcesAverageMilliseconds:this.average("waterSources"),
 waterFireInteractionAverageMilliseconds:this.average("waterFireAirborneDirectional")+this.average("waterFireAirborneGround")+this.average("waterFireStandingGround")+this.average("waterFireStandingDirectional"),
 waterFireAirborneDirectionalAverageMilliseconds:this.average("waterFireAirborneDirectional"),
 waterFireAirborneGroundAverageMilliseconds:this.average("waterFireAirborneGround"),
@@ -333,7 +365,8 @@ waterFireStandingGroundAverageMilliseconds:this.average("waterFireStandingGround
 waterFireStandingDirectionalAverageMilliseconds:this.average("waterFireStandingDirectional"),
 waterGroundInteractionAverageMilliseconds:this.average("waterGroundInteraction"),moistureSurfaceBridgeAverageMilliseconds:this.average("moistureSurfaceBridge"),contactWettingAverageMilliseconds:this.groundBreakdown.contactWetting/Math.max(1,this.worldFrameSamples),infiltrationAverageMilliseconds:this.groundBreakdown.infiltration/Math.max(1,this.worldFrameSamples),moistureDiffusionAverageMilliseconds:this.groundBreakdown.moistureDiffusion/Math.max(1,this.worldFrameSamples),groundDryingAverageMilliseconds:this.groundBreakdown.groundDrying/Math.max(1,this.worldFrameSamples),shallowWaterDissipationAverageMilliseconds:this.groundBreakdown.shallowWaterDissipation/Math.max(1,this.worldFrameSamples),fireSimulationAverageMilliseconds:this.average("fireSimulation"),
 firePresentationAverageMilliseconds:this.average("fireDirectionalValidation")+this.average("fireSourceVisualizer")+this.average("fireVfxUpdate"),
-entitiesAverageMilliseconds:this.average("entities"),hoseBallForceAverageMilliseconds:this.average("hoseBallForce"),ballTrailAverageMilliseconds:this.average("ballTrail"),dynamicCollisionsAverageMilliseconds:this.average("dynamicCollisions"),hoseCollisionsAverageMilliseconds:this.average("hoseCollisions"),mechanismSyncAverageMilliseconds:this.average("mechanismSync"),waterObstacleSyncAverageMilliseconds:this.average("waterObstacleSync"),windPresentationAverageMilliseconds:this.average("windPresentation"),gameplayPresentationAverageMilliseconds:this.average("gameplayPresentation"),debugAndMetricsAverageMilliseconds:this.average("debugAndMetrics"),measuredWorldAverageMilliseconds:measured,worldRemainderAverageMilliseconds:Math.max(0,worldAverage-measured),trackedWaterCells:this.trackedWaterCells,visibleWaterCells:this.visibleWaterCells,activeRenderRegions:this.activeRenderRegions,activeAirbornePackets:this.activeAirbornePackets,trackedMoistureCells:this.trackedMoistureCells,standingScanAverageMilliseconds:this.detailAverage(this.standingDetails.scan),standingContourAverageMilliseconds:this.detailAverage(this.standingDetails.contour),standingContourPeakMilliseconds:this.standingDetails.contour.peak??0,standingGraphicsAverageMilliseconds:this.detailAverage(this.standingDetails.graphics),standingReflectionAverageMilliseconds:this.detailAverage(this.standingDetails.reflection),standingBodyContours:this.standingDetails.bodyContours,standingAccentContours:this.standingDetails.accentContours,standingBodyVertices:this.standingDetails.bodyVertices,standingAccentVertices:this.standingDetails.accentVertices,wetMembershipAverageMilliseconds:this.detailAverage(this.wetDetails.membership),wetContourAverageMilliseconds:this.detailAverage(this.wetDetails.contour),wetContourPeakMilliseconds:this.wetDetails.contour.peak??0,wetGraphicsAverageMilliseconds:this.detailAverage(this.wetDetails.graphics),visibleWetCells:this.wetDetails.visibleWetCells,wetContours:this.wetDetails.contours,wetVertices:this.wetDetails.vertices,hoseActiveSources:this.hoseDetails.activeSources,hoseInspectedPackets:this.hoseDetails.inspectedPackets,hoseRenderedElements:this.hoseDetails.renderedElements,sprinklerActiveSources:this.sprinklerDetails.activeSources,sprinklerInspectedPackets:this.sprinklerDetails.inspectedPackets,sprinklerRenderedElements:this.sprinklerDetails.renderedElements,sprinklerPreparedPackets:this.sprinklerDeepDetails.preparedPackets,sprinklerSourceBookkeepingAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.sourceBookkeeping),sprinklerPacketTraversalAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.packetTraversal),sprinklerPacketPreparationAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.packetPreparation),sprinklerRendererSyncAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.rendererSync),sprinklerLegacyHideAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.legacyHide),sprinklerDropletBeginAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.dropletBegin),sprinklerSlotLookupCreateAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.slotLookupCreate),sprinklerTransformAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.transform),sprinklerGeometryAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.geometry),sprinklerStyleAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.style),sprinklerDropletEndAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.dropletEnd),sprinklerCreatedSlots:this.sprinklerDeepDetails.createdSlots,sprinklerReusedSlots:this.sprinklerDeepDetails.reusedSlots,sprinklerHiddenSlots:this.sprinklerDeepDetails.hiddenSlots,sprinklerTotalSlots:this.sprinklerDeepDetails.totalSlots,standingWaterTextureCommits:this.standingTexture.commits,standingWaterUploadedTexels:this.standingTexture.texels,wetGroundTextureCommits:this.wetTexture.commits,wetGroundUploadedTexels:this.wetTexture.texels,otherTextureCommits:this.otherTexture.commits,otherUploadedTexels:this.otherTexture.texels,
+robotAIAverageMilliseconds:this.average("robotAI"),entitiesAverageMilliseconds:this.average("entities"),
+localWindForcesAverageMilliseconds:this.average("localWindForces"),windSuctionAverageMilliseconds:this.average("windSuction"),hoseBallForceAverageMilliseconds:this.average("hoseBallForce"),ballTrailAverageMilliseconds:this.average("ballTrail"),dynamicCollisionsAverageMilliseconds:this.average("dynamicCollisions"),hoseCollisionsAverageMilliseconds:this.average("hoseCollisions"),mechanismSyncAverageMilliseconds:this.average("mechanismSync"),waterObstacleSyncAverageMilliseconds:this.average("waterObstacleSync"),windPresentationAverageMilliseconds:this.average("windPresentation"),gameplayPresentationAverageMilliseconds:this.average("gameplayPresentation"),debugAndMetricsAverageMilliseconds:this.average("debugAndMetrics"),measuredWorldAverageMilliseconds:measured,worldRemainderAverageMilliseconds:Math.max(0,worldAverage-measured),trackedWaterCells:this.trackedWaterCells,visibleWaterCells:this.visibleWaterCells,activeRenderRegions:this.activeRenderRegions,activeAirbornePackets:this.activeAirbornePackets,trackedMoistureCells:this.trackedMoistureCells,robotCount:this.robotCount,dynamicBodyCount:this.dynamicBodyCount,fanCount:this.fanCount,sprinklerCount:this.sprinklerCount,standingScanAverageMilliseconds:this.detailAverage(this.standingDetails.scan),standingContourAverageMilliseconds:this.detailAverage(this.standingDetails.contour),standingContourPeakMilliseconds:this.standingDetails.contour.peak??0,standingGraphicsAverageMilliseconds:this.detailAverage(this.standingDetails.graphics),standingReflectionAverageMilliseconds:this.detailAverage(this.standingDetails.reflection),standingBodyContours:this.standingDetails.bodyContours,standingAccentContours:this.standingDetails.accentContours,standingBodyVertices:this.standingDetails.bodyVertices,standingAccentVertices:this.standingDetails.accentVertices,wetMembershipAverageMilliseconds:this.detailAverage(this.wetDetails.membership),wetContourAverageMilliseconds:this.detailAverage(this.wetDetails.contour),wetContourPeakMilliseconds:this.wetDetails.contour.peak??0,wetGraphicsAverageMilliseconds:this.detailAverage(this.wetDetails.graphics),visibleWetCells:this.wetDetails.visibleWetCells,wetContours:this.wetDetails.contours,wetVertices:this.wetDetails.vertices,hoseActiveSources:this.hoseDetails.activeSources,hoseInspectedPackets:this.hoseDetails.inspectedPackets,hoseRenderedElements:this.hoseDetails.renderedElements,sprinklerActiveSources:this.sprinklerDetails.activeSources,sprinklerInspectedPackets:this.sprinklerDetails.inspectedPackets,sprinklerRenderedElements:this.sprinklerDetails.renderedElements,sprinklerPreparedPackets:this.sprinklerDeepDetails.preparedPackets,standingCellsInCullRegion:this.standingCellsInCullRegion,standingCellsActuallyScanned:this.standingCellsActuallyScanned,sprinklerTotalSources:this.sprinklerDeepDetails.totalSources,sprinklerCulledSources:this.sprinklerDeepDetails.culledSources,sprinklerActiveSlots:this.sprinklerDeepDetails.activeSlots,sprinklerUpdatedSlots:this.sprinklerDeepDetails.updatedSlots,sprinklerRenderedSlots:this.sprinklerDeepDetails.renderedSlots,sprinklerSourceBookkeepingAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.sourceBookkeeping),sprinklerPacketTraversalAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.packetTraversal),sprinklerPacketPreparationAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.packetPreparation),sprinklerRendererSyncAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.rendererSync),sprinklerLegacyHideAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.legacyHide),sprinklerDropletBeginAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.dropletBegin),sprinklerSlotLookupCreateAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.slotLookupCreate),sprinklerTransformAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.transform),sprinklerGeometryAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.geometry),sprinklerStyleAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.style),sprinklerDropletEndAverageMilliseconds:this.detailAverage(this.sprinklerDeepDetails.dropletEnd),sprinklerCreatedSlots:this.sprinklerDeepDetails.createdSlots,sprinklerReusedSlots:this.sprinklerDeepDetails.reusedSlots,sprinklerHiddenSlots:this.sprinklerDeepDetails.hiddenSlots,sprinklerTotalSlots:this.sprinklerDeepDetails.totalSlots,standingWaterTextureCommits:this.standingTexture.commits,standingWaterUploadedTexels:this.standingTexture.texels,wetGroundTextureCommits:this.wetTexture.commits,wetGroundUploadedTexels:this.wetTexture.texels,otherTextureCommits:this.otherTexture.commits,otherUploadedTexels:this.otherTexture.texels,
 contourScalarTotalMilliseconds:scalarDeep.totalMilliseconds,contourSegmentBuildMilliseconds:scalarDeep.segmentBuildMilliseconds,
 contourKeyAdjacencyMilliseconds:scalarDeep.keyAndAdjacencyMilliseconds,contourStitchingMilliseconds:scalarDeep.stitchingMilliseconds,
 contourCandidateCells:scalarDeep.candidateCells,contourCellsScanned:scalarDeep.cellsScanned,
@@ -408,6 +441,10 @@ wetDeepAcceptedLoops:wetDeep?.acceptedLoops??0,wetDeepRawVertices:wetDeep?.rawVe
             hoseWaterVfxPeakMilliseconds: 0,
             sprinklerWaterVfxAverageMilliseconds: 0,
             sprinklerWaterVfxPeakMilliseconds: 0,
+            waterVfxCoreAverageMilliseconds: 0,
+            waterVfxCorePeakMilliseconds: 0,
+            waterImpactVfxAverageMilliseconds: 0,
+            waterImpactVfxPeakMilliseconds: 0,
             surfaceAverageMilliseconds: 0,
             waterSourcesAverageMilliseconds: 0,
             waterFireInteractionAverageMilliseconds: 0,
@@ -424,7 +461,10 @@ wetDeepAcceptedLoops:wetDeep?.acceptedLoops??0,wetDeepRawVertices:wetDeep?.rawVe
             shallowWaterDissipationAverageMilliseconds: 0,
             fireSimulationAverageMilliseconds: 0,
             firePresentationAverageMilliseconds: 0,
+            robotAIAverageMilliseconds: 0,
             entitiesAverageMilliseconds: 0,
+            localWindForcesAverageMilliseconds: 0,
+            windSuctionAverageMilliseconds: 0,
             hoseBallForceAverageMilliseconds: 0,
             ballTrailAverageMilliseconds: 0,
             dynamicCollisionsAverageMilliseconds: 0,
@@ -441,6 +481,10 @@ wetDeepAcceptedLoops:wetDeep?.acceptedLoops??0,wetDeepRawVertices:wetDeep?.rawVe
             activeRenderRegions: 0,
             activeAirbornePackets: 0,
             trackedMoistureCells: 0,
+            robotCount: 0,
+            dynamicBodyCount: 0,
+            fanCount: 0,
+            sprinklerCount: 0,
             standingScanAverageMilliseconds: 0,
             standingContourAverageMilliseconds: 0,
             standingContourPeakMilliseconds: 0,
@@ -464,6 +508,13 @@ wetDeepAcceptedLoops:wetDeep?.acceptedLoops??0,wetDeepRawVertices:wetDeep?.rawVe
             sprinklerInspectedPackets: 0,
             sprinklerRenderedElements: 0,
             sprinklerPreparedPackets: 0,
+            standingCellsInCullRegion: 0,
+            standingCellsActuallyScanned: 0,
+            sprinklerTotalSources: 0,
+            sprinklerCulledSources: 0,
+            sprinklerActiveSlots: 0,
+            sprinklerUpdatedSlots: 0,
+            sprinklerRenderedSlots: 0,
             sprinklerSourceBookkeepingAverageMilliseconds: 0,
             sprinklerPacketTraversalAverageMilliseconds: 0,
             sprinklerPacketPreparationAverageMilliseconds: 0,

@@ -31,6 +31,8 @@ import type {
     ContourRefreshScheduler,
 } from "../../rendering/ContourRefreshScheduler";
 
+import type { PresentationVisibilityQuery } from "../../rendering/PresentationVisibilityQuery";
+
 /**
  * 8I-8B.2A production illustrated standing-Water renderer.
  *
@@ -99,6 +101,10 @@ export class StandingWaterRenderer {
 
         private readonly contourRefreshScheduler:
             ContourRefreshScheduler | null =
+            null,
+
+        private readonly presentationVisibilityQuery:
+            PresentationVisibilityQuery | null =
             null,
     ) {
         this.container =
@@ -307,9 +313,41 @@ export class StandingWaterRenderer {
 
         const scanStartedAt = performance.now();
 
+        // O3.2: resolve the viewport to field-cell bounds once. The tracked-cell
+        // iterator remains sparse, but every rejection is now integer-only instead
+        // of repeating world-space visibility math for every historical Water cell.
+        const expandedBounds = this.presentationVisibilityQuery
+            ?.getExpandedWorldBounds(this.cellSize * 2) ?? null;
+        const cullMinimumColumn = expandedBounds
+            ? Math.max(0, Math.floor((expandedBounds.minimumX - this.minimumWorldX) / this.cellSize) - 1)
+            : 0;
+        const cullMaximumColumn = expandedBounds
+            ? Math.min(this.columnCount - 1, Math.ceil((expandedBounds.maximumX - this.minimumWorldX) / this.cellSize) + 1)
+            : this.columnCount - 1;
+        const cullMinimumRow = expandedBounds
+            ? Math.max(0, Math.floor((expandedBounds.minimumY - this.minimumWorldY) / this.cellSize) - 1)
+            : 0;
+        const cullMaximumRow = expandedBounds
+            ? Math.min(this.rowCount - 1, Math.ceil((expandedBounds.maximumY - this.minimumWorldY) / this.cellSize) + 1)
+            : this.rowCount - 1;
+        let cellsInCullRegion = 0;
+        let cellsActuallyScanned = 0;
+
         this.waterField
             .forEachTrackedWaterCell(
                 (cell): void => {
+                    const column = cell.index % this.columnCount;
+                    const row = Math.floor(cell.index / this.columnCount);
+                    if (
+                        column < cullMinimumColumn || column > cullMaximumColumn ||
+                        row < cullMinimumRow || row > cullMaximumRow
+                    ) {
+                        this.visibleBodyCellIndices.delete(cell.index);
+                        return;
+                    }
+                    cellsInCullRegion += 1;
+                    cellsActuallyScanned += 1;
+
                     if (!Number.isFinite(cell.depth)) {
                         this.visibleBodyCellIndices.delete(cell.index);
                         return;
@@ -346,16 +384,6 @@ export class StandingWaterRenderer {
                         Math.imul(
                             contourSignature ^ quantizedDepth,
                             16777619,
-                        );
-
-                    const column =
-                        cell.index %
-                        this.columnCount;
-
-                    const row =
-                        Math.floor(
-                            cell.index /
-                            this.columnCount,
                         );
 
                     minimumColumn =
@@ -410,6 +438,9 @@ export class StandingWaterRenderer {
                 standingWater,
             );
 
+            this.performanceProfiler?.setStandingCullingCounts(
+                this.waterField.getTrackedWaterCellCount(), cellsInCullRegion, cellsActuallyScanned, 0,
+            );
             this.performanceProfiler
                 ?.setWaterCounts(
                     this.waterField
@@ -417,6 +448,9 @@ export class StandingWaterRenderer {
                     0,
                     0,
                 );
+            this.performanceProfiler?.setStandingCullingCounts(
+                this.waterField.getTrackedWaterCellCount(), cellsInCullRegion, cellsActuallyScanned, visibleWaterCells,
+            );
             this.performanceProfiler?.recordStandingWaterDetails({
                 scanMilliseconds, contourMilliseconds: 0, graphicsMilliseconds: 0,
                 reflectionMilliseconds: performance.now() - redrawStartedAt - scanMilliseconds,
@@ -705,6 +739,9 @@ export class StandingWaterRenderer {
 
         reflectionMilliseconds = performance.now() - reflectionStartedAt;
 
+        this.performanceProfiler?.setStandingCullingCounts(
+            this.waterField.getTrackedWaterCellCount(), cellsInCullRegion, cellsActuallyScanned, visibleWaterCells,
+        );
         this.performanceProfiler
             ?.setWaterCounts(
                 this.waterField
