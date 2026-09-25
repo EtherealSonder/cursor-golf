@@ -53,6 +53,10 @@ export class RadialBumper extends Entity {
         this.setPosition(positionX, positionY);
     }
 
+    public getDefinition(): RadialBumperDefinition {
+        return this.definition;
+    }
+
     public getCollisionDefinition(): StaticObstacleDefinition {
         return this.collisionDefinition;
     }
@@ -66,6 +70,20 @@ export class RadialBumper extends Entity {
                 velocityX: manifold.normalX * incomingSpeed * this.definition.bounceSpeedMultiplier,
                 velocityY: manifold.normalY * incomingSpeed * this.definition.bounceSpeedMultiplier,
             };
+        };
+    }
+
+    public getWaterReflectionDefinition(): {
+        readonly speedRetention: number;
+        readonly separationDistance: number;
+        readonly minimumOutgoingSpeed: number;
+        readonly onImpact: () => void;
+    } {
+        return {
+            speedRetention: this.definition.waterReflectionSpeedRetention,
+            separationDistance: this.definition.waterReflectionSeparationDistance,
+            minimumOutgoingSpeed: this.definition.waterReflectionMinimumSpeed,
+            onImpact: (): void => this.triggerImpact(),
         };
     }
 

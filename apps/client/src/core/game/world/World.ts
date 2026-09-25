@@ -197,6 +197,26 @@ import {
 } from "../entities/mechanisms/RadialBumper";
 
 import {
+    DirectionalBumper,
+} from "../entities/mechanisms/DirectionalBumper";
+
+import {
+    DirectionalBumperTargeting,
+} from "../entities/mechanisms/DirectionalBumperTargeting";
+
+import {
+    DirectionalBumperImpactVfx,
+} from "../entities/mechanisms/DirectionalBumperImpactVfx";
+
+import {
+    DirectionalBumperCollisionSystem,
+} from "../physics/DirectionalBumperCollisionSystem";
+
+import {
+    DirectionalBumperWaterCollisionSystem,
+} from "../physics/DirectionalBumperWaterCollisionSystem";
+
+import {
     FireTube,
 } from "../entities/mechanisms/FireTube";
 
@@ -219,6 +239,10 @@ import {
 import {
     DynamicStaticCollisionSystem,
 } from "../physics/DynamicStaticCollisionSystem";
+
+import {
+    RadialBumperCollisionSystem,
+} from "../physics/RadialBumperCollisionSystem";
 
 import {
     PhysicsWorld,
@@ -311,6 +335,10 @@ import {
 import {
     AirborneWaterCollisionField,
 } from "../environment/AirborneWaterCollisionField";
+
+import {
+    AirborneWaterCollisionResponse,
+} from "../environment/AirborneWaterCollisionResponse";
 
 import {
     WindManager,
@@ -462,9 +490,10 @@ export class World {
     private readonly fans:
         Fan[] = [];
 
-    /** RB-2 fixed kinetic bumper test mechanism with impact presentation. */
-    private radialBumper:
-        RadialBumper | null = null;
+    /** DB-5 deterministic multi-bumper test layout. */
+    private readonly radialBumpers: RadialBumper[] = [];
+    private readonly directionalBumpers: DirectionalBumper[] = [];
+    private readonly directionalBumperImpactVfx: DirectionalBumperImpactVfx[] = [];
 
     private readonly fireTubes:
         FireTube[] = [];
@@ -534,6 +563,10 @@ export class World {
     /** Phase 8D-5 continuous static collision queries for airborne Water. */
     private readonly airborneWaterCollisionField:
         AirborneWaterCollisionField;
+
+    /** RB-4 exceptional static-collider response policy for airborne Water. */
+    private readonly airborneWaterCollisionResponse:
+        AirborneWaterCollisionResponse;
 
     /** Phase 8B-2 authoritative transport for Water currently in flight. */
     private readonly airborneWaterSystem:
@@ -641,6 +674,12 @@ export class World {
     /** Phase 8D-7D movable gameplay objects versus fixed world geometry. */
     private readonly dynamicStaticCollisionSystem:
         DynamicStaticCollisionSystem;
+
+    /** One contact-state system per bumper prevents cross-bumper latching. */
+    private readonly radialBumperCollisionSystems: RadialBumperCollisionSystem[] = [];
+    private readonly directionalBumperTargetingSystems: DirectionalBumperTargeting[] = [];
+    private readonly directionalBumperCollisionSystems: DirectionalBumperCollisionSystem[] = [];
+    private readonly directionalBumperWaterCollisionSystem = new DirectionalBumperWaterCollisionSystem();
 
     private staticObstacleDefinitions:
         readonly StaticObstacleDefinition[] = [];
@@ -826,6 +865,9 @@ export class World {
         this.airborneWaterCollisionField =
             new AirborneWaterCollisionField();
 
+        this.airborneWaterCollisionResponse =
+            new AirborneWaterCollisionResponse();
+
         this.waterObstacleRegistrationSystem =
             new WaterObstacleRegistrationSystem(
                 this.physicsWorld,
@@ -840,6 +882,7 @@ export class World {
                 this.windManager,
                 this.localWindSystem,
                 this.airborneWaterCollisionField,
+                this.airborneWaterCollisionResponse,
             );
         this.fireSourceSystem =
             new FireSourceSystem(
@@ -866,6 +909,7 @@ export class World {
 
         this.dynamicStaticCollisionSystem =
             new DynamicStaticCollisionSystem();
+
     }
 
     // -------------------------------------------------------
@@ -960,44 +1004,84 @@ export class World {
         }
 
         // ---------------------------------------------------
-        // RB-2 Radial Bumper test mechanism
+        // DB-5 Multi-bumper development layout
         // ---------------------------------------------------
+        // These are deterministic, deliberately scattered test placements rather
+        // than per-load randomness. They stay clear of the brown blocker layout
+        // and the current mechanism spawn regions, keeping collision tests repeatable.
+        const radialBumperPlacements = [
+            { id: "radial-bumper-test-1", x: 1080, y: 150 },
+            { id: "radial-bumper-test-2", x: 2240, y: 500 },
+        ];
 
-        this.radialBumper = new RadialBumper(
-            "radial-bumper-test-1",
-            1280,
-            520,
-        );
+        for (const placement of radialBumperPlacements) {
+            const bumper = new RadialBumper(placement.id, placement.x, placement.y);
+            const collision = bumper.getCollisionDefinition();
+            this.radialBumpers.push(bumper);
+            this.radialBumperCollisionSystems.push(new RadialBumperCollisionSystem());
+            this.physicsWorld.registerStaticDefinition(collision);
+            this.robotInteractionRegistry.register({
+                id: collision.id,
+                label: "Radial Bumper",
+                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+                shape: { kind: "circle", radius: collision.shape === "circle" ? collision.radius : 39 },
+                getX: (): number => bumper.getX(),
+                getY: (): number => bumper.getY(),
+            });
+            this.staticCollisionResponders.register(collision.id, bumper.getCollisionResponder());
+            this.airborneWaterCollisionResponse.registerReflector(
+                collision.id, bumper.getWaterReflectionDefinition(),
+            );
+            this.addEntity(bumper);
+        }
 
-        const radialBumperCollision =
-            this.radialBumper.getCollisionDefinition();
+        // One Directional Bumper for each cardinal direction: right, down, left, up.
+        const directionalBumperPlacements = [
+            { id: "directional-bumper-test-right", x: 700, y: 430, rotation: 0 },
+            { id: "directional-bumper-test-down", x: 1080, y: 360, rotation: Math.PI / 2 },
+            { id: "directional-bumper-test-left", x: 1460, y: 450, rotation: Math.PI },
+            { id: "directional-bumper-test-up", x: 1980, y: 430, rotation: -Math.PI / 2 },
+        ];
 
-        this.physicsWorld.registerStaticDefinition(
-            radialBumperCollision,
-        );
-        this.robotInteractionRegistry.register({
-            id: radialBumperCollision.id,
-            label: "Radial Bumper",
-            capabilities: {
-                navigationBlocker: true,
-                attackTarget: true,
-                visionOccluder: true,
-            },
-            shape: {
-                kind: "circle",
-                radius: radialBumperCollision.shape === "circle"
-                    ? radialBumperCollision.radius
-                    : 39,
-            },
-            getX: (): number => this.radialBumper?.getX() ?? -100000,
-            getY: (): number => this.radialBumper?.getY() ?? -100000,
-        });
-        this.staticCollisionResponders.register(
-            radialBumperCollision.id,
-            this.radialBumper.getCollisionResponder(),
-        );
-        this.addEntity(this.radialBumper);
+        for (const placement of directionalBumperPlacements) {
+            const bumper = new DirectionalBumper(
+                placement.id, placement.x, placement.y, placement.rotation,
+            );
+            this.directionalBumpers.push(bumper);
+            this.directionalBumperTargetingSystems.push(new DirectionalBumperTargeting());
+            this.directionalBumperCollisionSystems.push(new DirectionalBumperCollisionSystem());
+            this.physicsWorld.registerFixedShapeProvider(
+                bumper.getColliderId(),
+                () => bumper.getWaterCollisionShape(),
+            );
 
+            // DB-6: Directional Bumpers participate in the same generic Robot
+            // interaction registry as Radial Bumpers. A circle around the pivot
+            // covers the full moving arm without requiring Robot AI to understand
+            // oriented rectangles.
+            this.robotInteractionRegistry.register({
+                id: bumper.getColliderId(),
+                label: "Directional Bumper",
+                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: false },
+                shape: { kind: "circle", radius: bumper.getDefinition().armLength },
+                getX: (): number => bumper.getX(),
+                getY: (): number => bumper.getY(),
+            });
+
+            // The live fixed-shape provider above supplies the current animated
+            // arm pose to airborne Water. This adapter changes the terminal Water
+            // impact into the same reflected response used by RB-4.
+            this.directionalBumperWaterCollisionSystem.register(
+                bumper,
+                this.airborneWaterCollisionResponse,
+            );
+
+            this.addEntity(bumper);
+
+            const impactVfx = new DirectionalBumperImpactVfx(bumper.getDefinition());
+            this.directionalBumperImpactVfx.push(impactVfx);
+            this.addEntity(impactVfx);
+        }
 
         // ---------------------------------------------------
         // Create Ball
@@ -1601,6 +1685,55 @@ export class World {
 
 
 
+        // DB-5: each Directional Bumper evaluates the same generic target population
+        // independently. Each bumper owns its own approach/re-arm state.
+        if (this.directionalBumpers.length > 0) {
+            const candidates: Array<{ id: string; x: number; y: number; velocityX: number; velocityY: number; radius: number }> = [];
+            if (this.ball) {
+                candidates.push({
+                    id: "ball", x: this.ball.getX(), y: this.ball.getY(),
+                    velocityX: this.ball.getVelocityX(), velocityY: this.ball.getVelocityY(),
+                    radius: this.ball.getRadius(),
+                });
+            }
+            for (const body of this.physicsWorld.getMovableRigidDynamicCollidables()) {
+                const definition = body.getDefinition();
+                const radius = definition.shape === "circle"
+                    ? definition.radius
+                    : definition.shape === "rectangle"
+                        ? Math.hypot(definition.width, definition.height) * 0.5
+                        : 0;
+                if (radius <= 0) continue;
+                candidates.push({
+                    id: definition.id, x: body.getX(), y: body.getY(),
+                    velocityX: body.getVelocityX(), velocityY: body.getVelocityY(), radius,
+                });
+            }
+
+            for (let bumperIndex = 0; bumperIndex < this.directionalBumpers.length; bumperIndex += 1) {
+                const bumper = this.directionalBumpers[bumperIndex];
+                const targeting = this.directionalBumperTargetingSystems[bumperIndex];
+                if (!bumper || !targeting) continue;
+
+                let selected: { id: string; evaluation: ReturnType<DirectionalBumperTargeting["evaluate"]> } | null = null;
+                for (const candidate of candidates) {
+                    const evaluation = targeting.evaluate(
+                        bumper.getX(), bumper.getY(), bumper.getIdleAngleRadians(), candidate, bumper.getDefinition(),
+                    );
+                    if (evaluation.solution && (!selected || evaluation.diagnostic.distanceToServiceArm < selected.evaluation.diagnostic.distanceToServiceArm)) {
+                        selected = { id: candidate.id, evaluation };
+                    }
+                }
+
+                const evaluation = selected?.evaluation ?? null;
+                const strikeRequested = bumper.isIdle() && evaluation?.solution !== null && evaluation?.solution !== undefined;
+                const strikeAccepted = strikeRequested && evaluation?.solution
+                    ? bumper.beginStrike(evaluation.solution.targetAngleRadians)
+                    : false;
+                if (strikeAccepted && selected) targeting.markApproachServiced(selected.id);
+            }
+        }
+
         /*
          * Stress-test profiling keeps Robot AI separate from ordinary entity
          * updates while preserving the original entity-list update order.
@@ -1686,6 +1819,37 @@ export class World {
             this.dynamicCollisionSystem.resolve(
                 this.physicsWorld.getRigidDynamicCollidables(),
             );
+            for (let bumperIndex = 0; bumperIndex < this.radialBumpers.length; bumperIndex += 1) {
+                const bumper = this.radialBumpers[bumperIndex];
+                const collisionSystem = this.radialBumperCollisionSystems[bumperIndex];
+                if (!bumper || !collisionSystem) continue;
+                collisionSystem.resolve(this.physicsWorld, bumper);
+            }
+
+            if (this.ball) {
+                for (let bumperIndex = 0; bumperIndex < this.directionalBumpers.length; bumperIndex += 1) {
+                    const bumper = this.directionalBumpers[bumperIndex];
+                    const collisionSystem = this.directionalBumperCollisionSystems[bumperIndex];
+                    const impactVfx = this.directionalBumperImpactVfx[bumperIndex];
+                    if (!bumper || !collisionSystem) continue;
+
+                    collisionSystem.resolve(this.ball, bumper, this.physicsWorld);
+                    const impact = collisionSystem.consumePoweredImpact();
+                    if (!impact) continue;
+
+                    bumper.playImpactAnimation();
+                    const outgoingSpeed = Math.hypot(impact.outgoingX, impact.outgoingY);
+                    const definition = bumper.getDefinition();
+                    const strengthRange = Math.max(1, definition.maximumLaunchSpeed - definition.minimumLaunchSpeed);
+                    const strength = Math.max(0, Math.min(1,
+                        (outgoingSpeed - definition.minimumLaunchSpeed) / strengthRange,
+                    ));
+                    impactVfx?.emit({
+                        x: impact.x, y: impact.y,
+                        outgoingX: impact.outgoingX, outgoingY: impact.outgoingY, strength,
+                    });
+                }
+            }
             this.dynamicStaticCollisionSystem.resolve(this.physicsWorld);
         });
 
@@ -1920,6 +2084,17 @@ export class World {
 
         this.robotInteractionRegistry.clear();
         this.sprinklerRobotInteractionUnregister.clear();
+
+        for (const system of this.radialBumperCollisionSystems) system.reset();
+        for (const system of this.directionalBumperCollisionSystems) system.reset();
+        for (const targeting of this.directionalBumperTargetingSystems) targeting.reset();
+        this.radialBumperCollisionSystems.length = 0;
+        this.directionalBumperCollisionSystems.length = 0;
+        this.directionalBumperTargetingSystems.length = 0;
+        this.radialBumpers.length = 0;
+        this.directionalBumpers.length = 0;
+        this.directionalBumperImpactVfx.length = 0;
+        this.airborneWaterCollisionResponse.clear();
 
         this.physicsWorld
             .clear();

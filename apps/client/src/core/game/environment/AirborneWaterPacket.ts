@@ -257,6 +257,29 @@ export class AirborneWaterPacket {
         return null;
     }
 
+    /**
+     * Repositions and redirects this same authoritative packet after a
+     * non-terminal static collision such as a Radial Bumper reflection.
+     * Water amount, source identity, age, vertical velocity and wind response
+     * remain owned by the existing packet.
+     */
+    public redirectAfterStaticCollision(
+        positionX: number,
+        positionY: number,
+        height: number,
+        velocityX: number,
+        velocityY: number,
+    ): void {
+        if ([positionX, positionY, height, velocityX, velocityY].some((value) => !Number.isFinite(value))) {
+            return;
+        }
+        this.positionX = positionX;
+        this.positionY = positionY;
+        this.height = Math.max(0, height);
+        this.velocityX = velocityX;
+        this.velocityY = velocityY;
+    }
+
     public getSourceId(): string {
         return this.sourceId;
     }

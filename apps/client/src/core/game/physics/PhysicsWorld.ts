@@ -116,6 +116,11 @@ export class PhysicsWorld {
         );
     }
 
+    /**
+     * Fixed providers may return a different transform every frame. DB-1 uses
+     * this existing contract for the rotating Directional Bumper while its pivot
+     * remains immovable. Collision consumers always receive the current shape.
+     */
     public registerFixedShapeProvider(
         id:
             string,
@@ -313,6 +318,11 @@ export class PhysicsWorld {
         readonly DynamicCollidable[] {
 
         return this.rigidDynamicCollidables;
+    }
+
+    /** RB-3 movable subset used by powered fixed mechanisms such as Radial Bumper. */
+    public getMovableRigidDynamicCollidables(): readonly DynamicCollidable[] {
+        return this.rigidDynamicCollidables.filter((body) => body.getInverseMass() > 0);
     }
 
     /** R-9 colliders that opt into non-physical impact awareness. */

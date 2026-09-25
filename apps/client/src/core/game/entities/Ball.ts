@@ -1032,6 +1032,16 @@ export class Ball extends Entity {
         return 0;
     }
 
+    /** DB-1 authoritative powered response from the moving Directional Bumper. */
+    public applyDirectionalBumperVelocity(velocityX: number, velocityY: number): void {
+        if (!Number.isFinite(velocityX) || !Number.isFinite(velocityY)) return;
+        if (this.gameplayState !== BallGameplayState.Active) return;
+        this.velocityX = velocityX;
+        this.velocityY = velocityY;
+        this.restStabilityElapsedTime = 0;
+        this.clubInteractionSettleElapsedTime = 0;
+    }
+
     public getSpeed():
         number {
 

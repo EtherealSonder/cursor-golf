@@ -10,6 +10,20 @@ export interface RadialBumperDefinition {
     readonly bounceSpeedMultiplier: number;
     readonly material: ObstaclePhysicsMaterial;
 
+    /** RB-3 powered response for registered movable rigid bodies. */
+    readonly genericBounceSpeedMultiplier: number;
+    readonly genericReferenceMass: number;
+    readonly genericMassResponseExponent: number;
+    readonly genericMinimumMassFactor: number;
+    readonly genericMaximumMassFactor: number;
+    readonly minimumGenericImpactSpeed: number;
+    readonly maximumGenericReboundSpeed: number;
+
+    /** RB-4 authoritative airborne-Water reflection tuning. */
+    readonly waterReflectionSpeedRetention: number;
+    readonly waterReflectionSeparationDistance: number;
+    readonly waterReflectionMinimumSpeed: number;
+
     /** RB-2 presentation. Collider remains fixed while the artwork pulses. */
     readonly impactExpandScale: number;
     readonly impactExpandDurationSeconds: number;
@@ -35,6 +49,22 @@ export const DEFAULT_RADIAL_BUMPER_DEFINITION: RadialBumperDefinition = {
         restitution: 1,
         collisionFriction: 0,
     },
+
+    // RB-3.1: keep the bumper decisively powered across the full mass range.
+    // Mass still matters, but heavy bodies no longer lose most of the launch.
+    genericBounceSpeedMultiplier: 1.75,
+    genericReferenceMass: 4,
+    genericMassResponseExponent: 0.18,
+    genericMinimumMassFactor: 0.68,
+    genericMaximumMassFactor: 1.25,
+    minimumGenericImpactSpeed: 12,
+    maximumGenericReboundSpeed: 1400,
+
+    // Water keeps most of its horizontal energy, but the bumper does not
+    // amplify a Hose/Sprinkler stream the way it powers rigid-body impacts.
+    waterReflectionSpeedRetention: 0.92,
+    waterReflectionSeparationDistance: 2,
+    waterReflectionMinimumSpeed: 40,
 
     impactExpandScale: 1.20,
     impactExpandDurationSeconds: 0.085,

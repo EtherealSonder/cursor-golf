@@ -43,6 +43,10 @@ import type {
     AirborneWaterCollisionHit,
 } from "./AirborneWaterObstacleShape";
 
+import type {
+    AirborneWaterCollisionResponse,
+} from "./AirborneWaterCollisionResponse";
+
 
 /**
  * One authoritative ground-plane movement segment produced by an airborne
@@ -194,6 +198,9 @@ export class AirborneWaterSystem {
             null,
         private readonly staticCollisionField:
             AirborneWaterCollisionField | null =
+            null,
+        private readonly collisionResponse:
+            AirborneWaterCollisionResponse | null =
             null,
     ) {
         validateAirborneWaterDefinition(
@@ -518,6 +525,12 @@ export class AirborneWaterSystem {
             if (
                 staticHit
             ) {
+                const hitHeight = this.lerp(
+                    previousHeight,
+                    packet.getHeight(),
+                    staticHit.fraction,
+                );
+
                 this.recordMovementSweep(
                     packet,
                     previousPositionX,
@@ -525,12 +538,26 @@ export class AirborneWaterSystem {
                     previousHeight,
                     staticHit.positionX,
                     staticHit.positionY,
-                    this.lerp(
-                        previousHeight,
-                        packet.getHeight(),
-                        staticHit.fraction,
-                    ),
+                    hitHeight,
                 );
+
+                const reflection =
+                    this.collisionResponse?.resolve(packet, staticHit) ?? null;
+
+                if (reflection) {
+                    // RB-4: preserve the same authoritative packet and Water
+                    // quantity. Only its ground-plane contact position and
+                    // velocity are redirected; ballistic height/vertical state
+                    // continue through the existing packet lifecycle.
+                    packet.redirectAfterStaticCollision(
+                        reflection.positionX,
+                        reflection.positionY,
+                        hitHeight,
+                        reflection.velocityX,
+                        reflection.velocityY,
+                    );
+                    continue;
+                }
 
                 this.depositStaticImpact(
                     packet,

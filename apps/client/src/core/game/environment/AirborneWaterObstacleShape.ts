@@ -43,6 +43,7 @@ export type AirborneWaterObstacleShape =
 export interface AirborneWaterCollisionHit {
     readonly positionX: number;
     readonly positionY: number;
+    /** Outward unit surface normal at the continuous sweep contact. */
     readonly normalX: number;
     readonly normalY: number;
     readonly fraction: number;
