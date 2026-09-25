@@ -200,6 +200,8 @@ import {
     DirectionalBumper,
 } from "../entities/mechanisms/DirectionalBumper";
 
+import { RotatingPaddle } from "../entities/mechanisms/RotatingPaddle";
+
 import {
     DirectionalBumperTargeting,
 } from "../entities/mechanisms/DirectionalBumperTargeting";
@@ -215,6 +217,11 @@ import {
 import {
     DirectionalBumperWaterCollisionSystem,
 } from "../physics/DirectionalBumperWaterCollisionSystem";
+import { RotatingPaddleBallInteractionSystem } from "../physics/RotatingPaddleBallInteractionSystem";
+import { RotatingPaddleDynamicInteractionSystem } from "../physics/RotatingPaddleDynamicInteractionSystem";
+import { RotatingPaddleWaterCollisionSystem } from "../physics/RotatingPaddleWaterCollisionSystem";
+import { RotatingPaddleCenterCollisionSystem } from "../physics/RotatingPaddleCenterCollisionSystem";
+import { RotatingPaddleWaterDispersalSystem } from "../environment/RotatingPaddleWaterDispersalSystem";
 
 import {
     FireTube,
@@ -384,6 +391,8 @@ import {
     ContourRefreshScheduler,
 } from "../../rendering/ContourRefreshScheduler";
 
+import { RotatingPaddleWaterDispersalValidation } from "../debug/RotatingPaddleWaterDispersalValidation";
+
 export class World {
 
     private readonly app:
@@ -494,6 +503,16 @@ export class World {
     private readonly radialBumpers: RadialBumper[] = [];
     private readonly directionalBumpers: DirectionalBumper[] = [];
     private readonly directionalBumperImpactVfx: DirectionalBumperImpactVfx[] = [];
+
+    /** RP-1 continuously powered surface mechanisms. */
+    private readonly rotatingPaddles: RotatingPaddle[] = [];
+    private readonly rotatingPaddleBallInteractionSystem = new RotatingPaddleBallInteractionSystem();
+    private readonly rotatingPaddleDynamicInteractionSystem = new RotatingPaddleDynamicInteractionSystem();
+    private readonly rotatingPaddleWaterCollisionSystem = new RotatingPaddleWaterCollisionSystem();
+    private readonly rotatingPaddleCenterCollisionSystem = new RotatingPaddleCenterCollisionSystem();
+    private readonly rotatingPaddleWaterDispersalSystem = new RotatingPaddleWaterDispersalSystem();
+    private readonly rotatingPaddleWaterDispersalValidation = new RotatingPaddleWaterDispersalValidation();
+    private rotatingPaddleWaterDiagnosticElapsed = 0;
 
     private readonly fireTubes:
         FireTube[] = [];
@@ -1084,6 +1103,38 @@ export class World {
         }
 
         // ---------------------------------------------------
+        // RP-1 Rotating Paddles
+        // ---------------------------------------------------
+        // Authored clear test positions. These are surface mechanisms, so their
+        // sprites sit above ground state but beneath standing Water and actors.
+        const rotatingPaddlePlacements = [
+            // RP-2.2 focused test lane: two paddles vertically aligned with clear grass around them.
+            { id: "rotating-paddle-clockwise", x: 900, y: 280, direction: "clockwise" as const },
+            { id: "rotating-paddle-counter-clockwise", x: 900, y: 700, direction: "counterClockwise" as const },
+        ];
+        for (const placement of rotatingPaddlePlacements) {
+            const paddle = new RotatingPaddle(
+                placement.id, placement.x, placement.y, placement.direction,
+            );
+            this.rotatingPaddles.push(paddle);
+            this.rotatingPaddleWaterCollisionSystem.register(this.physicsWorld, paddle);
+
+            // RP-3.1: the cream center stopper is a normal Robot-world object:
+            // it blocks navigation, occludes vision and can be deliberately
+            // targeted so Water Robot attacks can exercise its Water collision.
+            this.robotInteractionRegistry.register({
+                id: `${paddle.getId()}:robot-center-target`,
+                label: "Rotating paddle center",
+                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+                shape: { kind: "circle", radius: paddle.getCenterStopperRadius() },
+                getX: (): number => paddle.getX(),
+                getY: (): number => paddle.getY(),
+            });
+
+            this.addEntity(paddle, WorldRenderLayer.SurfaceMechanisms);
+        }
+
+        // ---------------------------------------------------
         // Create Ball
         // ---------------------------------------------------
 
@@ -1153,6 +1204,13 @@ export class World {
         if (waterRobotAttackSource) {
             this.airborneWaterVisualizer?.setSourceHidden(
                 waterRobotAttackSource.getWaterSourceId(),
+                true,
+            );
+        }
+        const secondWaterRobotAttackSource = this.secondWaterRobot?.getWaterAttackSource();
+        if (secondWaterRobotAttackSource) {
+            this.airborneWaterVisualizer?.setSourceHidden(
+                secondWaterRobotAttackSource.getWaterSourceId(),
                 true,
             );
         }
@@ -1454,9 +1512,12 @@ export class World {
             );
         });
         if (this.sprinklerWaterVfx) {
-            this.waterPerformanceProfiler.recordSprinklerDeepProfileDetails(
-                this.sprinklerWaterVfx.getPerformanceDetails(),
-            );
+            const sprinklerPerformance = this.sprinklerWaterVfx.getPerformanceDetails();
+            this.waterPerformanceProfiler.recordSprinklerDeepProfileDetails({
+                ...sprinklerPerformance,
+                totalSources: this.sprinklers.length,
+                culledSources: Math.max(0, this.sprinklers.length - sprinklerPerformance.activeSources),
+            });
         }
 
         this.waterPerformanceProfiler.measure("hoseWaterVfx", (): void => {
@@ -1475,6 +1536,24 @@ export class World {
                     deltaTime,
                 );
         });
+        // RP-3.1: apply powered-surface momentum after airborne deposition and
+        // before the authoritative Water solver transports standing Water.
+        this.waterPerformanceProfiler.measure("rotatingPaddleWater", (): void => {
+            for (const paddle of this.rotatingPaddles) {
+                this.rotatingPaddleWaterDispersalSystem.update(
+                    deltaTime,
+                    this.waterField,
+                    paddle,
+                    this.rotatingPaddleWaterDispersalValidation,
+                );
+            }
+        });
+        this.rotatingPaddleWaterDiagnosticElapsed += deltaTime;
+        if (this.rotatingPaddleWaterDiagnosticElapsed >= 1) {
+            this.rotatingPaddleWaterDiagnosticElapsed = 0;
+            this.rotatingPaddleWaterDispersalValidation.flushToConsole();
+        }
+
         this.waterPerformanceProfiler
             .measure(
                 "waterSimulation",
@@ -1803,6 +1882,26 @@ export class World {
         });
 
 
+
+        // RP-1: after Ball integration, drive its tangential component toward
+        // each overlapping rotating surface and resolve the solid center stopper.
+        if (this.ball) {
+            for (const paddle of this.rotatingPaddles) {
+                this.rotatingPaddleCenterCollisionSystem.resolve(this.ball, paddle);
+                this.rotatingPaddleBallInteractionSystem.update(deltaTime, this.ball, paddle);
+            }
+        }
+
+        // RP-2: the same continuously powered surface now acts on every registered
+        // movable rigid DynamicCollidable. Fan, Sprinkler, Robots and future rigid
+        // bodies participate automatically through PhysicsWorld registration.
+        for (const paddle of this.rotatingPaddles) {
+            this.rotatingPaddleDynamicInteractionSystem.update(
+                deltaTime,
+                this.physicsWorld,
+                paddle,
+            );
+        }
 
         /*
          * G2/G3. Resolve physical mechanism pairs only after their rigid-body
@@ -3190,10 +3289,9 @@ export class World {
         }
 
         const placements = [
-            // Deterministic development-scene placements.
-            { id: "sprinkler-1", x: this.ball.getX() + 280, y: this.ball.getY() - 180, rotation: 0 },
-            { id: "sprinkler-2", x: this.ball.getX() + 300, y: this.ball.getY() + 180, rotation: Math.PI / 4 },
-            { id: "sprinkler-3", x: this.ball.getX() - 320, y: this.ball.getY() - 210, rotation: Math.PI / 2 },
+            // RP-2.2 focused test layout: one sprinkler above and one below the paddle lane.
+            { id: "sprinkler-1", x: 900, y: 110, rotation: Math.PI / 2 },
+            { id: "sprinkler-2", x: 900, y: 870, rotation: -Math.PI / 2 },
         ];
 
         for (const placement of placements) {
@@ -3258,43 +3356,7 @@ export class World {
     // Phase 8I-6A Production Hose Water Body VFX
     // -------------------------------------------------------
 
-    private createHoseWaterVfx(): void {
-        if (!this.waterVfxSystem) {
-            throw new Error(
-                "World requires WaterVfxSystem before Hose Water VFX.",
-            );
-        }
-
-        if (!this.hydrantHose) {
-            throw new Error(
-                "World requires HydrantHose before Hose Water VFX.",
-            );
-        }
-
-        this.hoseWaterVfx =
-            new HoseWaterVfx(
-                this.hydrantHose,
-                this.airborneWaterSystem,
-                this.waterVfxSystem,
-                this.waterVfxSystem
-                    .getDefinition()
-                    .hose,
-            );
-
-        /*
-         * The production Hose body replaces the old packet-circle debug
-         * presentation for this source only.
-         */
-        this.airborneWaterVisualizer
-            ?.setSourceHidden(
-                this.hydrantHose
-                    .getWaterSourceId(),
-                true,
-            );
-    }
-
-
-    // -------------------------------------------------------
+// -------------------------------------------------------
     // Phase 8D-7 Actual Game Object Integration
     // -------------------------------------------------------
 
@@ -3404,34 +3466,7 @@ export class World {
         }
     }
 
-    private createHoseJetBallForceSystem():
-        void {
-
-        if (
-            this.hoseJetBallForceSystem
-        ) {
-            throw new Error(
-                "World Hose jet Ball-force system has already been created.",
-            );
-        }
-
-        if (
-            !this.hydrantHose ||
-            !this.ball
-        ) {
-            throw new Error(
-                "World requires HydrantHose and Ball before creating Hose jet Ball-force response.",
-            );
-        }
-
-        this.hoseJetBallForceSystem =
-            new HoseJetBallForceSystem(
-                this.hydrantHose,
-                this.ball,
-            );
-    }
-
-    public getHoseJetBallForceSample() {
+public getHoseJetBallForceSample() {
         return this.hoseJetBallForceSystem
             ?.getLastSample() ??
             null;
@@ -3441,54 +3476,18 @@ export class World {
     // Phase 8B-10A Hydrant + Hose Entity
     // -------------------------------------------------------
 
-    private createHydrantHoseEntity(): void {
-        if (this.hydrantHose) {
-            throw new Error(
-                "World Hydrant Hose entity has already been created.",
-            );
-        }
-
-        if (!this.ball) {
-            throw new Error(
-                "World requires Ball before creating the Hydrant Hose.",
-            );
-        }
-
-        this.hydrantHose =
-            new HydrantHose(
-                "hydrant-hose-1",
-                this.ball.getX() + 430,
-                this.ball.getY() + 170,
-                this.ball,
-                this.waterSourceSystem,
-            );
-
-        this.addEntity(
-            this.hydrantHose,
-        );
-
-        this.hoseCollisionSystem =
-            new HoseCollisionSystem(
-                this.hydrantHose.getRope(),
-                this.hydrantHose.getDefinition(),
-            );
-
-        this.presentationLayers
-            .getLayer(
-                WorldRenderLayer.AirborneEffects,
-            )
-            .addChild(
-                this.hydrantHose
-                    .getNozzlePreSprayGraphics(),
-            );
-    }
-
-    // -------------------------------------------------------
+// -------------------------------------------------------
     // R-2.1 Fire Robot Navigation
     // -------------------------------------------------------
 
     private createFireRobotR1R2(): void {
-        if (!DEFAULT_FIRE_ROBOT_DEFINITION.enabled) {
+        const definition = {
+            ...DEFAULT_FIRE_ROBOT_DEFINITION,
+            positionX: 650,
+            positionY: 280,
+            roamRadius: 320,
+        };
+        if (!definition.enabled) {
             return;
         }
 
@@ -3500,12 +3499,12 @@ export class World {
             new RobotNavigationQuery(
                 this.robotInteractionRegistry,
                 DEFAULT_COURSE_BOUNDARY_DEFINITION,
-                DEFAULT_FIRE_ROBOT_DEFINITION.id,
+                definition.id,
             );
 
         this.fireRobot =
             new Robot(
-                DEFAULT_FIRE_ROBOT_DEFINITION,
+                definition,
                 navigationQuery,
                 this.robotInteractionRegistry,
                 this.fireSourceSystem,
@@ -3514,9 +3513,9 @@ export class World {
             );
 
         this.robotInteractionRegistry.register({
-            id: DEFAULT_FIRE_ROBOT_DEFINITION.id, label: "Fire Robot",
+            id: definition.id, label: "Fire Robot",
             capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
-            shape: { kind: "circle", radius: DEFAULT_FIRE_ROBOT_DEFINITION.navigationRadius },
+            shape: { kind: "circle", radius: definition.navigationRadius },
             getX: (): number => this.fireRobot?.getX() ?? -100000,
             getY: (): number => this.fireRobot?.getY() ?? -100000,
         });
@@ -3529,14 +3528,14 @@ export class World {
         // R-9 shared Robot physical/elemental impact awareness. The Robot is
         // kinematic: Ball collision response deflects the Ball but never moves it.
         this.physicsWorld.registerDynamicCollidable(
-            `${DEFAULT_FIRE_ROBOT_DEFINITION.id}-physics`,
+            `${definition.id}-physics`,
             this.fireRobot,
             { participation: { impactAwareness: true } },
         );
 
         this.airborneWaterSystem.registerImpactAwareTarget({
-            id: DEFAULT_FIRE_ROBOT_DEFINITION.id,
-            radius: DEFAULT_FIRE_ROBOT_DEFINITION.navigationRadius,
+            id: definition.id,
+            radius: definition.navigationRadius,
             getX: () => this.fireRobot?.getX() ?? -100000,
             getY: () => this.fireRobot?.getY() ?? -100000,
             notifyImpact: (x, y, sourceId) => this.fireRobot?.notifyExternalImpact({
@@ -3545,8 +3544,8 @@ export class World {
         });
 
         this.localWindSystem.registerImpactAwareTarget({
-            id: DEFAULT_FIRE_ROBOT_DEFINITION.id,
-            radius: DEFAULT_FIRE_ROBOT_DEFINITION.navigationRadius,
+            id: definition.id,
+            radius: definition.navigationRadius,
             getX: () => this.fireRobot?.getX() ?? -100000,
             getY: () => this.fireRobot?.getY() ?? -100000,
             notifyImpact: (x, y, sourceId) => this.fireRobot?.notifyExternalImpact({
@@ -3554,7 +3553,7 @@ export class World {
             }),
         });
 
-        if (DEFAULT_FIRE_ROBOT_DEFINITION.debugEnabled) {
+        if (definition.debugEnabled) {
             this.robotDebugVisualizer =
                 new RobotDebugVisualizer(
                     this.fireRobot,
@@ -3575,80 +3574,147 @@ export class World {
     /** Water Robot reuses the complete shared Robot behaviour and swaps only elemental output/art. */
     private createWaterRobot(): void {
         if (!DEFAULT_WATER_ROBOT_DEFINITION.enabled) return;
-        if (this.waterRobot) throw new Error("World Water Robot has already been created.");
-        if (!this.waterVfxSystem) throw new Error("World requires WaterVfxSystem before Water Robot VFX.");
+        if (this.waterRobot || this.secondWaterRobot) {
+            throw new Error("World Water Robot test pair has already been created.");
+        }
+        if (!this.waterVfxSystem) {
+            throw new Error("World requires WaterVfxSystem before Water Robot VFX.");
+        }
 
-        const definition = DEFAULT_WATER_ROBOT_DEFINITION;
-        const navigationQuery = new RobotNavigationQuery(
-            this.robotInteractionRegistry,
-            DEFAULT_COURSE_BOUNDARY_DEFINITION,
-            definition.id,
-        );
+        // RP-3.5 deterministic Water test pair. Robot artwork/nozzle faces +X at
+        // its authored zero rotation, so each Robot starts directly left of its
+        // assigned paddle and initially faces that paddle.
+        const placements = [
+            { idSuffix: "rp35-upper", x: 620, y: 280 },
+            { idSuffix: "rp35-lower", x: 620, y: 700 },
+        ] as const;
 
-        this.waterRobot = new Robot(
-            definition,
-            navigationQuery,
-            this.robotInteractionRegistry,
-            this.fireSourceSystem,
-            this.waterSourceSystem,
-            this.localWindSystem,
-        );
+        const createTestRobot = (
+            placement: (typeof placements)[number],
+            isSecond: boolean,
+        ): Robot => {
+            const definition = {
+                ...DEFAULT_WATER_ROBOT_DEFINITION,
+                id: `${DEFAULT_WATER_ROBOT_DEFINITION.id}-${placement.idSuffix}`,
+                positionX: placement.x,
+                positionY: placement.y,
+                // Keep the Robots near their dedicated paddles during this test.
+                roamRadius: 90,
+            };
+            const navigationQuery = new RobotNavigationQuery(
+                this.robotInteractionRegistry,
+                DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                definition.id,
+            );
+            const robot = new Robot(
+                definition,
+                navigationQuery,
+                this.robotInteractionRegistry,
+                this.fireSourceSystem,
+                this.waterSourceSystem,
+                this.localWindSystem,
+            );
 
-        this.robotInteractionRegistry.register({
-            id: definition.id, label: "Water Robot",
-            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
-            shape: { kind: "circle", radius: definition.navigationRadius },
-            getX: () => this.waterRobot?.getX() ?? -100000,
-            getY: () => this.waterRobot?.getY() ?? -100000,
-        });
+            this.robotInteractionRegistry.register({
+                id: definition.id,
+                label: isSecond ? "Water Robot 2" : "Water Robot 1",
+                capabilities: {
+                    navigationBlocker: true,
+                    attackTarget: true,
+                    visionOccluder: true,
+                },
+                shape: { kind: "circle", radius: definition.navigationRadius },
+                getX: () => robot.getX(),
+                getY: () => robot.getY(),
+            });
 
-        this.addEntity(this.waterRobot, WorldRenderLayer.GameplayActors);
-        this.physicsWorld.registerDynamicCollidable(
-            `${definition.id}-physics`,
-            this.waterRobot,
-            { participation: { impactAwareness: true } },
-        );
+            this.addEntity(robot, WorldRenderLayer.GameplayActors);
+            this.physicsWorld.registerDynamicCollidable(
+                `${definition.id}-physics`,
+                robot,
+                { participation: { impactAwareness: true } },
+            );
 
-        this.airborneWaterSystem.registerImpactAwareTarget({
-            id: definition.id,
-            radius: definition.navigationRadius,
-            getX: () => this.waterRobot?.getX() ?? -100000,
-            getY: () => this.waterRobot?.getY() ?? -100000,
-            notifyImpact: (x, y, sourceId) => this.waterRobot?.notifyExternalImpact({
-                sourceKind: "water", sourceId, positionX: x, positionY: y,
-            }),
-        });
+            this.airborneWaterSystem.registerImpactAwareTarget({
+                id: definition.id,
+                radius: definition.navigationRadius,
+                getX: () => robot.getX(),
+                getY: () => robot.getY(),
+                notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                    sourceKind: "water",
+                    sourceId,
+                    positionX: x,
+                    positionY: y,
+                }),
+            });
 
-        this.localWindSystem.registerImpactAwareTarget({
-            id: definition.id,
-            radius: definition.navigationRadius,
-            getX: () => this.waterRobot?.getX() ?? -100000,
-            getY: () => this.waterRobot?.getY() ?? -100000,
-            notifyImpact: (x, y, sourceId) => this.waterRobot?.notifyExternalImpact({
-                sourceKind: "wind", sourceId, positionX: x, positionY: y,
-            }),
-        });
+            this.localWindSystem.registerImpactAwareTarget({
+                id: definition.id,
+                radius: definition.navigationRadius,
+                getX: () => robot.getX(),
+                getY: () => robot.getY(),
+                notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
+                    sourceKind: "wind",
+                    sourceId,
+                    positionX: x,
+                    positionY: y,
+                }),
+            });
 
-        const waterAttack = this.waterRobot.getWaterAttackSource();
-        if (!waterAttack) throw new Error("Water Robot did not create its Water attack source.");
+            return robot;
+        };
+
+        this.waterRobot = createTestRobot(placements[0], false);
+        this.secondWaterRobot = createTestRobot(placements[1], true);
+
+        const firstAttack = this.waterRobot.getWaterAttackSource();
+        const secondAttack = this.secondWaterRobot.getWaterAttackSource();
+        if (!firstAttack || !secondAttack) {
+            throw new Error("RP-3.5 Water Robot test pair did not create Water attack sources.");
+        }
+
         this.waterRobotHoseVfx = new HoseWaterVfx(
-            waterAttack,
+            firstAttack,
             this.airborneWaterSystem,
             this.waterVfxSystem,
             this.waterVfxSystem.getDefinition().hose,
         );
-        this.airborneWaterVisualizer?.setSourceHidden(waterAttack.getWaterSourceId(), true);
+        this.secondWaterRobotHoseVfx = new HoseWaterVfx(
+            secondAttack,
+            this.airborneWaterSystem,
+            this.waterVfxSystem,
+            this.waterVfxSystem.getDefinition().hose,
+        );
+
+        this.airborneWaterVisualizer?.setSourceHidden(firstAttack.getWaterSourceId(), true);
+        this.airborneWaterVisualizer?.setSourceHidden(secondAttack.getWaterSourceId(), true);
+
         if (this.ball) {
             this.waterRobotJetBallForceSystem = new HoseJetBallForceSystem(
-                waterAttack, this.ball, ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
-                this.airborneWaterSystem, this.physicsWorld,
+                firstAttack,
+                this.ball,
+                ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
+                this.airborneWaterSystem,
+                this.physicsWorld,
+            );
+            this.secondWaterRobotJetBallForceSystem = new HoseJetBallForceSystem(
+                secondAttack,
+                this.ball,
+                ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
+                this.airborneWaterSystem,
+                this.physicsWorld,
             );
         }
     }
 
     /** Wind Robot reuses shared AI and drives an authoritative conical Local Wind pull source. */
     private createWindRobot(): void {
-        const definition = DEFAULT_WIND_ROBOT_DEFINITION;
+        const definition = {
+            ...DEFAULT_WIND_ROBOT_DEFINITION,
+            positionX: 650,
+            positionY: 700,
+            roamRadius: 320,
+        };
         if (!definition.enabled) return;
         if (this.windRobot) throw new Error("World Wind Robot has already been created.");
 
@@ -3692,156 +3758,9 @@ export class World {
     }
 
     /** Temporary second Fire Robot for multi-enemy gameplay testing. */
-    private createSecondFireRobot(): void {
-        const requestedDefinition = SECOND_FIRE_ROBOT_DEFINITION;
-        const safeSpawn = this.resolveTemporaryRobotSpawn(
-            requestedDefinition.positionX, requestedDefinition.positionY, requestedDefinition.navigationRadius,
-        );
-        const definition = { ...requestedDefinition, positionX: safeSpawn.x, positionY: safeSpawn.y };
-        const navigationQuery = new RobotNavigationQuery(
-            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
-        );
-        this.secondFireRobot = new Robot(
-            definition, navigationQuery, this.robotInteractionRegistry,
-            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
-        );
-        const robot = this.secondFireRobot;
-        this.robotInteractionRegistry.register({
-            id: definition.id, label: "Fire Robot 2",
-            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
-            shape: { kind: "circle", radius: definition.navigationRadius },
-            getX: () => robot.getX(), getY: () => robot.getY(),
-        });
-        this.addEntity(robot, WorldRenderLayer.GameplayActors);
-        this.physicsWorld.registerDynamicCollidable(
-            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
-        );
-        this.airborneWaterSystem.registerImpactAwareTarget({
-            id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot.getX(), getY: () => robot.getY(),
-            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
-                sourceKind: "water", sourceId, positionX: x, positionY: y,
-            }),
-        });
-        this.localWindSystem.registerImpactAwareTarget({
-            id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot.getX(), getY: () => robot.getY(),
-            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
-                sourceKind: "wind", sourceId, positionX: x, positionY: y,
-            }),
-        });
-    }
-
-    /** Temporary second Water Robot for multi-enemy gameplay testing. */
-    private createSecondWaterRobot(): void {
-        if (!this.waterVfxSystem) throw new Error("World requires WaterVfxSystem before second Water Robot VFX.");
-        const requestedDefinition = SECOND_WATER_ROBOT_DEFINITION;
-        const safeSpawn = this.resolveTemporaryRobotSpawn(
-            requestedDefinition.positionX, requestedDefinition.positionY, requestedDefinition.navigationRadius,
-        );
-        const definition = {
-            ...requestedDefinition,
-            positionX: safeSpawn.x,
-            positionY: safeSpawn.y,
-        };
-        const navigationQuery = new RobotNavigationQuery(
-            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
-        );
-        this.secondWaterRobot = new Robot(
-            definition, navigationQuery, this.robotInteractionRegistry,
-            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
-        );
-        const robot = this.secondWaterRobot;
-        this.robotInteractionRegistry.register({
-            id: definition.id, label: "Water Robot 2",
-            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
-            shape: { kind: "circle", radius: definition.navigationRadius },
-            getX: () => robot.getX(), getY: () => robot.getY(),
-        });
-        this.addEntity(robot, WorldRenderLayer.GameplayActors);
-        this.physicsWorld.registerDynamicCollidable(
-            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
-        );
-        this.airborneWaterSystem.registerImpactAwareTarget({
-            id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot.getX(), getY: () => robot.getY(),
-            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
-                sourceKind: "water", sourceId, positionX: x, positionY: y,
-            }),
-        });
-        this.localWindSystem.registerImpactAwareTarget({
-            id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot.getX(), getY: () => robot.getY(),
-            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
-                sourceKind: "wind", sourceId, positionX: x, positionY: y,
-            }),
-        });
-        const waterAttack = robot.getWaterAttackSource();
-        if (!waterAttack) throw new Error("Second Water Robot did not create its Water attack source.");
-        this.secondWaterRobotHoseVfx = new HoseWaterVfx(
-            waterAttack, this.airborneWaterSystem, this.waterVfxSystem,
-            this.waterVfxSystem.getDefinition().hose,
-        );
-        this.airborneWaterVisualizer?.setSourceHidden(waterAttack.getWaterSourceId(), true);
-        if (this.ball) {
-            this.secondWaterRobotJetBallForceSystem = new HoseJetBallForceSystem(
-                waterAttack, this.ball, ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
-                this.airborneWaterSystem, this.physicsWorld,
-            );
-        }
-    }
-
-    /** Second Wind Robot for the expanded environmental stress-test scene. */
-    private createSecondWindRobot(): void {
-        const requestedDefinition = {
-            ...DEFAULT_WIND_ROBOT_DEFINITION,
-            id: "wind-robot-2",
-            positionX: 1960,
-            positionY: 700,
-        };
-        const safeSpawn = this.resolveTemporaryRobotSpawn(
-            requestedDefinition.positionX, requestedDefinition.positionY, requestedDefinition.navigationRadius,
-        );
-        const definition = {
-            ...requestedDefinition,
-            positionX: safeSpawn.x,
-            positionY: safeSpawn.y,
-        };
-        const navigationQuery = new RobotNavigationQuery(
-            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
-        );
-        this.secondWindRobot = new Robot(
-            definition, navigationQuery, this.robotInteractionRegistry,
-            this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
-        );
-        const robot = this.secondWindRobot;
-        this.robotInteractionRegistry.register({
-            id: definition.id, label: "Wind Robot 2",
-            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
-            shape: { kind: "circle", radius: definition.navigationRadius },
-            getX: () => robot.getX(), getY: () => robot.getY(),
-        });
-        this.addEntity(robot, WorldRenderLayer.GameplayActors);
-        this.physicsWorld.registerDynamicCollidable(
-            `${definition.id}-physics`, robot, { participation: { impactAwareness: true } },
-        );
-        this.airborneWaterSystem.registerImpactAwareTarget({
-            id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot.getX(), getY: () => robot.getY(),
-            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
-                sourceKind: "water", sourceId, positionX: x, positionY: y,
-            }),
-        });
-        this.localWindSystem.registerImpactAwareTarget({
-            id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot.getX(), getY: () => robot.getY(),
-            notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
-                sourceKind: "wind", sourceId, positionX: x, positionY: y,
-            }),
-        });
-    }
-
-    /** Ensures temporary multi-Robot test spawns do not begin inside static geometry. */
+/** Temporary second Water Robot for multi-enemy gameplay testing. */
+/** Second Wind Robot for the expanded environmental stress-test scene. */
+/** Ensures temporary multi-Robot test spawns do not begin inside static geometry. */
     private resolveTemporaryRobotSpawn(
         requestedX: number, requestedY: number, radius: number,
     ): { x: number; y: number } {

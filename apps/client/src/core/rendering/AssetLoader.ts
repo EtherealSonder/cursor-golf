@@ -16,6 +16,8 @@ import waterSprinklerTexture from "../../assets/sprites/mechanisms/water_sprinkl
 import radialBumperTexture from "../../assets/sprites/mechanisms/radial_bumper.png";
 import directionalBumperTexture from "../../assets/sprites/mechanisms/directional_bumper.png";
 import directionalBumperInnerTexture from "../../assets/sprites/mechanisms/directional_bumper_inner.png";
+import rotatingPaddleClockwiseTexture from "../../assets/sprites/mechanisms/rotate_paddle_clockwise.png";
+import rotatingPaddleCounterClockwiseTexture from "../../assets/sprites/mechanisms/rotate_paddle_anticlockwise.png";
 import fireRobotBodyTexture from "../../assets/sprites/robots/fire_robot_body.png";
 import fireRobotLeg1Texture from "../../assets/sprites/robots/fire_robot_leg1.png";
 import fireRobotLeg2Texture from "../../assets/sprites/robots/fire_robot_leg2.png";
@@ -54,7 +56,7 @@ import fireTopdownFragment03Texture from "../../assets/textures/fire/masks/topdo
 
 import fireNoiseCloudTexture from "../../assets/textures/fire/noise/fire_noise_cloud.png";
 import fireNoisePerlinTexture from "../../assets/textures/fire/noise/fire_noise_perlin.png";
-import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG";
+const fireNoiseFineTexture = new URL("../../assets/textures/fire/noise/fire_noise_02.PNG", import.meta.url).href;
 
 import windStreak01Texture from "../../assets/textures/wind/masks/wind_streak_01.png";
 import windStreak02Texture from "../../assets/textures/wind/masks/wind_streak_02.png";
@@ -143,6 +145,9 @@ export class AssetLoader {
             "directionalBumperInner",
             directionalBumperInnerTexture,
         );
+
+        await this.loadTexture("rotatingPaddleClockwise", rotatingPaddleClockwiseTexture);
+        await this.loadTexture("rotatingPaddleCounterClockwise", rotatingPaddleCounterClockwiseTexture);
 
         // R-1 Fire Robot composite presentation assets.
         await this.loadTexture("fireRobotBody", fireRobotBodyTexture);

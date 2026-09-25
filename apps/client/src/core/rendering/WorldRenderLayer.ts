@@ -7,6 +7,7 @@
 export enum WorldRenderLayer {
     BaseTerrain = 100,
     GroundState = 200,
+    SurfaceMechanisms = 250,
     StandingWater = 300,
     WaterEffects = 400,
     PhysicalObjects = 500,

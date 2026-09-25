@@ -1,6 +1,7 @@
 import type { LocalWindObstacleDefinition } from "../config/LocalWindDefinition";
 import type { StaticObstacleDefinition } from "../config/ObstacleDefinition";
 import type { PhysicsWorld } from "../physics/PhysicsWorld";
+import type { FixedCollisionShape } from "../physics/DynamicCollidableCollision";
 
 export interface LocalWindObstacleResolution {
     readonly blocked: boolean;
@@ -71,6 +72,7 @@ export class LocalWindObstacleQuery {
         const distance = Math.hypot(x1 - x0, y1 - y0);
         const steps = Math.max(1, Math.ceil(distance / this.definition.sampleSpacing));
         const obstacles = this.physicsWorld.getRigidStaticDefinitions();
+        const fixedShapes = this.physicsWorld.getRigidFixedShapes();
         for (let i = 1; i <= steps; i += 1) {
             const t = i / steps;
             const x = x0 + (x1 - x0) * t;
@@ -78,8 +80,29 @@ export class LocalWindObstacleQuery {
             for (const obstacle of obstacles) {
                 if (this.contains(obstacle, x, y, this.definition.collisionTolerance)) return true;
             }
+            for (const shape of fixedShapes) {
+                if (this.containsFixed(shape, x, y, this.definition.collisionTolerance)) return true;
+            }
         }
         return false;
+    }
+
+    private containsFixed(shape: FixedCollisionShape, x: number, y: number, padding: number): boolean {
+        if (shape.shape === "circle") {
+            const dx = x - shape.positionX;
+            const dy = y - shape.positionY;
+            const radius = shape.radius + padding;
+            return dx * dx + dy * dy <= radius * radius;
+        }
+
+        const cos = Math.cos(-shape.rotationRadians);
+        const sin = Math.sin(-shape.rotationRadians);
+        const dx = x - shape.positionX;
+        const dy = y - shape.positionY;
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
+        return Math.abs(localX) <= shape.width * 0.5 + padding
+            && Math.abs(localY) <= shape.height * 0.5 + padding;
     }
 
     private contains(obstacle: StaticObstacleDefinition, x: number, y: number, padding: number): boolean {

@@ -813,6 +813,137 @@ export class WaterField {
     }
 
     /**
+     * RP-3.2 conservative powered-surface transport. Moves actual Water depth
+     * from one wet cell toward a world-space destination and carries momentum
+     * with it. Total Water amount is conserved.
+     */
+    public transferWaterByIndexToWorld(
+        sourceIndex: number,
+        destinationWorldX: number,
+        destinationWorldY: number,
+        requestedAmount: number,
+        transportedVelocityX: number,
+        transportedVelocityY: number,
+    ): number {
+        if (
+            !Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= this.cellCount ||
+            this.depth[sourceIndex] <= 0 ||
+            !Number.isFinite(destinationWorldX) || !Number.isFinite(destinationWorldY) ||
+            !Number.isFinite(requestedAmount) || requestedAmount <= 0 ||
+            !Number.isFinite(transportedVelocityX) || !Number.isFinite(transportedVelocityY)
+        ) return 0;
+
+        const gridPosition = this.worldToGrid(destinationWorldX, destinationWorldY);
+        if (!gridPosition) return 0;
+
+        let destinationIndex = this.gridToIndex(gridPosition.gridX, gridPosition.gridY);
+        if (this.obstacleField !== null) {
+            const resolved = this.obstacleField.findNearestOccupiableIndex(
+                gridPosition.gridX, gridPosition.gridY,
+            );
+            if (resolved === null) return 0;
+            destinationIndex = resolved;
+        }
+        if (destinationIndex === sourceIndex) return 0;
+
+        const sourceDepth = this.depth[sourceIndex];
+        const destinationDepth = this.depth[destinationIndex];
+        const availableCapacity = Math.max(0, this.definition.maximumDepth - destinationDepth);
+        const amount = Math.min(sourceDepth, requestedAmount, availableCapacity);
+        if (amount <= 0) return 0;
+
+        const sourceVelocityX = this.velocityX[sourceIndex];
+        const sourceVelocityY = this.velocityY[sourceIndex];
+        const remainingDepth = sourceDepth - amount;
+        this.depth[sourceIndex] = remainingDepth;
+
+        if (remainingDepth <= 0.000001) {
+            this.depth[sourceIndex] = 0;
+            this.velocityX[sourceIndex] = 0;
+            this.velocityY[sourceIndex] = 0;
+            this.nonEmptyCellCount = Math.max(0, this.nonEmptyCellCount - 1);
+            this.untrackWaterIndex(sourceIndex);
+        } else {
+            // Removing a uniform parcel preserves the source parcel velocity.
+            this.velocityX[sourceIndex] = sourceVelocityX;
+            this.velocityY[sourceIndex] = sourceVelocityY;
+        }
+
+        const nextDestinationDepth = destinationDepth + amount;
+        const maximumVelocity = this.definition.maximumVelocity;
+        const incomingX = this.clamp(transportedVelocityX, -maximumVelocity, maximumVelocity);
+        const incomingY = this.clamp(transportedVelocityY, -maximumVelocity, maximumVelocity);
+        this.depth[destinationIndex] = nextDestinationDepth;
+        this.velocityX[destinationIndex] = this.clamp(
+            (destinationDepth * this.velocityX[destinationIndex] + amount * incomingX) /
+                nextDestinationDepth,
+            -maximumVelocity, maximumVelocity,
+        );
+        this.velocityY[destinationIndex] = this.clamp(
+            (destinationDepth * this.velocityY[destinationIndex] + amount * incomingY) /
+                nextDestinationDepth,
+            -maximumVelocity, maximumVelocity,
+        );
+
+        if (destinationDepth <= 0) {
+            this.nonEmptyCellCount += 1;
+            this.trackWaterIndex(destinationIndex);
+        }
+
+        // This is a transfer, not a source/sink: totalWaterAmount is unchanged.
+        this.activateIndexAndCardinalNeighbors(
+            sourceIndex, this.activeFlags, this.activeIndices,
+        );
+        this.activateIndexAndCardinalNeighbors(
+            destinationIndex, this.activeFlags, this.activeIndices,
+        );
+        return amount;
+    }
+
+    /**
+     * RP-3.1 external environmental-force bridge. Drives an existing wet cell
+     * toward a requested velocity without exposing the field's mutable arrays.
+     * The affected cell and its cardinal neighbours are activated so the normal
+     * sparse WaterFlowSolver transports the injected momentum on this frame.
+     */
+    public driveVelocityByIndex(
+        index: number,
+        targetVelocityX: number,
+        targetVelocityY: number,
+        responsePerSecond: number,
+        deltaTime: number,
+        maximumDrivenSpeed: number,
+    ): boolean {
+        if (
+            !Number.isInteger(index) || index < 0 || index >= this.cellCount ||
+            this.depth[index] <= 0 ||
+            !Number.isFinite(targetVelocityX) || !Number.isFinite(targetVelocityY) ||
+            !Number.isFinite(responsePerSecond) || !Number.isFinite(deltaTime) ||
+            deltaTime <= 0
+        ) return false;
+
+        const response = Math.max(0, Math.min(1, responsePerSecond * deltaTime));
+        let nextX = this.velocityX[index] + (targetVelocityX - this.velocityX[index]) * response;
+        let nextY = this.velocityY[index] + (targetVelocityY - this.velocityY[index]) * response;
+        const fieldMaximum = this.definition.maximumVelocity;
+        const requestedMaximum = Number.isFinite(maximumDrivenSpeed) && maximumDrivenSpeed > 0
+            ? Math.min(fieldMaximum, maximumDrivenSpeed)
+            : fieldMaximum;
+        const speed = Math.hypot(nextX, nextY);
+        if (speed > requestedMaximum && speed > 0.0001) {
+            const scale = requestedMaximum / speed;
+            nextX *= scale;
+            nextY *= scale;
+        }
+
+        this.velocityX[index] = nextX;
+        this.velocityY[index] = nextY;
+        this.trackWaterIndex(index);
+        this.activateIndexAndCardinalNeighbors(index, this.activeFlags, this.activeIndices);
+        return true;
+    }
+
+    /**
      * Current global shallow-Water transport multiplier.
      *
      * Exposed read-only for validation/diagnostics. It never mutates Water.

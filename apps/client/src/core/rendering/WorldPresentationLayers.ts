@@ -15,6 +15,7 @@ export class WorldPresentationLayers {
         const orderedLayers: readonly WorldRenderLayer[] = [
             WorldRenderLayer.BaseTerrain,
             WorldRenderLayer.GroundState,
+            WorldRenderLayer.SurfaceMechanisms,
             WorldRenderLayer.StandingWater,
             WorldRenderLayer.WaterEffects,
             WorldRenderLayer.PhysicalObjects,
