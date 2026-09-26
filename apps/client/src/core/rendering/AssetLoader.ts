@@ -29,6 +29,7 @@ import windRobotLeg1Texture from "../../assets/sprites/robots/wind_robot_leg1.pn
 import windRobotLeg2Texture from "../../assets/sprites/robots/wind_robot_leg2.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
+import metalTilingTexture from "../../assets/textures/environment/metal_tiling_texture.png";
 
 import fireGlowRoundTexture from "../../assets/textures/fire/masks/fire_glow_round.png";
 import fireGlowSoftTexture from "../../assets/textures/fire/masks/fire_glow_soft.png";
@@ -56,7 +57,7 @@ import fireTopdownFragment03Texture from "../../assets/textures/fire/masks/topdo
 
 import fireNoiseCloudTexture from "../../assets/textures/fire/noise/fire_noise_cloud.png";
 import fireNoisePerlinTexture from "../../assets/textures/fire/noise/fire_noise_perlin.png";
-const fireNoiseFineTexture = new URL("../../assets/textures/fire/noise/fire_noise_02.PNG", import.meta.url).href;
+import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG";
 
 import windStreak01Texture from "../../assets/textures/wind/masks/wind_streak_01.png";
 import windStreak02Texture from "../../assets/textures/wind/masks/wind_streak_02.png";
@@ -146,8 +147,15 @@ export class AssetLoader {
             directionalBumperInnerTexture,
         );
 
-        await this.loadTexture("rotatingPaddleClockwise", rotatingPaddleClockwiseTexture);
-        await this.loadTexture("rotatingPaddleCounterClockwise", rotatingPaddleCounterClockwiseTexture);
+        await this.loadTexture(
+            "rotatingPaddleClockwise",
+            rotatingPaddleClockwiseTexture,
+        );
+
+        await this.loadTexture(
+            "rotatingPaddleCounterClockwise",
+            rotatingPaddleCounterClockwiseTexture,
+        );
 
         // R-1 Fire Robot composite presentation assets.
         await this.loadTexture("fireRobotBody", fireRobotBodyTexture);
@@ -172,6 +180,11 @@ export class AssetLoader {
         await this.loadTexture(
             "sandTerrain",
             sandTexture,
+        );
+
+        await this.loadTexture(
+            "metalObstacle",
+            metalTilingTexture,
         );
 
         // ---------------------------------------------------

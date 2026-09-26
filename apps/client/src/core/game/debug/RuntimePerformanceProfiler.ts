@@ -17,6 +17,8 @@ export interface RuntimePerformanceSnapshot {
     readonly frameCount: number;
     readonly averageMeasuredFrameMilliseconds: number;
     readonly maximumMeasuredFrameMilliseconds: number;
+    readonly approximateFps: number;
+    readonly overBudgetFrameCount: number;
     readonly sections: readonly RuntimePerformanceSectionSnapshot[];
     readonly counters: Readonly<Record<string, number>>;
 }
@@ -59,11 +61,16 @@ export class RuntimePerformanceProfiler {
     private maximumFrameMilliseconds =
         0;
 
+    private overBudgetFrameCount = 0;
+    private consoleAccumulatorSeconds = 0;
+
     private latestSnapshot:
         RuntimePerformanceSnapshot = {
             frameCount: 0,
             averageMeasuredFrameMilliseconds: 0,
             maximumMeasuredFrameMilliseconds: 0,
+            approximateFps: 0,
+            overBudgetFrameCount: 0,
             sections: [],
             counters: {},
         };
@@ -247,6 +254,10 @@ export class RuntimePerformanceProfiler {
         this.frameCount +=
             1;
 
+        if (elapsed > this.definition.frameBudgetMilliseconds) {
+            this.overBudgetFrameCount += 1;
+        }
+
         if (
             this.frameCount >=
             this.definition.sampleWindowFrames
@@ -254,6 +265,20 @@ export class RuntimePerformanceProfiler {
             this.publishSnapshot();
             this.resetWindow();
         }
+    }
+
+    public updateConsoleReporting(deltaTime: number): void {
+        if (!this.definition.enabled || !this.definition.consoleReportingEnabled) return;
+        this.consoleAccumulatorSeconds += Math.max(0, deltaTime);
+        if (this.consoleAccumulatorSeconds < this.definition.consoleReportIntervalSeconds) return;
+        this.consoleAccumulatorSeconds %= this.definition.consoleReportIntervalSeconds;
+        const snapshot = this.latestSnapshot;
+        const top = snapshot.sections.slice(0, 6)
+            .map((section) => `${section.name} ${section.averageMilliseconds.toFixed(2)}ms`)
+            .join(" | ");
+        console.info(
+            `[PERF] FPS ${snapshot.approximateFps.toFixed(1)} | frame avg ${snapshot.averageMeasuredFrameMilliseconds.toFixed(2)}ms | max ${snapshot.maximumMeasuredFrameMilliseconds.toFixed(2)}ms | over budget ${snapshot.overBudgetFrameCount}/${snapshot.frameCount} | ${top || "collecting"}`,
+        );
     }
 
     public getSnapshot():
@@ -308,6 +333,14 @@ export class RuntimePerformanceProfiler {
             maximumMeasuredFrameMilliseconds:
                 this.maximumFrameMilliseconds,
 
+            approximateFps:
+                this.totalFrameMilliseconds > 0
+                    ? 1000 / (this.totalFrameMilliseconds / this.frameCount)
+                    : 0,
+
+            overBudgetFrameCount:
+                this.overBudgetFrameCount,
+
             sections,
 
             counters: {
@@ -329,5 +362,7 @@ export class RuntimePerformanceProfiler {
 
         this.maximumFrameMilliseconds =
             0;
+
+        this.overBudgetFrameCount = 0;
     }
 }

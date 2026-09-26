@@ -1,5 +1,6 @@
 import {
     Graphics,
+    TilingSprite,
 } from "pixi.js";
 
 import type {
@@ -10,6 +11,10 @@ import {
     Entity,
 } from "../Entity";
 
+import {
+    AssetLoader,
+} from "../../../rendering/AssetLoader";
+
 export class StaticObstacle extends Entity {
 
     private readonly definition:
@@ -17,6 +22,9 @@ export class StaticObstacle extends Entity {
 
     private graphics:
         Graphics | null = null;
+
+    private tiledFill:
+        TilingSprite | null = null;
 
     constructor(
         definition:
@@ -51,10 +59,6 @@ export class StaticObstacle extends Entity {
         );
 
         this.drawObstacle();
-
-        this.container.addChild(
-            this.graphics,
-        );
     }
 
     protected onUpdate(
@@ -65,6 +69,9 @@ export class StaticObstacle extends Entity {
     }
 
     protected onDestroy(): void {
+
+        this.tiledFill?.destroy();
+        this.tiledFill = null;
 
         this.graphics?.destroy();
         this.graphics = null;
@@ -82,68 +89,68 @@ export class StaticObstacle extends Entity {
 
         this.graphics.clear();
 
-        switch (
-        this.definition.shape
-        ) {
-            case "rectangle":
-                this.graphics.rect(
-                    -this.definition.width / 2,
-                    -this.definition.height / 2,
-                    this.definition.width,
-                    this.definition.height,
-                );
-                break;
+        if (this.definition.shape === "rectangle") {
+            /*
+             * Production static-block presentation: the collision definition
+             * remains authoritative while a world-scale TilingSprite replaces
+             * the old brown fill. The texture is never stretched to the block.
+             */
+            this.tiledFill =
+                new TilingSprite({
+                    texture: AssetLoader.getTexture("metalObstacle"),
+                    width: this.definition.width,
+                    height: this.definition.height,
+                });
 
+            this.tiledFill.position.set(
+                -this.definition.width / 2,
+                -this.definition.height / 2,
+            );
+
+            // 512px source tile -> 256 world-pixel repeat. Plate details remain
+            // readable on the current 64-128px obstacle family.
+            this.tiledFill.tileScale.set(0.25);
+
+            this.container.addChild(this.tiledFill);
+
+            this.graphics.rect(
+                -this.definition.width / 2,
+                -this.definition.height / 2,
+                this.definition.width,
+                this.definition.height,
+            );
+
+            this.graphics.stroke({
+                width: this.definition.outlineWidth,
+                color: this.definition.outlineColor,
+            });
+
+            this.container.addChild(this.graphics);
+            return;
+        }
+
+        // Non-rectangular obstacle types retain their existing presentation.
+        switch (this.definition.shape) {
             case "circle":
-                this.graphics.circle(
-                    0,
-                    0,
-                    this.definition.radius,
-                );
+                this.graphics.circle(0, 0, this.definition.radius);
                 break;
 
             case "triangle": {
-                const [
-                    first,
-                    second,
-                    third,
-                ] =
-                    this.definition.points;
-
-                this.graphics.moveTo(
-                    first.x,
-                    first.y,
-                );
-
-                this.graphics.lineTo(
-                    second.x,
-                    second.y,
-                );
-
-                this.graphics.lineTo(
-                    third.x,
-                    third.y,
-                );
-
+                const [first, second, third] = this.definition.points;
+                this.graphics.moveTo(first.x, first.y);
+                this.graphics.lineTo(second.x, second.y);
+                this.graphics.lineTo(third.x, third.y);
                 this.graphics.closePath();
                 break;
             }
         }
 
-        this.graphics.fill(
-            this.definition
-                .fillColor,
-        );
-
+        this.graphics.fill(this.definition.fillColor);
         this.graphics.stroke({
-            width:
-                this.definition
-                    .outlineWidth,
-
-            color:
-                this.definition
-                    .outlineColor,
+            width: this.definition.outlineWidth,
+            color: this.definition.outlineColor,
         });
+        this.container.addChild(this.graphics);
     }
 
     private validateDefinition(

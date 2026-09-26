@@ -27,8 +27,6 @@ import {
     DEFAULT_FIRE_ROBOT_DEFINITION,
     DEFAULT_WATER_ROBOT_DEFINITION,
     DEFAULT_WIND_ROBOT_DEFINITION,
-    SECOND_FIRE_ROBOT_DEFINITION,
-    SECOND_WATER_ROBOT_DEFINITION,
 } from "../config/RobotDefinition";
 
 import {
@@ -1002,18 +1000,18 @@ export class World {
         // ---------------------------------------------------
 
         this.staticObstacleDefinitions = [
-            { id: "robot-test-square-1", shape: "rectangle", positionX: 760, positionY: 260, width: 72, height: 72, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-2", shape: "rectangle", positionX: 980, positionY: 460, width: 108, height: 108, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-3", shape: "rectangle", positionX: 1500, positionY: 240, width: 84, height: 84, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-4", shape: "rectangle", positionX: 1620, positionY: 610, width: 128, height: 128, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-5", shape: "rectangle", positionX: 1180, positionY: 720, width: 64, height: 64, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-6", shape: "rectangle", positionX: 1840, positionY: 390, width: 96, height: 96, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-1", shape: "rectangle", positionX: 760, positionY: 260, width: 72, height: 72, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-2", shape: "rectangle", positionX: 980, positionY: 460, width: 108, height: 108, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-3", shape: "rectangle", positionX: 1500, positionY: 240, width: 84, height: 84, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-4", shape: "rectangle", positionX: 1620, positionY: 610, width: 128, height: 128, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-5", shape: "rectangle", positionX: 1180, positionY: 720, width: 64, height: 64, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-6", shape: "rectangle", positionX: 1840, positionY: 390, width: 96, height: 96, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
             // Expanded stress-test blockers. These remain deterministic so FPS and
             // interaction comparisons are repeatable between runs.
-            { id: "robot-test-square-7", shape: "rectangle", positionX: 560, positionY: 600, width: 88, height: 88, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-8", shape: "rectangle", positionX: 1320, positionY: 300, width: 76, height: 112, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-9", shape: "rectangle", positionX: 2050, positionY: 650, width: 112, height: 76, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-10", shape: "rectangle", positionX: 2140, positionY: 220, width: 72, height: 104, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 4, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-7", shape: "rectangle", positionX: 560, positionY: 600, width: 88, height: 88, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-8", shape: "rectangle", positionX: 1320, positionY: 300, width: 76, height: 112, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-9", shape: "rectangle", positionX: 2050, positionY: 650, width: 112, height: 76, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
+            { id: "robot-test-square-10", shape: "rectangle", positionX: 2140, positionY: 220, width: 72, height: 104, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
         ];
 
         for (const definition of this.staticObstacleDefinitions) {
@@ -1517,6 +1515,16 @@ export class World {
                 ...sprinklerPerformance,
                 totalSources: this.sprinklers.length,
                 culledSources: Math.max(0, this.sprinklers.length - sprinklerPerformance.activeSources),
+                dropletRenderer: {
+                    ...sprinklerPerformance.dropletRenderer,
+                    activeSlots: Math.max(
+                        0,
+                        sprinklerPerformance.dropletRenderer.totalSlots -
+                        sprinklerPerformance.dropletRenderer.hiddenSlots,
+                    ),
+                    updatedSlots: sprinklerPerformance.preparedPackets,
+                    renderedSlots: sprinklerPerformance.renderedElements,
+                },
             });
         }
 
@@ -1538,16 +1546,14 @@ export class World {
         });
         // RP-3.1: apply powered-surface momentum after airborne deposition and
         // before the authoritative Water solver transports standing Water.
-        this.waterPerformanceProfiler.measure("rotatingPaddleWater", (): void => {
-            for (const paddle of this.rotatingPaddles) {
-                this.rotatingPaddleWaterDispersalSystem.update(
-                    deltaTime,
-                    this.waterField,
-                    paddle,
-                    this.rotatingPaddleWaterDispersalValidation,
-                );
-            }
-        });
+        for (const paddle of this.rotatingPaddles) {
+            this.rotatingPaddleWaterDispersalSystem.update(
+                deltaTime,
+                this.waterField,
+                paddle,
+                this.rotatingPaddleWaterDispersalValidation,
+            );
+        }
         this.rotatingPaddleWaterDiagnosticElapsed += deltaTime;
         if (this.rotatingPaddleWaterDiagnosticElapsed >= 1) {
             this.rotatingPaddleWaterDiagnosticElapsed = 0;
@@ -3356,7 +3362,7 @@ export class World {
     // Phase 8I-6A Production Hose Water Body VFX
     // -------------------------------------------------------
 
-// -------------------------------------------------------
+    // -------------------------------------------------------
     // Phase 8D-7 Actual Game Object Integration
     // -------------------------------------------------------
 
@@ -3466,7 +3472,7 @@ export class World {
         }
     }
 
-public getHoseJetBallForceSample() {
+    public getHoseJetBallForceSample() {
         return this.hoseJetBallForceSystem
             ?.getLastSample() ??
             null;
@@ -3476,7 +3482,7 @@ public getHoseJetBallForceSample() {
     // Phase 8B-10A Hydrant + Hose Entity
     // -------------------------------------------------------
 
-// -------------------------------------------------------
+    // -------------------------------------------------------
     // R-2.1 Fire Robot Navigation
     // -------------------------------------------------------
 
@@ -3755,46 +3761,6 @@ public getHoseJetBallForceSample() {
                 sourceKind: "wind", sourceId, positionX: x, positionY: y,
             }),
         });
-    }
-
-    /** Temporary second Fire Robot for multi-enemy gameplay testing. */
-/** Temporary second Water Robot for multi-enemy gameplay testing. */
-/** Second Wind Robot for the expanded environmental stress-test scene. */
-/** Ensures temporary multi-Robot test spawns do not begin inside static geometry. */
-    private resolveTemporaryRobotSpawn(
-        requestedX: number, requestedY: number, radius: number,
-    ): { x: number; y: number } {
-        const candidates = [
-            { x: requestedX, y: requestedY },
-            { x: requestedX - 180, y: requestedY },
-            { x: requestedX, y: requestedY - 180 },
-            { x: requestedX - 180, y: requestedY - 180 },
-            { x: 1450, y: 780 },
-            { x: 900, y: 760 },
-        ];
-
-        const isClear = (x: number, y: number): boolean => {
-            for (const obstacle of this.physicsWorld.getRigidStaticDefinitions()) {
-                if (obstacle.shape === "circle") {
-                    const dx = x - obstacle.positionX;
-                    const dy = y - obstacle.positionY;
-                    if (dx * dx + dy * dy < (radius + obstacle.radius) ** 2) return false;
-                    continue;
-                }
-                if (obstacle.shape === "rectangle") {
-                    const halfWidth = obstacle.width / 2;
-                    const halfHeight = obstacle.height / 2;
-                    const closestX = Math.max(obstacle.positionX - halfWidth, Math.min(x, obstacle.positionX + halfWidth));
-                    const closestY = Math.max(obstacle.positionY - halfHeight, Math.min(y, obstacle.positionY + halfHeight));
-                    const dx = x - closestX;
-                    const dy = y - closestY;
-                    if (dx * dx + dy * dy < radius * radius) return false;
-                }
-            }
-            return true;
-        };
-
-        return candidates.find((candidate) => isClear(candidate.x, candidate.y)) ?? { x: requestedX, y: requestedY };
     }
 
     /** R-4: mechanisms are explicitly classified once, not hard-coded in Robot AI. */

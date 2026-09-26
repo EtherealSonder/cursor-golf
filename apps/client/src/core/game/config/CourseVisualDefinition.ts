@@ -10,7 +10,7 @@ export const DEFAULT_COURSE_VISUAL_DEFINITION:
     CourseVisualDefinition = {
     grassTextureKey: "grassTerrain",
     sandTextureKey: "sandTerrain",
-    grassTileScale: 0.25,
+    grassTileScale: 0.167,
     sandTileScale: 0.25,
     terrainAlpha: 1,
 };
