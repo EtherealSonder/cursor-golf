@@ -1,3 +1,5 @@
+import { ProximityMine } from "../entities/mechanisms/ProximityMine";
+import type { ProximityMineTarget } from "../entities/mechanisms/ProximityMineDetection";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
@@ -667,6 +669,9 @@ export class World {
     private readonly entities:
         Entity[] = [];
 
+    /** PM-1 mines owned by this World instance. */
+    private readonly proximityMines: ProximityMine[] = [];
+
     private readonly dynamicObstacles:
         DynamicObstacle[] = [];
 
@@ -1190,6 +1195,7 @@ export class World {
 
         this.createWaterVfxSystem();
         this.createWaterRobot();
+        this.createProximityMines();
         this.createWindRobot();
 
         // Normal development population: one Robot of each element.
@@ -1823,6 +1829,7 @@ export class World {
          * Stress-test profiling keeps Robot AI separate from ordinary entity
          * updates while preserving the original entity-list update order.
          */
+        this.updateProximityMineTargets();
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
             if (!entity) continue;
@@ -2183,6 +2190,7 @@ export class World {
 
         this.entities.length =
             0;
+        this.proximityMines.length = 0;
 
         this.dynamicObstacles.length =
             0;
@@ -3578,6 +3586,47 @@ export class World {
     }
 
     /** Water Robot reuses the complete shared Robot behaviour and swaps only elemental output/art. */
+    /** PM-1 temporary test placements; mine collision is a sensor, not a solid body. */
+    private createProximityMines(): void {
+        const placements = [
+            { id: "mine-1", x: 400, y: 280 },
+            { id: "mine-2", x: 850, y: 500 },
+            { id: "mine-3", x: 460, y: 700 },
+        ];
+        for (const placement of placements) {
+            const mine = new ProximityMine(placement.id, placement.x, placement.y);
+            this.proximityMines.push(mine);
+            this.addEntity(mine, WorldRenderLayer.GameplayActors);
+        }
+    }
+
+    private updateProximityMineTargets(): void {
+        if (this.proximityMines.length === 0) return;
+        const targets: ProximityMineTarget[] = [];
+        if (this.ball) targets.push({
+            id: "ball", label: "Ball", x: this.ball.getX(),
+            y: this.ball.getY(), radius: this.ball.getRadius()
+        });
+        const robots = [this.fireRobot, this.secondFireRobot, this.waterRobot,
+        this.windRobot, this.secondWindRobot];
+        for (const robot of robots) {
+            if (!robot) continue;
+            targets.push({
+                id: robot.getDefinition().id, label: robot.getDefinition().id,
+                x: robot.getX(), y: robot.getY(), radius: 24
+            });
+        }
+        for (const body of this.physicsWorld.getMovableRigidDynamicCollidables()) {
+            if (robots.some(robot => robot === body)) continue;
+            const definition = body.getDefinition();
+            const radius = definition.shape === "circle" ? definition.radius :
+                definition.shape === "rectangle" ? Math.hypot(definition.width, definition.height) * 0.5 :
+                    Math.max(...definition.points.map(point => Math.hypot(point.x, point.y)));
+            targets.push({ id: definition.id, label: definition.id, x: body.getX(), y: body.getY(), radius });
+        }
+        for (const mine of this.proximityMines) mine.setTargets(targets);
+    }
+
     private createWaterRobot(): void {
         if (!DEFAULT_WATER_ROBOT_DEFINITION.enabled) return;
         if (this.waterRobot || this.secondWaterRobot) {
@@ -3592,7 +3641,6 @@ export class World {
         // assigned paddle and initially faces that paddle.
         const placements = [
             { idSuffix: "rp35-upper", x: 620, y: 280 },
-            { idSuffix: "rp35-lower", x: 620, y: 700 },
         ] as const;
 
         const createTestRobot = (
@@ -3671,11 +3719,10 @@ export class World {
         };
 
         this.waterRobot = createTestRobot(placements[0], false);
-        this.secondWaterRobot = createTestRobot(placements[1], true);
+        // PM-1: second Water Robot removed from test placement.
 
         const firstAttack = this.waterRobot.getWaterAttackSource();
-        const secondAttack = this.secondWaterRobot.getWaterAttackSource();
-        if (!firstAttack || !secondAttack) {
+        if (!firstAttack) {
             throw new Error("RP-3.5 Water Robot test pair did not create Water attack sources.");
         }
 
@@ -3685,15 +3732,8 @@ export class World {
             this.waterVfxSystem,
             this.waterVfxSystem.getDefinition().hose,
         );
-        this.secondWaterRobotHoseVfx = new HoseWaterVfx(
-            secondAttack,
-            this.airborneWaterSystem,
-            this.waterVfxSystem,
-            this.waterVfxSystem.getDefinition().hose,
-        );
-
         this.airborneWaterVisualizer?.setSourceHidden(firstAttack.getWaterSourceId(), true);
-        this.airborneWaterVisualizer?.setSourceHidden(secondAttack.getWaterSourceId(), true);
+
 
         if (this.ball) {
             this.waterRobotJetBallForceSystem = new HoseJetBallForceSystem(
@@ -3703,13 +3743,7 @@ export class World {
                 this.airborneWaterSystem,
                 this.physicsWorld,
             );
-            this.secondWaterRobotJetBallForceSystem = new HoseJetBallForceSystem(
-                secondAttack,
-                this.ball,
-                ROBOT_HOSE_JET_BALL_FORCE_DEFINITION,
-                this.airborneWaterSystem,
-                this.physicsWorld,
-            );
+
         }
     }
 
