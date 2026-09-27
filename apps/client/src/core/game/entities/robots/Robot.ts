@@ -76,6 +76,7 @@ export class Robot extends Entity {
     private readonly attackController: RobotAttackController;
     private readonly elementAttackController: RobotFireAttackController | RobotWaterAttackController | RobotWindAttackController;
     private readonly externalRigidBody: RigidBody2D;
+    private explosionKnockbackSeconds = 0;
     private lastCommittedTargetX: number | null = null;
     private lastCommittedTargetY: number | null = null;
     private readonly ledDisplay: RobotLedDisplay;
@@ -140,7 +141,7 @@ export class Robot extends Entity {
             sleepLinearSpeedThreshold: 2,
             sleepAngularSpeedThreshold: 0.05,
             sleepDelay: 0.2,
-            maximumLinearSpeed: 180,
+            maximumLinearSpeed: 1100,
             maximumAngularSpeed: Math.PI * 1.5,
         }, 0.5 * externalMass * definition.navigationRadius * definition.navigationRadius);
     }
@@ -177,7 +178,7 @@ export class Robot extends Entity {
                 sleepLinearSpeedThreshold: 2,
                 sleepAngularSpeedThreshold: 0.05,
                 sleepDelay: 0.2,
-                maximumLinearSpeed: 180,
+                maximumLinearSpeed: 1100,
                 maximumAngularSpeed: Math.PI * 1.5,
             },
         };
@@ -194,6 +195,12 @@ export class Robot extends Entity {
         this.externalRigidBody.applyImpulseAtWorldPoint(
             impulseX, impulseY, contactPointX - this.getX(), contactPointY - this.getY(),
         );
+    }
+    /** Explosion-specific impulse: preserve existing collision responses, suspend AI walking briefly. */
+    public receiveProximityMineBlast(impulseX: number, impulseY: number, recoverySeconds: number): void {
+        this.explosionKnockbackSeconds = Math.max(this.explosionKnockbackSeconds, recoverySeconds);
+        this.locomotion?.plantForTargeting();
+        this.externalRigidBody.applyLinearImpulse(impulseX, impulseY);
     }
     public translate(deltaX: number, deltaY: number): void {
         // Locomotion uses this same transform operation. Collision response will
@@ -327,6 +334,12 @@ export class Robot extends Entity {
                 this.getX() + externalMotion.positionDeltaX,
                 this.getY() + externalMotion.positionDeltaY,
             );
+        }
+        if (this.explosionKnockbackSeconds > 0) {
+            this.explosionKnockbackSeconds = Math.max(0, this.explosionKnockbackSeconds - deltaTime);
+            this.locomotion?.plantForTargeting();
+            this.updateLedDisplay(deltaTime);
+            return;
         }
         if (this.stuckRecoveryController.isActive()) {
             this.updateStuckRecovery(deltaTime);

@@ -1,4 +1,5 @@
 import { Graphics, Text } from 'pixi.js';
+import { PROXIMITY_MINE_EXPLOSION_DEFINITION as EXPLOSION, type ProximityMineExplosionEvent } from '../../config/ProximityMineExplosionDefinition';
 import { Entity } from '../Entity';
 import { PROXIMITY_MINE_DEFINITION as D } from '../../config/ProximityMineDefinition';
 import { advanceArmingProgress, detectProximityMineTarget, type ProximityMineTarget, type ProximityMineZone } from './ProximityMineDetection';
@@ -25,10 +26,12 @@ export class ProximityMine extends Entity {
     constructor(public readonly mineId: string, x: number, y: number) { super(); this.setPosition(x, y); }
     public setTargets(targets: readonly ProximityMineTarget[]): void { this.targets = targets; }
     public getState(): ProximityMineState { return this.state; }
-    public consumeDetonation(): { mineId: string; target: string; x: number; y: number } | null {
+    public consumeDetonation(): ProximityMineExplosionEvent | null {
         if (!this.detonationPending) return null;
         this.detonationPending = false;
-        return { mineId: this.mineId, target: this.explodedBy, x: this.getX(), y: this.getY() };
+        return { mineId: this.mineId, target: this.explodedBy, x: this.getX(), y: this.getY(),
+            blastRadius: EXPLOSION.blastRadius, maximumImpulse: EXPLOSION.maximumImpulse,
+            maximumAddedSpeed: EXPLOSION.maximumAddedSpeed };
     }
     protected onInitialize(): void {
         this.body.circle(0, 0, D.bodyRadius).fill(0x69717f)

@@ -1,3 +1,4 @@
+import { ProximityMineExplosionSystem, type ProximityMineBlastTarget } from "../physics/ProximityMineExplosionSystem";
 import { ProximityMine } from "../entities/mechanisms/ProximityMine";
 import type { ProximityMineTarget } from "../entities/mechanisms/ProximityMineDetection";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
@@ -671,6 +672,7 @@ export class World {
 
     /** PM-1 mines owned by this World instance. */
     private readonly proximityMines: ProximityMine[] = [];
+    private readonly proximityMineExplosionSystem = new ProximityMineExplosionSystem();
 
     private readonly dynamicObstacles:
         DynamicObstacle[] = [];
@@ -1844,6 +1846,10 @@ export class World {
                 });
             }
         }
+
+        // PM-2B: resolve one-shot detonations only after all entity updates.
+        // A snapshot avoids skipping adjacent mines when removing entities.
+        this.processProximityMineExplosions();
 
         /*
          * Apply Local Wind after entities synchronize their current-frame source
@@ -3625,6 +3631,45 @@ export class World {
             targets.push({ id: definition.id, label: definition.id, x: body.getX(), y: body.getY(), radius });
         }
         for (const mine of this.proximityMines) mine.setTargets(targets);
+    }
+
+    /** Physics-only PM-2B blast, followed by complete mine presentation cleanup. */
+    private processProximityMineExplosions(): void {
+        if (this.proximityMines.length === 0) return;
+        const detonations = this.proximityMines
+            .map(mine => ({ mine, event: mine.consumeDetonation() }))
+            .filter((entry): entry is { mine: ProximityMine; event: NonNullable<typeof entry.event> } => entry.event !== null);
+        if (detonations.length === 0) return;
+
+        // Gather current registered movable bodies once. Ball has a separate
+        // movement implementation and is not guaranteed to be in this registry.
+        const targets: ProximityMineBlastTarget[] = [];
+        if (this.ball) targets.push({ id: "ball", body: this.ball, radius: this.ball.getRadius() });
+        for (const body of this.physicsWorld.getMovableRigidDynamicCollidables()) {
+            const definition = body.getDefinition();
+            const radius = definition.shape === "circle" ? definition.radius
+                : definition.shape === "rectangle" ? Math.hypot(definition.width, definition.height) * 0.5
+                    : Math.max(...definition.points.map(point => Math.hypot(point.x, point.y)));
+            targets.push({ id: definition.id, body, radius });
+        }
+        // Some robot registrations may not be in the movable physics subset.
+        for (const robot of [this.fireRobot, this.secondFireRobot, this.waterRobot,
+        this.secondWaterRobot, this.windRobot, this.secondWindRobot]) {
+            if (robot && robot.getInverseMass() > 0) {
+                targets.push({
+                    id: robot.getDefinition().id, body: robot,
+                    radius: 24, // Match existing provisional robot detection radius
+                });
+            }
+        }
+
+        for (const { mine, event } of detonations) {
+            this.proximityMineExplosionSystem.apply(event, targets);
+            const index = this.proximityMines.indexOf(mine);
+            if (index !== -1) this.proximityMines.splice(index, 1);
+            // Entity.destroy disposes the mine, rings and debug text together.
+            this.removeEntity(mine);
+        }
     }
 
     private createWaterRobot(): void {
