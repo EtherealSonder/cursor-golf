@@ -1,3 +1,11 @@
+import { firstMinePhysicalContact, type MineContactCircle, type MineContactSegment } from "../entities/mechanisms/ProximityMineContactDetection";
+import { applyDirectionalFireToMines, applyHoseWaterToMines, isMineDetonatingWaterSource } from "../entities/mechanisms/ProximityMineElementalInteraction";
+import { ProximityMineWindMovement } from "../entities/mechanisms/ProximityMineWindMovement";
+import { ProximityMineExplosionFireController } from "../environment/ProximityMineExplosionFireController";
+import { ExplosionRenderer } from "../explosion-vfx/ExplosionRenderer";
+import { getExplosionTextureSet } from "../explosion-vfx/ExplosionTextureSet";
+import { ProximityMineExplosionVfxValidation } from "../debug/ProximityMineExplosionVfxValidation";
+import { PROXIMITY_MINE_EXPLOSION_VFX } from "../config/ProximityMineExplosionVfxDefinition";
 import { ProximityMineExplosionSystem, type ProximityMineBlastTarget } from "../physics/ProximityMineExplosionSystem";
 import { ProximityMine } from "../entities/mechanisms/ProximityMine";
 import type { ProximityMineTarget } from "../entities/mechanisms/ProximityMineDetection";
@@ -392,7 +400,6 @@ import {
     ContourRefreshScheduler,
 } from "../../rendering/ContourRefreshScheduler";
 
-import { RotatingPaddleWaterDispersalValidation } from "../debug/RotatingPaddleWaterDispersalValidation";
 
 export class World {
 
@@ -512,8 +519,7 @@ export class World {
     private readonly rotatingPaddleWaterCollisionSystem = new RotatingPaddleWaterCollisionSystem();
     private readonly rotatingPaddleCenterCollisionSystem = new RotatingPaddleCenterCollisionSystem();
     private readonly rotatingPaddleWaterDispersalSystem = new RotatingPaddleWaterDispersalSystem();
-    private readonly rotatingPaddleWaterDispersalValidation = new RotatingPaddleWaterDispersalValidation();
-    private rotatingPaddleWaterDiagnosticElapsed = 0;
+
 
     private readonly fireTubes:
         FireTube[] = [];
@@ -672,7 +678,13 @@ export class World {
 
     /** PM-1 mines owned by this World instance. */
     private readonly proximityMines: ProximityMine[] = [];
+    private readonly mineWindMovement = new ProximityMineWindMovement();
+    private readonly mineRobotUnregister = new Map<string, () => void>();
     private readonly proximityMineExplosionSystem = new ProximityMineExplosionSystem();
+    private readonly explosionRenderer: ExplosionRenderer;
+    private readonly proximityMineExplosionFireController: ProximityMineExplosionFireController;
+    private readonly explosionVfxValidation: ProximityMineExplosionVfxValidation;
+
 
     private readonly dynamicObstacles:
         DynamicObstacle[] = [];
@@ -784,6 +796,17 @@ export class World {
             new WorldPresentationLayers(
                 this.worldContainer,
             );
+
+        // PM-2C: static preview infrastructure only; detonation is connected in PM-2D.
+        this.explosionRenderer = new ExplosionRenderer(getExplosionTextureSet());
+        this.presentationLayers.getLayer(WorldRenderLayer.AirborneEffects)
+            .addChild(this.explosionRenderer.getContainer());
+        this.explosionVfxValidation = new ProximityMineExplosionVfxValidation(this.explosionRenderer);
+        if (import.meta.env.DEV &&
+            (PROXIMITY_MINE_EXPLOSION_VFX.previewEnabledByDefault ||
+                new URLSearchParams(window.location.search).get("explosionPreview") === "1")) {
+            this.explosionVfxValidation.showGallery();
+        }
 
         this.screenOverlayContainer =
             new Container();
@@ -919,6 +942,9 @@ export class World {
                 this.environmentField,
                 this.localWindSystem,
             );
+
+        // FireManager must exist before the delayed mine ignition controller receives it.
+        this.proximityMineExplosionFireController = new ProximityMineExplosionFireController(this.fireManager);
 
         this.waterFireInteraction =
             new WaterFireInteraction();
@@ -1485,6 +1511,10 @@ export class World {
         const airborneWaterSweeps =
             this.airborneWaterSystem.getLastMovementSweeps();
 
+        // PM-3C: use the same authoritative packet sweeps as the visible hose jet.
+        // The mine is a top-down contact hazard; sprinkler sources are filtered.
+        applyHoseWaterToMines(this.proximityMines, airborneWaterSweeps);
+
         this.waterPerformanceProfiler.measure(
             "waterFireAirborneDirectional",
             (): void => {
@@ -1559,13 +1589,7 @@ export class World {
                 deltaTime,
                 this.waterField,
                 paddle,
-                this.rotatingPaddleWaterDispersalValidation,
             );
-        }
-        this.rotatingPaddleWaterDiagnosticElapsed += deltaTime;
-        if (this.rotatingPaddleWaterDiagnosticElapsed >= 1) {
-            this.rotatingPaddleWaterDiagnosticElapsed = 0;
-            this.rotatingPaddleWaterDispersalValidation.flushToConsole();
         }
 
         this.waterPerformanceProfiler
@@ -1831,6 +1855,7 @@ export class World {
          * Stress-test profiling keeps Robot AI separate from ordinary entity
          * updates while preserving the original entity-list update order.
          */
+        this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
         this.updateProximityMineTargets();
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
@@ -1847,9 +1872,14 @@ export class World {
             }
         }
 
+        this.updateMinePhysicalContacts();
+        applyDirectionalFireToMines(this.proximityMines, this.fireSourceSystem);
+
         // PM-2B: resolve one-shot detonations only after all entity updates.
         // A snapshot avoids skipping adjacent mines when removing entities.
         this.processProximityMineExplosions();
+        this.explosionRenderer.update(deltaTime);
+        this.proximityMineExplosionFireController.update(deltaTime);
 
         /*
          * Apply Local Wind after entities synchronize their current-frame source
@@ -2196,7 +2226,12 @@ export class World {
 
         this.entities.length =
             0;
+        for (const mine of this.proximityMines) this.airborneWaterSystem.unregisterImpactAwareTarget(mine.mineId);
+        this.mineRobotUnregister.forEach(unregister => unregister());
+        this.mineRobotUnregister.clear();
+        this.mineWindMovement.reset();
         this.proximityMines.length = 0;
+        this.proximityMineExplosionFireController.reset();
 
         this.dynamicObstacles.length =
             0;
@@ -2378,6 +2413,9 @@ export class World {
 
         this.courseBackground =
             null;
+
+        // Release only instance sprites; shared textures remain owned by AssetLoader.
+        this.explosionRenderer.destroy();
 
         this.presentationLayers
             .destroy();
@@ -2918,6 +2956,7 @@ export class World {
     }
 
     public resetActiveFireOnly(): void {
+        this.proximityMineExplosionFireController.reset();
 
         this.fireManager.reset();
 
@@ -2945,6 +2984,7 @@ export class World {
     }
 
     public resetFireTestState(): void {
+        this.proximityMineExplosionFireController.reset();
 
         this.fireManager.reset();
 
@@ -3602,6 +3642,20 @@ export class World {
         for (const placement of placements) {
             const mine = new ProximityMine(placement.id, placement.x, placement.y);
             this.proximityMines.push(mine);
+            this.mineRobotUnregister.set(mine.mineId, this.robotInteractionRegistry.register({
+                id: mine.mineId, label: "Proximity Mine",
+                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: false },
+                shape: { kind: "circle", radius: mine.getBodyRadius() },
+                getX: () => mine.getX(), getY: () => mine.getY(),
+            }));
+            this.airborneWaterSystem.registerImpactAwareTarget({
+                id: mine.mineId, radius: mine.getBodyRadius(),
+                getX: () => mine.getX(), getY: () => mine.getY(),
+                maximumImpactHeight: 24,
+                notifyImpact: (_x, _y, sourceId) => {
+                    if (isMineDetonatingWaterSource(sourceId)) mine.triggerImmediateDetonation(`water:${sourceId}`);
+                },
+            });
             this.addEntity(mine, WorldRenderLayer.GameplayActors);
         }
     }
@@ -3614,7 +3668,7 @@ export class World {
             y: this.ball.getY(), radius: this.ball.getRadius()
         });
         const robots = [this.fireRobot, this.secondFireRobot, this.waterRobot,
-        this.windRobot, this.secondWindRobot];
+        this.secondWaterRobot, this.windRobot, this.secondWindRobot];
         for (const robot of robots) {
             if (!robot) continue;
             targets.push({
@@ -3631,6 +3685,34 @@ export class World {
             targets.push({ id: definition.id, label: definition.id, x: body.getX(), y: body.getY(), radius });
         }
         for (const mine of this.proximityMines) mine.setTargets(targets);
+    }
+
+    /** Contact bypasses the proximity timer and checks actual forward nozzle capsules. */
+    private updateMinePhysicalContacts(): void {
+        if (!this.proximityMines.length) return;
+        const circles: MineContactCircle[] = [];
+        const segments: MineContactSegment[] = [];
+        if (this.ball) circles.push({ id: "ball", x: this.ball.getX(), y: this.ball.getY(), radius: this.ball.getRadius() });
+        const robots = [this.fireRobot, this.secondFireRobot, this.waterRobot,
+            this.secondWaterRobot, this.windRobot, this.secondWindRobot].filter((robot): robot is Robot => robot !== null);
+        for (const robot of robots) {
+            const id = robot.getDefinition().id;
+            circles.push({ id, x: robot.getX(), y: robot.getY(), radius: 24 });
+            segments.push({ id: `${id}:nozzle`, ...robot.getMineNozzleContactSegment() });
+        }
+        for (const body of this.physicsWorld.getMovableRigidDynamicCollidables()) {
+            if (robots.some(robot => robot === body)) continue;
+            const definition = body.getDefinition();
+            const radius = definition.shape === "circle" ? definition.radius :
+                definition.shape === "rectangle" ? Math.hypot(definition.width, definition.height) * 0.5 :
+                    Math.max(...definition.points.map(point => Math.hypot(point.x, point.y)));
+            circles.push({ id: definition.id, x: body.getX(), y: body.getY(), radius });
+        }
+        for (const mine of this.proximityMines) {
+            if (mine.getState() === "DETONATED") continue;
+            const contact = firstMinePhysicalContact(mine.getX(), mine.getY(), mine.getBodyRadius(), circles, segments);
+            if (contact) mine.triggerImmediateDetonation(contact);
+        }
     }
 
     /** Physics-only PM-2B blast, followed by complete mine presentation cleanup. */
@@ -3665,6 +3747,28 @@ export class World {
 
         for (const { mine, event } of detonations) {
             this.proximityMineExplosionSystem.apply(event, targets);
+
+            this.cameraFeedbackController.triggerProximityMineExplosion(
+                event.x,
+                event.y,
+                event.blastRadius,
+                {
+                    minimumX: this.camera.getPositionX(),
+                    minimumY: this.camera.getPositionY(),
+                    width: this.camera.getVisibleWorldWidth(),
+                    height: this.camera.getVisibleWorldHeight(),
+                },
+            );
+
+            // The same immutable event drives presentation; physical impulse occurs first.
+            this.explosionRenderer.detonate(event);
+            this.proximityMineExplosionFireController.schedule(event);
+            this.mineRobotUnregister.get(mine.mineId)?.();
+            this.mineRobotUnregister.delete(mine.mineId);
+            this.airborneWaterSystem.unregisterImpactAwareTarget(mine.mineId);
+            this.mineWindMovement.forget(mine.mineId);
+            for (const robot of [this.fireRobot, this.secondFireRobot, this.waterRobot,
+                this.secondWaterRobot, this.windRobot, this.secondWindRobot]) robot?.invalidateCurrentTarget();
             const index = this.proximityMines.indexOf(mine);
             if (index !== -1) this.proximityMines.splice(index, 1);
             // Entity.destroy disposes the mine, rings and debug text together.

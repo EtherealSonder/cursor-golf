@@ -69,18 +69,6 @@ import {
 } from "./FirePresentationContract";
 
 import {
-    FirePresentationContractValidation,
-} from "../debug/FirePresentationContractValidation";
-
-import {
-    DirectionalFirePresentationOwnershipValidation,
-} from "../debug/DirectionalFirePresentationOwnershipValidation";
-import {
-    FireArtDirectionValidation,
-} from "../debug/FireArtDirectionValidation";
-
-
-import {
     DirectionalFirePresentationRegion,
 } from "./DirectionalFirePresentationRegion";
 
@@ -196,11 +184,6 @@ export class FireVfxSystem {
         airborneObstacleField:
             AirborneWaterCollisionField,
     ) {
-
-        FirePresentationContractValidation.run();
-        DirectionalFirePresentationOwnershipValidation.run();
-        FireArtDirectionValidation.run();
-
         this.textures =
             FireVfxTextureFactory.create();
 

@@ -5,6 +5,14 @@ export const PROXIMITY_MINE_EXPLOSION_DEFINITION = {
     maximumImpulse: 14000,
     /** Limit added velocity, not total existing velocity. */
     maximumAddedSpeed: 950,
+    /** Fraction of the target bounding radius used as the tangential lever arm. */
+    spinLeverArmFraction: 0.85,
+    /** Tangential impulse relative to the outward impulse. */
+    spinImpulseFraction: 0.40,
+    /** Surface-distance falloff power for rotational response. */
+    spinFalloffPower: 1.35,
+    /** Smallest effective lever arm, in world pixels. */
+    minimumSpinLeverArm: 8,
 } as const;
 
 /** Immutable one-shot event copied before the mine entity is destroyed. */

@@ -1,3 +1,4 @@
+import { PROXIMITY_MINE_EXPLOSION_DEFINITION as SPIN } from "../config/ProximityMineExplosionDefinition";
 /** Shared minimal blast receiver: Ball need not implement DynamicCollidable. */
 export interface ProximityMineImpulseReceiver {
     getX(): number;
@@ -41,20 +42,42 @@ export function calculateProximityMineBlastImpulse(
     return { x: nx * magnitude, y: ny * magnitude, surfaceDistance };
 }
 
+/** Tangential contact creates torque without altering the existing radial impulse. */
+export function calculateProximityMineSpinImpulse(
+    event: ProximityMineExplosionEvent,
+    impulse: { x: number; y: number; surfaceDistance: number },
+    radius: number,
+): { impulseX: number; impulseY: number; offsetX: number; offsetY: number } | null {
+    const outwardMagnitude = Math.hypot(impulse.x, impulse.y);
+    if (!(outwardMagnitude > 0) || !(event.blastRadius > 0)) return null;
+    const normalizedDistance = Math.min(1, impulse.surfaceDistance / event.blastRadius);
+    const spinFalloff = Math.pow(1 - normalizedDistance, SPIN.spinFalloffPower);
+    const magnitude = outwardMagnitude * SPIN.spinImpulseFraction * spinFalloff;
+    if (!(magnitude > 0)) return null;
+    const nx = impulse.x / outwardMagnitude;
+    const ny = impulse.y / outwardMagnitude;
+    const leverArm = Math.max(SPIN.minimumSpinLeverArm, Math.max(0, radius) * SPIN.spinLeverArmFraction);
+    // Contact lies on the outward radial axis; tangential force gives clockwise torque.
+    // Opposite mine-relative sides naturally have opposite world-space force vectors.
+    return { impulseX: -ny * magnitude, impulseY: nx * magnitude,
+        offsetX: nx * leverArm, offsetY: ny * leverArm };
+}
+
 /** One-shot event application. World owns event consumption and mine removal. */
 export class ProximityMineExplosionSystem {
     public apply(event: ProximityMineExplosionEvent, targets: readonly ProximityMineBlastTarget[]): number {
         const visited = new Set<ProximityMineImpulseReceiver>();
         let affected = 0;
-        for (const { body, radius } of targets) {
+        for (const { id, body, radius } of targets) {
             if (visited.has(body)) continue;
             visited.add(body);
             const impulse = calculateProximityMineBlastImpulse(
                 event, body.getX(), body.getY(), radius, body.getInverseMass(),
             );
             if (!impulse) continue;
-            // Center-of-mass impulse: outward knockback without introducing spin.
-            // Robots must suspend walking while the blast's external velocity integrates.
+            // Preserve full radial knockback; add a separate tangential impulse for spin.
+            const spin = calculateProximityMineSpinImpulse(event, impulse, radius);
+            // Robots must suspend walking and orientation correction during recovery.
             const blastAware = body as ProximityMineImpulseReceiver & {
                 receiveProximityMineBlast?: (impulseX: number, impulseY: number, recoverySeconds: number) => void;
             };
@@ -63,10 +86,11 @@ export class ProximityMineExplosionSystem {
             } else {
                 body.applyImpulseAtWorldPoint(impulse.x, impulse.y, body.getX(), body.getY());
             }
-            if (import.meta.env.DEV) {
-                console.info('[PM-2B] Blast impulse', { mine: event.mineId, target: body.constructor.name,
-                    surfaceDistance: Math.round(impulse.surfaceDistance),
-                    deltaSpeed: Math.round(Math.hypot(impulse.x, impulse.y) * body.getInverseMass()) });
+            // A tangential impulse at an off-center contact produces angular velocity.
+            // Ball is deliberately excluded: its visual destruction is a later phase.
+            if (spin && id !== "ball") {
+                body.applyImpulseAtWorldPoint(spin.impulseX, spin.impulseY,
+                    body.getX() + spin.offsetX, body.getY() + spin.offsetY);
             }
             affected += 1;
         }

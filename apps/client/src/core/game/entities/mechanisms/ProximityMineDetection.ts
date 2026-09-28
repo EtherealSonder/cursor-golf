@@ -34,17 +34,20 @@ export function detectProximityMineTarget(
     x: number, y: number, targets: readonly ProximityMineTarget[],
     detectionRadius: number, contactRadius: number, armingRadius: number = detectionRadius,
 ): ProximityMineDetectionResult {
+    let contactTarget: ProximityMineTarget | null = null;
     let nearest: ProximityMineTarget | null = null;
     let nearestSurface = Infinity;
     for (const target of targets) {
         const distance = Math.hypot(target.x - x, target.y - y);
         const surface = Math.max(0, distance - Math.max(0, target.radius));
+        if (surface <= contactRadius && (!contactTarget || surface < Math.max(0, Math.hypot(contactTarget.x - x, contactTarget.y - y) - contactTarget.radius))) contactTarget = target;
         if (surface <= detectionRadius && surface < nearestSurface) {
             nearest = target;
             nearestSurface = surface;
         }
     }
-    const contact = nearest !== null && nearestSurface <= contactRadius;
+    if (contactTarget) { nearest = contactTarget; nearestSurface = Math.max(0, Math.hypot(contactTarget.x - x, contactTarget.y - y) - contactTarget.radius); }
+    const contact = contactTarget !== null;
     const zone: ProximityMineZone = !nearest ? 'NONE' : contact ? 'CONTACT'
         : nearestSurface <= armingRadius ? 'ARMING' : 'DETECTED';
     return {

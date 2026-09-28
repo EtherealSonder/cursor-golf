@@ -48,6 +48,18 @@ export class CameraShake {
     private roughness =
         0;
 
+    private preferredDirectionX =
+        0;
+
+    private preferredDirectionY =
+        0;
+
+    private directionalBias =
+        0;
+
+    private directionalBiasDecayExponent =
+        1;
+
     private phase =
         0;
 
@@ -226,6 +238,33 @@ export class CameraShake {
                 totalEnergy
                 : request.decayExponent;
 
+        const incomingDirectionX = request.preferredDirectionX ?? 0;
+        const incomingDirectionY = request.preferredDirectionY ?? 0;
+        const incomingDirectionMagnitude = Math.hypot(incomingDirectionX, incomingDirectionY);
+        const incomingBias = this.clamp01(request.directionalBias ?? 0);
+        const existingDirectionalEnergy = existingAmplitude * this.directionalBias;
+        const incomingDirectionalEnergy = incomingAmplitude * incomingBias;
+        const combinedDirectionX =
+            this.preferredDirectionX * existingDirectionalEnergy +
+            (incomingDirectionMagnitude > 0 ? incomingDirectionX / incomingDirectionMagnitude : 0) * incomingDirectionalEnergy;
+        const combinedDirectionY =
+            this.preferredDirectionY * existingDirectionalEnergy +
+            (incomingDirectionMagnitude > 0 ? incomingDirectionY / incomingDirectionMagnitude : 0) * incomingDirectionalEnergy;
+        const combinedDirectionMagnitude = Math.hypot(combinedDirectionX, combinedDirectionY);
+        const combinedDirectionalEnergy = existingDirectionalEnergy + incomingDirectionalEnergy;
+
+        this.preferredDirectionX = combinedDirectionMagnitude > 0 ? combinedDirectionX / combinedDirectionMagnitude : 0;
+        this.preferredDirectionY = combinedDirectionMagnitude > 0 ? combinedDirectionY / combinedDirectionMagnitude : 0;
+        this.directionalBias = totalEnergy > 0
+            ? this.clamp01(combinedDirectionalEnergy / totalEnergy)
+            : incomingBias;
+        this.directionalBiasDecayExponent = totalEnergy > 0
+            ? (
+                this.directionalBiasDecayExponent * existingAmplitude +
+                (request.directionalBiasDecayExponent ?? 1) * incomingAmplitude
+            ) / totalEnergy
+            : (request.directionalBiasDecayExponent ?? 1);
+
         this.elapsedTime =
             0;
 
@@ -394,15 +433,28 @@ export class CameraShake {
             return;
         }
 
-        this.offsetX =
-            mixedX /
-            vectorMagnitude *
-            decayedAmplitude;
+        const ordinaryX = mixedX / vectorMagnitude;
+        const ordinaryY = mixedY / vectorMagnitude;
+        const directionalWave = Math.sin(angularTime * 0.83 + 0.41);
+        const activeDirectionalBias =
+            this.directionalBias *
+            Math.pow(remainingRatio, this.directionalBiasDecayExponent);
 
-        this.offsetY =
-            mixedY /
-            vectorMagnitude *
-            decayedAmplitude;
+        const blendedX =
+            ordinaryX * (1 - activeDirectionalBias) +
+            this.preferredDirectionX * directionalWave * activeDirectionalBias;
+        const blendedY =
+            ordinaryY * (1 - activeDirectionalBias) +
+            this.preferredDirectionY * directionalWave * activeDirectionalBias;
+        const blendedMagnitude = Math.hypot(blendedX, blendedY);
+
+        if (blendedMagnitude <= 0) {
+            this.resetOffset();
+            return;
+        }
+
+        this.offsetX = blendedX / blendedMagnitude * decayedAmplitude;
+        this.offsetY = blendedY / blendedMagnitude * decayedAmplitude;
     }
 
     // -------------------------------------------------------
@@ -428,6 +480,11 @@ export class CameraShake {
 
         this.roughness =
             0;
+
+        this.preferredDirectionX = 0;
+        this.preferredDirectionY = 0;
+        this.directionalBias = 0;
+        this.directionalBiasDecayExponent = 1;
 
         this.resetOffset();
     }
@@ -522,6 +579,10 @@ export class CameraShake {
             0;
     }
 
+    private clamp01(value: number): number {
+        return Math.max(0, Math.min(value, 1));
+    }
+
     // -------------------------------------------------------
     // Validation
     // -------------------------------------------------------
@@ -603,6 +664,10 @@ export class CameraShake {
                 request.frequency,
                 request.decayExponent,
                 request.roughness,
+                request.preferredDirectionX ?? 0,
+                request.preferredDirectionY ?? 0,
+                request.directionalBias ?? 0,
+                request.directionalBiasDecayExponent ?? 1,
             ].every(
                 Number.isFinite,
             )
@@ -624,7 +689,10 @@ export class CameraShake {
             request.roughness <
             0 ||
             request.roughness >
-            1
+            1 ||
+            (request.directionalBias ?? 0) < 0 ||
+            (request.directionalBias ?? 0) > 1 ||
+            (request.directionalBiasDecayExponent ?? 1) <= 0
         ) {
             throw new Error(
                 "Camera shake request values are outside their legal ranges.",

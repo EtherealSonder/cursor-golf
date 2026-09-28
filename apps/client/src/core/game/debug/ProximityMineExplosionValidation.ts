@@ -1,6 +1,5 @@
-import { calculateProximityMineBlastImpulse, ProximityMineExplosionSystem } from "../physics/ProximityMineExplosionSystem";
+import { calculateProximityMineBlastImpulse, calculateProximityMineSpinImpulse, ProximityMineExplosionSystem } from "../physics/ProximityMineExplosionSystem";
 import type { ProximityMineExplosionEvent } from "../config/ProximityMineExplosionDefinition";
-import type { DynamicCollidable } from "../physics/DynamicCollidable";
 
 /** Pure PM-2A/B validation; call runProximityMineExplosionValidation() from a test harness. */
 export function runProximityMineExplosionValidation(): void {
@@ -21,18 +20,33 @@ export function runProximityMineExplosionValidation(): void {
     check(!!light && !!heavy && light.x * 1 > heavy.x * 0.025, "Lighter target must gain more velocity");
     const center = calculateProximityMineBlastImpulse(event, 0, 0, 10, 1);
     check(!!center && Number.isFinite(center.x) && center.y === 0, "Center overlap must be finite");
+    const nearSpin = calculateProximityMineSpinImpulse(event, near!, 24);
+    const farSpin = calculateProximityMineSpinImpulse(event, far!, 24);
+    check(!!nearSpin && !!farSpin, "In-range targets must receive spin");
+    check(Math.hypot(nearSpin!.impulseX, nearSpin!.impulseY) >
+        Math.hypot(farSpin!.impulseX, farSpin!.impulseY), "Spin must diminish with distance");
+    check(nearSpin!.offsetX > 0 && nearSpin!.impulseY > 0, "Right-side target must spin tangentially");
+    const opposite = calculateProximityMineBlastImpulse(event, -30, 0, 10, 1);
+    const oppositeSpin = calculateProximityMineSpinImpulse(event, opposite!, 24);
+    check(!!oppositeSpin && oppositeSpin.offsetX < 0 && oppositeSpin.impulseY < 0,
+        "Opposite-side target must reverse world-space tangential force");
+    check(calculateProximityMineSpinImpulse(event, { x: 0, y: 0, surfaceDistance: 220 }, 24) === null,
+        "Zero radial impulse must produce no spin");
     let calls = 0;
-    const body = {
-        getX: () => 50, getY: () => 0, getInverseMass: () => 1,
-        applyImpulseAtWorldPoint: () => { calls += 1; },
-    } as unknown as DynamicCollidable;
+    class TestBody {
+        getX(): number { return 50; }
+        getY(): number { return 0; }
+        getInverseMass(): number { return 1; }
+        applyImpulseAtWorldPoint(): void { calls += 1; }
+    }
+    const body = new TestBody();
     const system = new ProximityMineExplosionSystem();
     check(system.apply(event, [{ id: "ball", body, radius: 10 }, { id: "duplicate", body, radius: 10 }]) === 1,
         "Same body must receive one impulse per event");
-    check(calls === 1, "Duplicate target registration must not double-apply");
+    check(calls === 2, "Each unique rigid body must receive radial and tangential impulses");
     check(system.apply({ ...event, mineId: "test-mine-2" }, [{ id: "ball", body, radius: 10 }]) === 1,
         "Independent second explosion must affect target");
-    check(calls === 2, "Independent mine events must each apply once");
+    check(calls === 4, "Independent mine events must each apply radial and spin once");
     // One-shot consumption and actual entity removal are owned by ProximityMine/World.
     console.info("[PM-2] Pure blast calculation and target deduplication: PASS");
 }

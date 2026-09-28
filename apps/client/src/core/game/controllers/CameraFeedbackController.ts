@@ -14,6 +14,17 @@ import type {
     BallImpactType,
 } from "../entities/Ball";
 
+import {
+    PROXIMITY_MINE_CAMERA_SHAKE,
+} from "../config/ProximityMineCameraShakeDefinition";
+
+export interface CameraViewportGeometry {
+    readonly minimumX: number;
+    readonly minimumY: number;
+    readonly width: number;
+    readonly height: number;
+}
+
 /**
  * Converts gameplay events into generic Camera shake
  * requests.
@@ -334,6 +345,81 @@ export class CameraFeedbackController {
 
                     impactEnergy,
                 ),
+        });
+    }
+
+    // -------------------------------------------------------
+    // Proximity Mine Explosion
+    // -------------------------------------------------------
+
+    public triggerProximityMineExplosion(
+        explosionX: number,
+        explosionY: number,
+        blastRadius: number,
+        viewport: CameraViewportGeometry,
+    ): void {
+        const mine = PROXIMITY_MINE_CAMERA_SHAKE;
+        if (!mine.enabled || ![explosionX, explosionY, blastRadius, viewport.minimumX, viewport.minimumY, viewport.width, viewport.height].every(Number.isFinite)) return;
+        if (blastRadius <= 0 || viewport.width <= 0 || viewport.height <= 0) return;
+
+        const centerX = viewport.minimumX + viewport.width * 0.5;
+        const centerY = viewport.minimumY + viewport.height * 0.5;
+        const dx = explosionX - centerX;
+        const dy = explosionY - centerY;
+        const distance = Math.hypot(dx, dy);
+
+        const halfDiagonal = Math.hypot(viewport.width * 0.5, viewport.height * 0.5);
+        const fadeEnd = halfDiagonal + blastRadius * mine.influenceRadiusMultiplier;
+        const distanceFactor = distance <= blastRadius
+            ? 1
+            : 1 - this.clamp((distance - blastRadius) / Math.max(1, fadeEnd - blastRadius), 0, 1);
+
+        // Continuous circle/viewport exposure approximation. A centre on an edge
+        // reads as half exposed; moving one blast radius outside reaches zero.
+        const outsideX = explosionX < viewport.minimumX
+            ? viewport.minimumX - explosionX
+            : explosionX > viewport.minimumX + viewport.width
+                ? explosionX - (viewport.minimumX + viewport.width)
+                : 0;
+        const outsideY = explosionY < viewport.minimumY
+            ? viewport.minimumY - explosionY
+            : explosionY > viewport.minimumY + viewport.height
+                ? explosionY - (viewport.minimumY + viewport.height)
+                : 0;
+        const outsideDistance = Math.hypot(outsideX, outsideY);
+        const centerInside = outsideDistance === 0;
+        const edgeDistance = Math.min(
+            Math.abs(explosionX - viewport.minimumX),
+            Math.abs(viewport.minimumX + viewport.width - explosionX),
+            Math.abs(explosionY - viewport.minimumY),
+            Math.abs(viewport.minimumY + viewport.height - explosionY),
+        );
+        const exposure = centerInside
+            ? this.clamp(0.5 + edgeDistance / Math.max(1, blastRadius) * 0.5, 0.5, 1)
+            : this.clamp(0.5 * (1 - outsideDistance / Math.max(1, blastRadius)), 0, 0.5);
+
+        const nearbyOffscreen = !centerInside && outsideDistance <= blastRadius * mine.influenceRadiusMultiplier;
+        const exposureContribution = (1 - mine.exposureWeight) + exposure * mine.exposureWeight;
+        let spatialIntensity = distanceFactor * exposureContribution;
+        if (nearbyOffscreen) spatialIntensity = Math.max(spatialIntensity, mine.nearbyOffscreenIntensityFloor * distanceFactor);
+        spatialIntensity = this.clamp(spatialIntensity, 0, 1);
+        if (spatialIntensity <= 0) return;
+
+        const directionMagnitude = distance;
+        const centralRatio = this.clamp(distance / Math.max(1, mine.centralOmnidirectionalRadius), 0, 1);
+        const preferredDirectionX = directionMagnitude > 0 ? dx / directionMagnitude : 0;
+        const preferredDirectionY = directionMagnitude > 0 ? dy / directionMagnitude : 0;
+
+        this.cameraShake.trigger({
+            amplitude: mine.amplitude * spatialIntensity,
+            duration: mine.duration,
+            frequency: mine.frequency,
+            decayExponent: mine.decayExponent,
+            roughness: mine.roughness,
+            preferredDirectionX,
+            preferredDirectionY,
+            directionalBias: mine.directionalBias * centralRatio,
+            directionalBiasDecayExponent: mine.directionalBiasDecayExponent,
         });
     }
 

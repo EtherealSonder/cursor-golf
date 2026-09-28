@@ -13,6 +13,7 @@ import fireHydrantTexture from "../../assets/sprites/mechanisms/fire_hydrant.png
 import fireHydrantDamagedTexture from "../../assets/sprites/mechanisms/fire_hydrant_damaged.png";
 import fireHydrantBrokenTexture from "../../assets/sprites/mechanisms/fire_hydrant_broken.png";
 import waterSprinklerTexture from "../../assets/sprites/mechanisms/water_sprinkler.png";
+import proximityMineTexture from "../../assets/sprites/mechanisms/proximity_mine.png";
 import radialBumperTexture from "../../assets/sprites/mechanisms/radial_bumper.png";
 import directionalBumperTexture from "../../assets/sprites/mechanisms/directional_bumper.png";
 import directionalBumperInnerTexture from "../../assets/sprites/mechanisms/directional_bumper_inner.png";
@@ -63,6 +64,16 @@ import windStreak01Texture from "../../assets/textures/wind/masks/wind_streak_01
 import windStreak02Texture from "../../assets/textures/wind/masks/wind_streak_02.png";
 import windStreak03Texture from "../../assets/textures/wind/masks/wind_streak_03.png";
 import windStreak04Texture from "../../assets/textures/wind/masks/wind_streak_04.png";
+
+import explosionBlastRingA from "../../assets/textures/explosion/explosion_blast_ring_a.png";
+import explosionBlastRingB from "../../assets/textures/explosion/explosion_blast_ring_b.png";
+import explosionBlastRingC from "../../assets/textures/explosion/explosion_blast_ring_c.png";
+import explosionPressureRing from "../../assets/textures/explosion/explosion_pressure_ring.png";
+import explosionIgnition from "../../assets/textures/explosion/explosion_ignition.png";
+import explosionFireBody from "../../assets/textures/explosion/explosion_fire_body.png";
+import explosionFlameFragment from "../../assets/textures/explosion/explosion_flame_fragment.png";
+import explosionEmber from "../../assets/textures/explosion/explosion_ember.png";
+import explosionBreakupNoise from "../../assets/textures/explosion/explosion_breakup_noise.png";
 
 export class AssetLoader {
 
@@ -130,6 +141,11 @@ export class AssetLoader {
         await this.loadTexture(
             "waterSprinkler",
             waterSprinklerTexture,
+        );
+
+        await this.loadTexture(
+            "proximityMine",
+            proximityMineTexture,
         );
 
         await this.loadTexture(
@@ -321,6 +337,17 @@ export class AssetLoader {
             "windStreak04",
             windStreak04Texture,
         );
+
+        // PM-2C: dedicated explosion family. AssetLoader owns these shared textures.
+        await this.loadTexture("explosionBlastRingA", explosionBlastRingA);
+        await this.loadTexture("explosionBlastRingB", explosionBlastRingB);
+        await this.loadTexture("explosionBlastRingC", explosionBlastRingC);
+        await this.loadTexture("explosionPressureRing", explosionPressureRing);
+        await this.loadTexture("explosionIgnition", explosionIgnition);
+        await this.loadTexture("explosionFireBody", explosionFireBody);
+        await this.loadTexture("explosionFlameFragment", explosionFlameFragment);
+        await this.loadTexture("explosionEmber", explosionEmber);
+        await this.loadTexture("explosionBreakupNoise", explosionBreakupNoise);
 
         this.initialized =
             true;

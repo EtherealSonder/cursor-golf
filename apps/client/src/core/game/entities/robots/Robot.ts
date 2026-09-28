@@ -137,12 +137,12 @@ export class Robot extends Entity {
             bodyType: "dynamic",
             mass: externalMass,
             linearDamping: 4.5,
-            angularDamping: 8,
+            angularDamping: 2.2,
             sleepLinearSpeedThreshold: 2,
             sleepAngularSpeedThreshold: 0.05,
             sleepDelay: 0.2,
             maximumLinearSpeed: 1100,
-            maximumAngularSpeed: Math.PI * 1.5,
+            maximumAngularSpeed: Math.PI * 5,
         }, 0.5 * externalMass * definition.navigationRadius * definition.navigationRadius);
     }
 
@@ -174,12 +174,12 @@ export class Robot extends Entity {
                 bodyType: "dynamic",
                 mass: this.definition.externalForceMass,
                 linearDamping: 4.5,
-                angularDamping: 8,
+                angularDamping: 2.2,
                 sleepLinearSpeedThreshold: 2,
                 sleepAngularSpeedThreshold: 0.05,
                 sleepDelay: 0.2,
                 maximumLinearSpeed: 1100,
-                maximumAngularSpeed: Math.PI * 1.5,
+                maximumAngularSpeed: Math.PI * 5,
             },
         };
     }
@@ -286,6 +286,15 @@ export class Robot extends Entity {
         };
     }
 
+    /** World-space nozzle capsule used only for precise mine physical contact. */
+    public getMineNozzleContactSegment(): { startX: number; startY: number; endX: number; endY: number; radius: number } {
+        const heading = this.visualRoot.rotation;
+        const length = this.definition.bodyWidth * 0.5;
+        const start = this.definition.navigationRadius * 0.65;
+        return { startX: this.getX() + Math.cos(heading) * start, startY: this.getY() + Math.sin(heading) * start,
+            endX: this.getX() + Math.cos(heading) * length, endY: this.getY() + Math.sin(heading) * length, radius: 7 };
+    }
+
     protected onInitialize(): void {
         this.setPosition(this.spawnX, this.spawnY);
         this.leg1Sprite = new Sprite(AssetLoader.getTexture(this.definition.leg1TextureKey));
@@ -336,7 +345,13 @@ export class Robot extends Entity {
             );
         }
         if (this.explosionKnockbackSeconds > 0) {
+            // Integrate blast spin directly into the authoritative Robot heading.
+            // Normal AI turning resumes only after recovery completes.
+            this.visualRoot.rotation += externalMotion.rotationDelta;
             this.explosionKnockbackSeconds = Math.max(0, this.explosionKnockbackSeconds - deltaTime);
+            if (this.explosionKnockbackSeconds === 0) {
+                this.externalRigidBody.setAngularVelocity(0);
+            }
             this.locomotion?.plantForTargeting();
             this.updateLedDisplay(deltaTime);
             return;

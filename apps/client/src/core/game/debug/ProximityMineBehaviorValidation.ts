@@ -1,3 +1,5 @@
+import { firstMinePhysicalContact, mineSegmentContact } from "../entities/mechanisms/ProximityMineContactDetection";
+import { isMineDetonatingWaterSource } from "../entities/mechanisms/ProximityMineElementalInteraction";
 import { PROXIMITY_MINE_DEFINITION as D } from '../config/ProximityMineDefinition';
 import { advanceArmingProgress, countdownDuration, detectProximityMineTarget, type ProximityMineTarget } from '../entities/mechanisms/ProximityMineDetection';
 /** Optional pure PM-1 regression checks; invoke explicitly from a debug/test runner. */
@@ -31,5 +33,11 @@ export function validateProximityMineBehavior(): void {
     assert(retreated < closer, 'retreat decays countdown');
     assert(advanceArmingProgress(0, 0, 'CONTACT', 1,
         D.outerArmingSeconds, D.innerArmingSeconds, D.warningDecayPerSecond) === 1, 'contact is immediate');
-    console.info('[PM-1] Proximity mine behavior validation: PASS');
+    assert(detect([target(30, 'Ball'), target(12, 'Nozzle')]).target?.label === 'Nozzle', 'contact overrides nearest arming candidate');
+    assert(mineSegmentContact(0, 0, 17, { id: 'robot:nozzle', startX: -40, startY: 0, endX: 0, endY: 0, radius: 7 }), 'nozzle capsule touches mine');
+    assert(firstMinePhysicalContact(0, 0, 17, [], [{ id: 'nozzle', startX: 0, startY: -30, endX: 0, endY: 30, radius: 7 }]) === 'nozzle', 'physical contact independent of countdown');
+    assert(isMineDetonatingWaterSource('water-robot-hose-water'), 'robot hose qualifies');
+    assert(isMineDetonatingWaterSource('player-hose'), 'player hose qualifies');
+    assert(!isMineDetonatingWaterSource('sprinkler-1'), 'sprinkler must not detonate');
+    console.info('[PM-3] Proximity mine interaction validation: PASS');
 }

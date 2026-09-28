@@ -1,4 +1,5 @@
-import { Graphics, Text } from 'pixi.js';
+import { Graphics, Sprite, Text } from 'pixi.js';
+import { AssetLoader } from '../../../rendering/AssetLoader';
 import { PROXIMITY_MINE_EXPLOSION_DEFINITION as EXPLOSION, type ProximityMineExplosionEvent } from '../../config/ProximityMineExplosionDefinition';
 import { Entity } from '../Entity';
 import { PROXIMITY_MINE_DEFINITION as D } from '../../config/ProximityMineDefinition';
@@ -7,7 +8,7 @@ import { ProximityMineWarningVfx } from './ProximityMineWarningVfx';
 export type ProximityMineState = 'IDLE' | 'WARNING' | 'DETONATED';
 /** PM-1: proximity warning and non-destructive detonation event. Audio and damage are deferred. */
 export class ProximityMine extends Entity {
-    private readonly body = new Graphics();
+    private body: Sprite | null = null;
     private readonly led = new Graphics();
     private readonly warningVfx = new ProximityMineWarningVfx();
     private readonly debug = new Text({ text: '', style: { fontSize: 11, fill: 0xffffff,
@@ -25,6 +26,13 @@ export class ProximityMine extends Entity {
     private detonationPending = false;
     constructor(public readonly mineId: string, x: number, y: number) { super(); this.setPosition(x, y); }
     public setTargets(targets: readonly ProximityMineTarget[]): void { this.targets = targets; }
+    public getBodyRadius(): number { return D.bodyRadius; }
+    /** Single entry point for all authoritative external impacts. */
+    public triggerImmediateDetonation(cause: string): boolean {
+        if (this.state === "DETONATED") return false;
+        this.detonate(cause);
+        return true;
+    }
     public getState(): ProximityMineState { return this.state; }
     public consumeDetonation(): ProximityMineExplosionEvent | null {
         if (!this.detonationPending) return null;
@@ -34,10 +42,10 @@ export class ProximityMine extends Entity {
             maximumAddedSpeed: EXPLOSION.maximumAddedSpeed };
     }
     protected onInitialize(): void {
-        this.body.circle(0, 0, D.bodyRadius).fill(0x69717f)
-            .stroke({ color: 0x303746, width: 3 });
-        this.body.moveTo(-9, -9).lineTo(9, 9).moveTo(9, -9).lineTo(-9, 9)
-            .stroke({ color: 0x292d3b, width: 4, cap: 'round' });
+        this.body = new Sprite(AssetLoader.getTexture('proximityMine'));
+        this.body.anchor.set(D.visual.spriteAnchorX, D.visual.spriteAnchorY);
+        this.body.width = D.visual.spriteWidth;
+        this.body.height = D.visual.spriteHeight;
         this.container.addChild(this.warningVfx.container, this.body, this.led);
         this.debug.anchor.set(0.5, 1);
         this.debug.position.set(0, -D.bodyRadius - 11);
@@ -45,8 +53,8 @@ export class ProximityMine extends Entity {
         this.drawLed(false);
     }
     private drawLed(on: boolean): void {
-        this.led.clear().circle(0, 0, 5.5).fill(on ? D.color : 0x4c2735)
-            .stroke({ color: on ? 0xffb5d0 : 0x292d3b, width: 1.3 });
+        this.led.clear().circle(0, 0, D.visual.ledRadius)
+            .fill(on ? D.visual.ledAlertColor : D.visual.ledIdleColor);
     }
     private detonate(target: string): void {
         this.state = 'DETONATED';

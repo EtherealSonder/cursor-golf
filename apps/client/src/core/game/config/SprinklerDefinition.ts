@@ -83,8 +83,8 @@ export const DEFAULT_SPRINKLER_DEFINITION: SprinklerDefinition = {
     },
 
     visual: {
-        spriteWidth: 30,
-        spriteHeight: 30,
+        spriteWidth: 34,
+        spriteHeight: 34,
         spriteAnchorX: 0.5,
         spriteAnchorY: 0.5,
         spriteOffsetX: 0,

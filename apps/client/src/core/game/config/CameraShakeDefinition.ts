@@ -44,6 +44,16 @@ export interface CameraShakeRequest {
      * 1 produces a rough multi-frequency shake.
      */
     readonly roughness: number;
+
+    /** Optional normalized world-space direction for spatial events. */
+    readonly preferredDirectionX?: number;
+    readonly preferredDirectionY?: number;
+
+    /** 0 = ordinary shake, 1 = fully direction-biased at the start. */
+    readonly directionalBias?: number;
+
+    /** Controls how quickly directional character disappears during decay. */
+    readonly directionalBiasDecayExponent?: number;
 }
 
 /**
@@ -200,7 +210,7 @@ export const DEFAULT_CAMERA_FEEDBACK_DEFINITION:
             0.55,
 
         maximumAmplitude:
-            18,
+            30,
 
         maximumDuration:
             0.5,
