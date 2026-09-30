@@ -27,6 +27,10 @@ export interface HoseJetBallForceDefinition {
     readonly impactBrakingRadius: number;
     /** Robot-Hose only. Maximum desired transport speed toward the live impact point. */
     readonly impactTransportSpeed: number;
+    /** Robot-Hose only. Radius searched around deposition for the deepest puddle core. */
+    readonly puddleTargetSearchRadius: number;
+    /** Robot-Hose only. Sampling interval for the local puddle-core search. */
+    readonly puddleTargetSearchStep: number;
 }
 
 export const DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION:
@@ -81,6 +85,8 @@ export const DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION:
         impactCaptureRadius: 34,
         impactBrakingRadius: 120,
         impactTransportSpeed: 520,
+        puddleTargetSearchRadius: 96,
+        puddleTargetSearchStep: 12,
     };
 
 /** Robot Water attacks use the same jet geometry but enable terminal capture. */
@@ -88,9 +94,11 @@ export const ROBOT_HOSE_JET_BALL_FORCE_DEFINITION: HoseJetBallForceDefinition = 
     ...DEFAULT_HOSE_JET_BALL_FORCE_DEFINITION,
     // A wider capture/braking envelope prevents residual Ball momentum from
     // carrying it through the live deposition point on high-speed approaches.
-    impactCaptureRadius: 54,
-    impactBrakingRadius: 190,
-    impactTransportSpeed: 420,
+    impactCaptureRadius: 48,
+    impactBrakingRadius: 240,
+    impactTransportSpeed: 340,
+    puddleTargetSearchRadius: 112,
+    puddleTargetSearchStep: 8,
 };
 
 export function validateHoseJetBallForceDefinition(
@@ -113,6 +121,8 @@ export function validateHoseJetBallForceDefinition(
         definition.impactCaptureRadius,
         definition.impactBrakingRadius,
         definition.impactTransportSpeed,
+        definition.puddleTargetSearchRadius,
+        definition.puddleTargetSearchStep,
     ];
 
     if (

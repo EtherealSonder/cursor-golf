@@ -201,6 +201,21 @@ export class BallWaterInteraction {
     }
 
     /**
+     * D-4 semantic alias for callers that refresh the same authoritative
+     * interaction while the Ball is stationary. It deliberately delegates to
+     * update() so there is still one depth/exposure calculation path.
+     */
+    public refreshContact(
+        sample: BallWaterSample,
+        deltaTime: number,
+    ): BallWaterInteractionState {
+        return this.update(
+            sample,
+            deltaTime,
+        );
+    }
+
+    /**
      * Phase 8E-3 composition rule for terrain and standing-Water resistance.
      *
      * SurfaceSystem remains authoritative for the terrain multiplier. Water

@@ -11,6 +11,8 @@ export enum WorldRenderLayer {
     StandingWater = 300,
     WaterEffects = 400,
     PhysicalObjects = 500,
+    /** Presentation-only hazards that must remain readable below actors. */
+    HazardEffects = 550,
     GameplayActors = 600,
     AirborneEffects = 700,
     GameplayIndicators = 800,

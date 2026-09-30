@@ -6,6 +6,17 @@ import {
 import golfClubTexture from "../../assets/sprites/golf/golf_club_temp.png";
 import golfBallTexture from "../../assets/sprites/golf/golf_ball.png";
 import golfBallDimplesTexture from "../../assets/textures/golf/golf_ball_dimples.png";
+import ballUiTexture from "../../assets/sprites/ui/ball_ui.png";
+import ballLivesHolderTexture from "../../assets/sprites/ui/ball_lives_holder.png";
+import debuffHolderTexture from "../../assets/sprites/ui/debuff_holder.png";
+import debuffFire1Texture from "../../assets/sprites/ui/debuff_fire_1.png";
+import debuffFire2Texture from "../../assets/sprites/ui/debuff_fire_2.png";
+import debuffFire3Texture from "../../assets/sprites/ui/debuff_fire_3.png";
+import debuffFireOutlineTexture from "../../assets/sprites/ui/debuff_fire_outline.png";
+import debuffDeathTexture from "../../assets/sprites/ui/debuff_death.png";
+import debuffNegativeTexture from "../../assets/sprites/ui/debuff_negative.png";
+import debuffPositiveTexture from "../../assets/sprites/ui/debuff_positive.png";
+import debuffWaterTexture from "../../assets/sprites/ui/debuff_water.png";
 import fanBodyTexture from "../../assets/sprites/mechanisms/fan_body.png";
 import fanRotorTexture from "../../assets/sprites/mechanisms/fan_rotator.png";
 import fireTubeTexture from "../../assets/sprites/mechanisms/fire_tube.png";
@@ -107,6 +118,26 @@ export class AssetLoader {
             "golfBallDimples",
             golfBallDimplesTexture,
         );
+
+        await this.loadTexture(
+            "ballUi",
+            ballUiTexture,
+        );
+
+        await this.loadTexture(
+            "ballLivesHolder",
+            ballLivesHolderTexture,
+        );
+
+        await this.loadTexture("debuffHolder", debuffHolderTexture);
+        await this.loadTexture("debuffFire1", debuffFire1Texture);
+        await this.loadTexture("debuffFire2", debuffFire2Texture);
+        await this.loadTexture("debuffFire3", debuffFire3Texture);
+        await this.loadTexture("debuffFireOutline", debuffFireOutlineTexture);
+        await this.loadTexture("debuffDeath", debuffDeathTexture);
+        await this.loadTexture("debuffNegative", debuffNegativeTexture);
+        await this.loadTexture("debuffPositive", debuffPositiveTexture);
+        await this.loadTexture("debuffWater", debuffWaterTexture);
 
         await this.loadTexture(
             "fanBody",

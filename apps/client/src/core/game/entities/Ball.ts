@@ -198,6 +198,9 @@ export class Ball extends Entity {
     private visualContainer:
         Container | null = null;
 
+    private drowningVisualMask:
+        Graphics | null = null;
+
     private ballShellSprite:
         Sprite | null = null;
 
@@ -1832,7 +1835,16 @@ export class Ball extends Entity {
         this.lastWaterSample = sample;
         this.lastWaterInteractionState = state;
 
-        if (state.targetExposure > 0 && sample.coveredFraction > 0) {
+        /*
+         * Standing-Water contact is a geometric/depth fact. Do not gate this
+         * timer on resistance exposure, because very shallow real Water may
+         * legitimately have near-zero targetExposure.
+         */
+        const hasSampledStandingWater =
+            sample.coveredFraction > 0 &&
+            state.representativeWetDepth > 0;
+
+        if (hasSampledStandingWater) {
             this.standingWaterContactTime += deltaTime;
             this.currentStandingWaterContactTime += deltaTime;
         } else {
@@ -1917,6 +1929,122 @@ export class Ball extends Entity {
         this.peakWaterSmoothedExposure = 0;
         this.peakWaterAdditionalResistance = 0;
         this.standingWaterContactTime = 0;
+    }
+
+    /**
+     * D-4 presentation bridge. The returned container is the complete assembled
+     * Ball visual (shell + dimple presentation). Gameplay/physics ownership
+     * remains inside Ball.
+     */
+    public getVisualContainerForPresentation(): Container | null {
+        return this.visualContainer;
+    }
+
+    /**
+     * D-4 presentation-only local clip. The mask lives in the same coordinate
+     * space as the assembled Ball visual, so shell and tiling dimples clip
+     * together without changing physics, radius, hit testing or club access.
+     */
+    public setDrowningVisibleFraction(
+        visibleFraction: number,
+    ): void {
+        const visual =
+            this.visualContainer;
+
+        if (!visual) {
+            return;
+        }
+
+        const fraction =
+            Math.max(
+                0.1,
+                Math.min(
+                    1,
+                    visibleFraction,
+                ),
+            );
+
+        if (!this.drowningVisualMask) {
+            this.drowningVisualMask =
+                new Graphics();
+
+            this.drowningVisualMask.label =
+                "BallDrowningVisualMask";
+
+            visual.addChild(
+                this.drowningVisualMask,
+            );
+
+            visual.mask =
+                this.drowningVisualMask;
+        }
+
+        const diameter =
+            this.getRadius() * 2;
+
+        this.drowningVisualMask.clear();
+
+        this.drowningVisualMask
+            .rect(
+                -diameter * 0.5,
+                -diameter * 0.5,
+                diameter,
+                diameter * fraction,
+            )
+            .fill({
+                color: 0xffffff,
+            });
+    }
+
+    public clearDrowningVisualMask(): void {
+        if (!this.drowningVisualMask) {
+            return;
+        }
+
+        if (
+            this.visualContainer?.mask ===
+            this.drowningVisualMask
+        ) {
+            this.visualContainer.mask = null;
+        }
+
+        this.drowningVisualMask
+            .removeFromParent();
+
+        this.drowningVisualMask
+            .destroy();
+
+        this.drowningVisualMask =
+            null;
+    }
+
+    /**
+     * D-4 gameplay sampling bridge.
+     *
+     * The Ball footprint is sampled at its final position every World frame.
+     * Stationary Balls advance the interaction state with frame dt. Moving
+     * Balls have already advanced Water physics in their internal substeps, so
+     * this final-position refresh uses dt=0 to avoid double-counting smoothing
+     * or contact time while still publishing a current contact profile.
+     */
+    public refreshStandingWaterContactForGameplay(
+        deltaTime: number,
+    ): void {
+        const currentSurface =
+            this.surfaceSystem.getSurfaceAt(
+                this.getX(),
+                this.getY(),
+            );
+
+        const interactionDeltaTime =
+            this.isMoving()
+                ? 0
+                : Math.max(0, deltaTime);
+
+        this.updateStandingWaterInteraction(
+            interactionDeltaTime,
+            currentSurface.rollingResistanceMultiplier,
+        );
     }
 
     public addWaterSplashListener(

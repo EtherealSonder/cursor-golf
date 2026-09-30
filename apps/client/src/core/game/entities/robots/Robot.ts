@@ -286,6 +286,124 @@ export class Robot extends Entity {
         };
     }
 
+    /**
+     * D-7 lethal Wind suction trigger tied directly to the Robot's authored
+     * nozzle geometry and attack state, not to generic LocalWind source space.
+     *
+     * The trigger is a forward capsule extending beyond the visible nozzle.
+     * Ball radius expands the capsule so entry is detected before solid Robot
+     * collision response can occur.
+     */
+    public isBallInsideWindSuctionCaptureRegion(
+        ballX: number,
+        ballY: number,
+        ballRadius: number,
+    ): boolean {
+        if (
+            this.definition.element !==
+                "wind" ||
+            this.state !==
+                "ATTACKING" ||
+            !(this.elementAttackController instanceof
+                RobotWindAttackController)
+        ) {
+            return false;
+        }
+
+        const nozzle =
+            this.getMineNozzleContactSegment();
+
+        const forwardX =
+            this.getForwardX();
+
+        const forwardY =
+            this.getForwardY();
+
+        /*
+         * Start at the authored nozzle segment and extend 34 px beyond its
+         * physical tip. This is intentionally outside the Robot collider.
+         */
+        const startX =
+            nozzle.startX;
+
+        const startY =
+            nozzle.startY;
+
+        const endX =
+            nozzle.endX +
+            forwardX * 34;
+
+        const endY =
+            nozzle.endY +
+            forwardY * 34;
+
+        const segmentX =
+            endX - startX;
+
+        const segmentY =
+            endY - startY;
+
+        const segmentLengthSquared =
+            segmentX * segmentX +
+            segmentY * segmentY;
+
+        let t = 0;
+
+        if (
+            segmentLengthSquared >
+            0.000001
+        ) {
+            t =
+                (
+                    (ballX - startX) *
+                        segmentX +
+                    (ballY - startY) *
+                        segmentY
+                ) /
+                segmentLengthSquared;
+
+            t =
+                Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        t,
+                    ),
+                );
+        }
+
+        const closestX =
+            startX +
+            segmentX * t;
+
+        const closestY =
+            startY +
+            segmentY * t;
+
+        const dx =
+            ballX -
+            closestX;
+
+        const dy =
+            ballY -
+            closestY;
+
+        const captureRadius =
+            nozzle.radius +
+            Math.max(
+                0,
+                ballRadius,
+            ) +
+            5;
+
+        return (
+            dx * dx +
+            dy * dy <=
+            captureRadius *
+                captureRadius
+        );
+    }
+
     /** World-space nozzle capsule used only for precise mine physical contact. */
     public getMineNozzleContactSegment(): { startX: number; startY: number; endX: number; endY: number; radius: number } {
         const heading = this.visualRoot.rotation;

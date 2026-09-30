@@ -9,6 +9,13 @@ import { PROXIMITY_MINE_EXPLOSION_VFX } from "../config/ProximityMineExplosionVf
 import { ProximityMineExplosionSystem, type ProximityMineBlastTarget } from "../physics/ProximityMineExplosionSystem";
 import { ProximityMine } from "../entities/mechanisms/ProximityMine";
 import type { ProximityMineTarget } from "../entities/mechanisms/ProximityMineDetection";
+import type { BallDeathCause } from "../death/BallDeathCause";
+import { BallDeathCause as BallDeathCauseValue } from "../death/BallDeathCause";
+import { BallFireExposure } from "../fire/BallFireExposure";
+import { BallFireHeatController } from "../fire/BallFireHeatController";
+import { BallDrowningController } from "../water/BallDrowningController";
+import { BallExplosionDeathEvaluator } from "../death/BallExplosionDeathEvaluator";
+import { BallExplosionDeathValidation } from "../debug/BallExplosionDeathValidation";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
@@ -604,6 +611,20 @@ export class World {
     private readonly fireSourceSystem:
         FireSourceSystem;
 
+    /** D-3 authoritative Ball-local Fire exposure sampler. */
+    private readonly ballFireExposure:
+        BallFireExposure;
+
+    /** D-3 authoritative burn accumulation for the current Ball life. */
+    private readonly ballFireHeatController:
+        BallFireHeatController;
+
+    /** D-4 authoritative drowning accumulation for the current Ball life. */
+    private readonly ballDrowningController:
+        BallDrowningController;
+
+    /** Temporary D-4 diagnostic throttle. Remove after drowning tuning is locked. */
+
     /** Phase 8F-1 policy boundary between Water and Fire simulations. */
     private readonly waterFireInteraction:
         WaterFireInteraction;
@@ -770,6 +791,14 @@ export class World {
     private shotFeedback:
         ShotFeedback | null = null;
 
+    /** D-2 bridge. Later hazards report causes through this callback only. */
+    private ballDeathReporter:
+        ((cause: BallDeathCause) => void) | null = null;
+
+    /** D-6 pure mine-explosion lethality evaluator. */
+    private readonly ballExplosionDeathEvaluator =
+        new BallExplosionDeathEvaluator();
+
     constructor(
         app:
             Application,
@@ -788,6 +817,9 @@ export class World {
 
         this.courseVisualDefinition =
             courseVisualDefinition;
+
+
+        BallExplosionDeathValidation.validate();
 
         this.worldContainer =
             new Container();
@@ -942,6 +974,18 @@ export class World {
                 this.environmentField,
                 this.localWindSystem,
             );
+
+        this.ballFireExposure =
+            new BallFireExposure(
+                this.fireManager,
+                this.fireSourceSystem,
+            );
+
+        this.ballFireHeatController =
+            new BallFireHeatController();
+
+        this.ballDrowningController =
+            new BallDrowningController();
 
         // FireManager must exist before the delayed mine ignition controller receives it.
         this.proximityMineExplosionFireController = new ProximityMineExplosionFireController(this.fireManager);
@@ -1195,6 +1239,18 @@ export class World {
             .registerAdditionalBody(
                 this.ball,
             );
+
+        /*
+         * D-7: the Ball is lethal only when an enabled pull source draws it
+         * into the authoritative nozzle-capture region. Ordinary physical
+         * collision with the Wind Robot/nozzle does not use this boundary.
+         */
+        /*
+         * D-7 Ball lethality is owned directly by the Wind Robot's authored
+         * nozzle trigger. Generic WindSuctionCaptureSystem remains for
+         * shrink/consume physics objects such as Sprinklers.
+         */
+
 
         this.createBallTrail();
 
@@ -1690,12 +1746,57 @@ export class World {
 
 
 
+        if (this.ball) {
+            /*
+             * Moving Balls refresh standing-Water contact in physics substeps.
+             * A stationary Ball must still refresh every frame because being
+             * stationary is an intentional drowning condition.
+             */
+            this.ball
+                .refreshStandingWaterContactForGameplay(
+                    deltaTime,
+                );
+
+            const drowningUpdate =
+                this.ballDrowningController.update(
+                    deltaTime,
+                    this.ball.getWaterContactProfile(),
+                    this.ball.getSpeed(),
+                );
+
+
+            if (
+                drowningUpdate.reachedDeathThreshold
+            ) {
+                this.reportBallDeath(
+                    BallDeathCauseValue.Drowning,
+                );
+            }
+        }
+
         let fireSourceSystemMilliseconds = 0;
         this.waterPerformanceProfiler.measure("fireSimulation", (): void => {
             const fireSourceStartedAt = performance.now();
             this.fireSourceSystem.update(deltaTime);
             fireSourceSystemMilliseconds = performance.now() - fireSourceStartedAt;
             this.fireManager.update(deltaTime);
+
+            if (this.ball) {
+                const exposure =
+                    this.ballFireExposure.sample(this.ball);
+
+                const heatUpdate =
+                    this.ballFireHeatController.update(
+                        deltaTime,
+                        exposure,
+                    );
+
+                if (heatUpdate.reachedDeathThreshold) {
+                    this.reportBallDeath(
+                        BallDeathCauseValue.Fire,
+                    );
+                }
+            }
         });
 
         this.waterPerformanceProfiler.measure(
@@ -1857,6 +1958,26 @@ export class World {
          */
         this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
         this.updateProximityMineTargets();
+
+        /*
+         * D-7 direct Wind Robot nozzle trigger. This is deliberately evaluated
+         * before entity physics so a successful suction capture resets the Ball
+         * before the Robot collider can produce a visible bounce.
+         */
+        if (
+            this.ball &&
+            this.windRobot
+                ?.isBallInsideWindSuctionCaptureRegion(
+                    this.ball.getX(),
+                    this.ball.getY(),
+                    this.ball.getRadius(),
+                )
+        ) {
+            this.reportBallDeath(
+                BallDeathCauseValue.WindSuction,
+            );
+        }
+
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
             if (!entity) continue;
@@ -2462,8 +2583,34 @@ export class World {
     }
 
     // -------------------------------------------------------
+    // Ball Death Reporting Boundary
+    // -------------------------------------------------------
+
+    public setBallDeathReporter(
+        reporter: ((cause: BallDeathCause) => void) | null,
+    ): void {
+        this.ballDeathReporter = reporter;
+    }
+
+    /**
+     * Reserved for D-3 through D-6 hazard integrations. No current World
+     * system calls this in D-2.
+     */
+    public reportBallDeath(cause: BallDeathCause): void {
+        this.ballDeathReporter?.(cause);
+    }
+
+    // -------------------------------------------------------
     // Reset
     // -------------------------------------------------------
+
+    /**
+     * Gameplay retry restoration boundary. Hazard/life ownership remains in
+     * Game/BallDeathController; World only restores physical presentation state.
+     */
+    public resetBallForRetry(): void {
+        this.resetBall();
+    }
 
     public resetBall():
         void {
@@ -2476,6 +2623,12 @@ export class World {
 
         this.ball
             .resetToInitialPosition();
+
+        this.ballFireHeatController
+            .reset();
+
+        this.ballDrowningController
+            .reset();
 
         this.ballTrail
             ?.reset();
@@ -3746,7 +3899,31 @@ export class World {
         }
 
         for (const { mine, event } of detonations) {
+            /*
+             * D-6: consume the same immutable explosion event used by physics
+             * and presentation. Lethality is an inner-core gameplay rule;
+             * the outer blast region keeps its existing non-lethal knockback.
+             */
+            const ballCaughtInLethalCore =
+                this.ball !== null &&
+                this.ballExplosionDeathEvaluator
+                    .isLethal(
+                        event,
+                        {
+                            x: this.ball.getX(),
+                            y: this.ball.getY(),
+                            radius:
+                                this.ball.getRadius(),
+                        },
+                    );
+
             this.proximityMineExplosionSystem.apply(event, targets);
+
+            if (ballCaughtInLethalCore) {
+                this.reportBallDeath(
+                    BallDeathCauseValue.Explosion,
+                );
+            }
 
             this.cameraFeedbackController.triggerProximityMineExplosion(
                 event.x,
@@ -3972,9 +4149,9 @@ export class World {
     }
 
     /**
-     * Finalizes capture only after the shrink animation has completed. World
-     * unregisters every live reference before Entity.destroy() can invalidate
-     * the Sprinkler transform used by Robot vision/navigation.
+     * Finalizes shrink-and-consume captures after presentation completes.
+     * D-7 Ball suction death is instant and never enters this completion queue,
+     * so the Ball is never destroyed or removed here.
      */
     private processCompletedWindSuctionCaptures(): void {
         for (const target of this.windSuctionCaptureSystem.consumeCompletedTargets()) {
@@ -4394,6 +4571,31 @@ export class World {
         return this.fireManager;
     }
 
+    public getBallFireHeat(): number {
+        return this.ballFireHeatController.getNormalizedHeat();
+    }
+
+    /**
+     * Single authoritative D-4 meter. HUD fill, Ball sinking and drowning
+     * death all derive from this exact value.
+     */
+    public getBallDrowningProgress(): number {
+        return this.ballDrowningController.getDisplayProgress();
+    }
+
+    public shouldShowBallDrowningDebuff(): boolean {
+        return this.ballDrowningController.shouldDisplayDebuff();
+    }
+
+    /**
+     * Current physical standing-Water contact. This is deliberately separate
+     * from retained drowning danger so dry-ground presentation can restore the
+     * complete Ball immediately.
+     */
+    public isBallInStandingWater(): boolean {
+        return this.ballDrowningController.isInStandingWater();
+    }
+
     public getFireSourceSystem():
         FireSourceSystem {
 
@@ -4613,7 +4815,7 @@ export class World {
 
         this.presentationLayers
             .getLayer(
-                WorldRenderLayer.AirborneEffects,
+                WorldRenderLayer.HazardEffects,
             )
             .addChild(
                 this.fireVfxSystem

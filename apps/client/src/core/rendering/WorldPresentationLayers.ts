@@ -19,6 +19,7 @@ export class WorldPresentationLayers {
             WorldRenderLayer.StandingWater,
             WorldRenderLayer.WaterEffects,
             WorldRenderLayer.PhysicalObjects,
+            WorldRenderLayer.HazardEffects,
             WorldRenderLayer.GameplayActors,
             WorldRenderLayer.AirborneEffects,
             WorldRenderLayer.GameplayIndicators,

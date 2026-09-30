@@ -1,56 +1,23 @@
-﻿import {
+import {
     useEffect,
     useRef,
-    useState,
 } from "react";
 
 import {
     Game,
 } from "../../core/game/Game";
 
-
-import {
-    PERFORMANCE_BENCHMARK_IDS,
-    getPerformanceBenchmarkDefinition,
-} from "../../core/game/config/PerformanceBenchmarkDefinition";
-
-import type {
-    PerformanceBenchmarkId,
-} from "../../core/game/config/PerformanceBenchmarkDefinition";
-
 import "./HomePage.css";
 
 function HomePage() {
-
-    // -------------------------------------------------------
-    // Game References
-    // -------------------------------------------------------
 
     const gameContainerRef =
         useRef<HTMLDivElement>(
             null,
         );
 
-    const gameRef =
-        useRef<Game | null>(
-            null,
-        );
-
-
-    const [
-        activePerformanceBenchmarkId,
-        setActivePerformanceBenchmarkId,
-    ] = useState<PerformanceBenchmarkId | null>(
-        null,
-    );
-
-    // -------------------------------------------------------
-    // Game Lifecycle
-    // -------------------------------------------------------
-
     useEffect(
         () => {
-
             const container =
                 gameContainerRef.current;
 
@@ -63,20 +30,15 @@ function HomePage() {
                     container,
                 );
 
-            gameRef.current =
-                game;
-
             let disposed =
                 false;
 
             const initializeGame =
                 async (): Promise<void> => {
-
                     await game.start();
 
                     if (disposed) {
                         game.stop();
-
                         return;
                     }
 
@@ -87,274 +49,27 @@ function HomePage() {
                     game.setLocalWindDebugVisible(
                         false,
                     );
-
                 };
 
             void initializeGame();
 
             return () => {
-
                 disposed =
                     true;
 
                 game.stop();
-
-                gameRef.current =
-                    null;
             };
         },
         [],
     );
 
-    // -------------------------------------------------------
-    // Gameplay Controls
-    // -------------------------------------------------------
-
-    const handleResetBall =
-        (): void => {
-
-            gameRef.current
-                ?.resetBall();
-        };
-
-    const handlePerformanceBenchmark =
-        (
-            benchmarkId:
-                PerformanceBenchmarkId,
-        ): void => {
-
-            const game =
-                gameRef.current;
-
-            if (!game) {
-                return;
-            }
-
-            game.applyPerformanceBenchmark(
-                benchmarkId,
-            );
-
-            setActivePerformanceBenchmarkId(
-                benchmarkId,
-            );
-        };
-
-    const handleClearPerformanceBenchmark =
-        (): void => {
-
-            const game =
-                gameRef.current;
-
-            if (!game) {
-                return;
-            }
-
-            game.clearPerformanceBenchmark();
-
-            setActivePerformanceBenchmarkId(
-                null,
-            );
-        };
-
-    // -------------------------------------------------------
-    // Page Structure
-    // -------------------------------------------------------
-
     return (
         <main className="home-page">
-
-            <div className="home-page__shell">
-
-                {/* -----------------------------------------
-                    Compact Header
-                ----------------------------------------- */}
-
-                <header className="game-header">
-
-                    <div className="game-header__brand">
-
-                        <div className="game-header__wordmark-row">
-
-                            <span
-                                className="game-header__mark"
-                                aria-hidden="true"
-                            >
-                                ●
-                            </span>
-
-                            <span className="game-header__wordmark">
-                                Cursor Golf
-                            </span>
-
-                        </div>
-
-                        <span className="game-header__status">
-                            Multiplayer Prototype
-                        </span>
-
-                    </div>
-
-                    <section
-                        className="level-progress"
-                        aria-label="Player level progress"
-                    >
-
-                        <div className="level-progress__header">
-
-                            <div className="level-progress__identity">
-
-                                <span className="level-progress__eyebrow">
-                                    Player Progress
-                                </span>
-
-                                <span className="level-progress__level">
-                                    Level 1
-                                </span>
-
-                            </div>
-
-                            <span className="level-progress__value">
-                                0 / 100
-                            </span>
-
-                        </div>
-
-                        <div
-                            className="level-progress__track"
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={0}
-                            aria-label="Level progress"
-                        >
-
-                            <div
-                                className="level-progress__fill"
-                                style={{
-                                    width: "0%",
-                                }}
-                            />
-
-                        </div>
-
-                    </section>
-
-                </header>
-
-                {/* -----------------------------------------
-                    Main Gameplay Layout
-                ----------------------------------------- */}
-
-                <div className="game-layout">
-
-                    {/* -------------------------------------
-                        Left HUD Rail
-                    ------------------------------------- */}
-
-                    <aside
-                        className="hud-rail"
-                        aria-label="Gameplay controls"
-                    >
-
-                        <div className="hud-rail__compact-actions">
-
-                            <button
-                                type="button"
-                                className="hud-action-button"
-                                onClick={handleResetBall}
-                            >
-                                Reset Ball
-                            </button>
-
-                            <div className="hud-test-divider" />
-
-                            <div className="hud-test-label performance-benchmark-heading">
-                                Performance Benchmark
-                            </div>
-
-                            <div className="performance-benchmark-grid">
-
-                                {PERFORMANCE_BENCHMARK_IDS.map(
-                                    (
-                                        benchmarkId,
-                                    ) => {
-
-                                        const definition =
-                                            getPerformanceBenchmarkDefinition(
-                                                benchmarkId,
-                                            );
-
-                                        const selected =
-                                            activePerformanceBenchmarkId ===
-                                            benchmarkId;
-
-                                        return (
-                                            <button
-                                                key={benchmarkId}
-                                                type="button"
-                                                className={
-                                                    selected
-                                                        ? "hud-action-button hud-action-button--selected performance-benchmark-button"
-                                                        : "hud-action-button performance-benchmark-button"
-                                                }
-                                                onClick={
-                                                    () =>
-                                                        handlePerformanceBenchmark(
-                                                            benchmarkId,
-                                                        )
-                                                }
-                                                title={
-                                                    definition.description
-                                                }
-                                            >
-                                                {definition.label}
-                                            </button>
-                                        );
-                                    },
-                                )}
-
-                            </div>
-
-                            <button
-                                type="button"
-                                className="hud-action-button"
-                                onClick={handleClearPerformanceBenchmark}
-                                disabled={
-                                    activePerformanceBenchmarkId ===
-                                    null
-                                }
-                            >
-                                Return to Normal Runtime
-                            </button>
-
-                        </div>
-
-                    </aside>
-
-                    {/* -------------------------------------
-                        PixiJS Game Viewport
-                    ------------------------------------- */}
-
-                    <section
-                        className="game-column"
-                        aria-label="Cursor Golf gameplay"
-                    >
-
-                        <div className="game-frame">
-
-                            <div
-                                ref={gameContainerRef}
-                                className="game-container"
-                            />
-
-                        </div>
-
-                    </section>
-
-                </div>
-
-            </div>
-
+            <div
+                ref={gameContainerRef}
+                className="game-container"
+                aria-label="Cursor Golf gameplay"
+            />
         </main>
     );
 }

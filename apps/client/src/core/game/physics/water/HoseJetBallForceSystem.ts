@@ -10,6 +10,7 @@ import type {
 
 import type { WaterSource } from "../../environment/WaterSource";
 import type { AirborneWaterSystem } from "../../environment/AirborneWaterSystem";
+import type { WaterField } from "../../environment/WaterField";
 import type { PhysicsWorld } from "../PhysicsWorld";
 import type { DynamicCollidable } from "../DynamicCollidable";
 
@@ -74,6 +75,9 @@ export class HoseJetBallForceSystem {
         private readonly airborneWaterSystem?: AirborneWaterSystem,
 
         private readonly physicsWorld?: PhysicsWorld,
+
+        /** Optional authoritative standing-Water query used by Robot transport. */
+        private readonly waterField?: WaterField,
     ) {
         validateHoseJetBallForceDefinition(
             definition,
@@ -197,8 +201,14 @@ export class HoseJetBallForceSystem {
             this.hose.shouldTransportBallToImpactPoint?.() &&
             liveExtent.hasTerminalPoint
         ) {
-            const toImpactX = liveExtent.endX - this.ball.getX();
-            const toImpactY = liveExtent.endY - this.ball.getY();
+            const transportTarget =
+                this.findPuddleCoreTarget(
+                    liveExtent.endX,
+                    liveExtent.endY,
+                );
+
+            const toImpactX = transportTarget.x - this.ball.getX();
+            const toImpactY = transportTarget.y - this.ball.getY();
             const distanceToImpact = Math.hypot(toImpactX, toImpactY);
 
             /*
@@ -282,6 +292,57 @@ export class HoseJetBallForceSystem {
             );
     }
 
+
+
+    /**
+     * Resolve the deepest local standing-Water cell around the Robot jet's
+     * authoritative deposition point. This keeps the threatening shove, but
+     * makes its terminal transport converge on the puddle core instead of the
+     * instantaneous splash edge. Normal Hydrant Hose behaviour never calls it.
+     */
+    private findPuddleCoreTarget(
+        terminalX: number,
+        terminalY: number,
+    ): { readonly x: number; readonly y: number } {
+        if (!this.waterField) {
+            return { x: terminalX, y: terminalY };
+        }
+
+        const radius =
+            this.definition.puddleTargetSearchRadius;
+        const step =
+            this.definition.puddleTargetSearchStep;
+
+        let bestX = terminalX;
+        let bestY = terminalY;
+        let bestDepth =
+            this.waterField.getDepthAt(terminalX, terminalY);
+        let bestDistanceSquared = 0;
+
+        for (let oy = -radius; oy <= radius; oy += step) {
+            for (let ox = -radius; ox <= radius; ox += step) {
+                const distanceSquared = ox * ox + oy * oy;
+                if (distanceSquared > radius * radius) continue;
+
+                const x = terminalX + ox;
+                const y = terminalY + oy;
+                const depth = this.waterField.getDepthAt(x, y);
+
+                if (
+                    depth > bestDepth + 0.00001 ||
+                    (Math.abs(depth - bestDepth) <= 0.00001 &&
+                        distanceSquared < bestDistanceSquared)
+                ) {
+                    bestDepth = depth;
+                    bestDistanceSquared = distanceSquared;
+                    bestX = x;
+                    bestY = y;
+                }
+            }
+        }
+
+        return { x: bestX, y: bestY };
+    }
 
     private applyJetToDynamicCollidables(
         deltaTime: number,

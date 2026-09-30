@@ -1,3 +1,4 @@
+import { Container } from "pixi.js";
 import { EngineLoop } from "../engine/EngineLoop";
 import { EngineState } from "../engine/EngineState";
 import { InputManager } from "../input/InputManager";
@@ -40,6 +41,17 @@ import type {
 
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
+import { BallLivesHud } from "./ui/BallLivesHud";
+import { ResetBallButton } from "./ui/ResetBallButton";
+import { BallDeathController } from "./death/BallDeathController";
+import { BallRetryResult } from "./death/BallRetryRequest";
+import { BallDeathArchitectureValidation } from "./debug/BallDeathArchitectureValidation";
+import { DebuffHud } from "./ui/DebuffHud";
+import { FireDebuffIndicator } from "./ui/FireDebuffIndicator";
+import { BallHeatOverlay } from "./ui/BallHeatOverlay";
+import { WaterDebuffIndicator } from "./ui/WaterDebuffIndicator";
+import { BallDrowningOverlay } from "./ui/BallDrowningOverlay";
+import { BallLifeState } from "./death/BallLifeState";
 
 export class Game {
 
@@ -66,6 +78,40 @@ export class Game {
 
     private shotController:
         ShotController | null = null;
+
+    private hudContainer:
+        Container | null = null;
+
+    private ballLivesHud:
+        BallLivesHud | null = null;
+
+    private debuffHud:
+        DebuffHud | null = null;
+
+    private fireDebuffIndicator:
+        FireDebuffIndicator | null = null;
+
+    private ballHeatOverlay:
+        BallHeatOverlay | null = null;
+
+    private waterDebuffIndicator:
+        WaterDebuffIndicator | null = null;
+
+
+    private ballDrowningOverlay:
+        BallDrowningOverlay | null = null;
+
+    private resetBallButton:
+        ResetBallButton | null = null;
+
+    private ballDeathController:
+        BallDeathController | null = null;
+
+    private ballDeathValidation:
+        BallDeathArchitectureValidation | null = null;
+
+    private unsubscribeBallDeathState:
+        (() => void) | null = null;
 
     private state:
         EngineState =
@@ -153,6 +199,90 @@ export class Game {
             );
 
         this.world.initialize();
+
+        /*
+         * D-1 screen-space HUD. This container is attached directly to the
+         * Pixi stage after World initialization, so it remains independent of
+         * camera translation/shake and always renders above world presentation.
+         */
+        this.hudContainer =
+            new Container();
+
+        this.hudContainer.label =
+            "GameHud";
+
+        app.stage.addChild(
+            this.hudContainer,
+        );
+
+        this.ballDeathController =
+            new BallDeathController();
+
+        this.world.setBallDeathReporter(
+            (cause) => {
+                this.ballDeathController?.requestDeath(cause);
+            },
+        );
+
+        this.ballLivesHud =
+            new BallLivesHud();
+
+        this.unsubscribeBallDeathState =
+            this.ballDeathController.subscribe(
+                (snapshot) => {
+                    this.ballLivesHud?.setLives(
+                        snapshot.currentLives,
+                        snapshot.maximumLives,
+                    );
+                },
+            );
+
+        this.ballLivesHud.layout(
+            this.renderer.getViewportWidth(),
+            this.renderer.getViewportHeight(),
+        );
+
+        this.hudContainer.addChild(
+            this.ballLivesHud.getContainer(),
+        );
+
+        this.debuffHud =
+            new DebuffHud();
+
+        this.debuffHud.layout(
+            this.renderer.getViewportWidth(),
+        );
+
+        this.hudContainer.addChild(
+            this.debuffHud.getContainer(),
+        );
+
+        const ball =
+            this.world.getBall();
+
+        if (ball) {
+            this.ballHeatOverlay =
+                new BallHeatOverlay(ball);
+
+            this.ballDrowningOverlay =
+                new BallDrowningOverlay(ball);
+        }
+
+        this.resetBallButton =
+            new ResetBallButton(
+                () => {
+                    this.resetBall();
+                },
+            );
+
+        this.hudContainer.addChild(
+            this.resetBallButton.getContainer(),
+        );
+
+        // D-3 uses real Fire death. The D-2 numeric-key death harness is
+        // intentionally no longer instantiated during normal gameplay.
+        this.ballDeathValidation =
+            null;
 
         this.shotController =
             new ShotController(
@@ -482,6 +612,31 @@ export class Game {
         this.world.resetBall();
     }
 
+    /**
+     * Gameplay retry is intentionally separate from the temporary manual reset.
+     * A retry is legal only for the currently active accepted death.
+     */
+    public retryBallAfterDeath(): BallRetryResult | null {
+        if (!this.world || !this.ballDeathController) {
+            return null;
+        }
+
+        const request =
+            this.ballDeathController.createRetryRequest();
+
+        if (!request) {
+            return this.ballDeathController.getSnapshot().currentLives <= 0
+                ? BallRetryResult.GameOver
+                : BallRetryResult.NotAwaitingRetry;
+        }
+
+        this.playerController?.reset();
+        this.shotController?.reset();
+        this.world.resetBallForRetry();
+
+        return this.ballDeathController.acceptRetry(request);
+    }
+
     // -------------------------------------------------------------------------
     // Responsive Viewport
     // -------------------------------------------------------------------------
@@ -502,6 +657,17 @@ export class Game {
                 width,
                 height,
             );
+
+        this.ballLivesHud
+            ?.layout(
+                width,
+                height,
+            );
+
+        this.debuffHud
+            ?.layout(
+                width,
+            );
     };
 
     // -------------------------------------------------------------------------
@@ -521,6 +687,17 @@ export class Game {
 
         const gameUpdateStartedAt =
             performance.now();
+
+        this.ballDeathController
+            ?.update(deltaTime);
+
+        if (
+            this.ballDeathController
+                ?.getSnapshot()
+                .state === BallLifeState.AwaitingRetry
+        ) {
+            this.retryBallAfterDeath();
+        }
 
         /*
          * Development/test input retained intentionally. Right-click creates
@@ -572,6 +749,105 @@ export class Game {
                 deltaTime,
             );
 
+        const fireHeat =
+            this.world?.getBallFireHeat() ?? 0;
+
+        this.ballHeatOverlay
+            ?.setHeat(fireHeat);
+
+        if (fireHeat > 0.0001) {
+            if (!this.fireDebuffIndicator) {
+                this.fireDebuffIndicator =
+                    new FireDebuffIndicator();
+
+                this.debuffHud?.add(
+                    "fire-death",
+                    this.fireDebuffIndicator.getContainer(),
+                );
+            }
+
+            this.fireDebuffIndicator
+                .setHeat(fireHeat);
+        } else if (this.fireDebuffIndicator) {
+            this.debuffHud?.remove(
+                "fire-death",
+            );
+
+            this.fireDebuffIndicator =
+                null;
+        }
+
+        /*
+         * D-4 single-meter contract:
+         * read once after World.update(), then fan out the exact same value to
+         * both presentation consumers. Neither HUD nor sinking recalculates it.
+         */
+        const drowningMeter =
+            this.world
+                ?.getBallDrowningProgress() ??
+            0;
+
+        const ballInStandingWater =
+            this.world
+                ?.isBallInStandingWater() ??
+            false;
+
+        this.ballDrowningOverlay
+            ?.setState(
+                drowningMeter,
+                ballInStandingWater,
+            );
+
+        const showWaterDebuff =
+            this.world
+                ?.shouldShowBallDrowningDebuff() ??
+            false;
+
+        if (showWaterDebuff) {
+            if (!this.waterDebuffIndicator) {
+                this.waterDebuffIndicator =
+                    new WaterDebuffIndicator();
+
+                /*
+                 * Seed the visual before DebuffHud sees it, so a newly added
+                 * entry can never render its constructor's empty state while
+                 * the authoritative meter is already high.
+                 */
+                this.waterDebuffIndicator
+                    .setProgress(
+                        drowningMeter,
+                    );
+
+                this.debuffHud?.add(
+                    "water-death",
+                    this.waterDebuffIndicator
+                        .getContainer(),
+                );
+            }
+
+            /*
+             * Reapply every frame even if the meter did not numerically
+             * change. WaterDebuffIndicator deterministically rebuilds its blue
+             * geometry from this exact same value used by Ball sinking.
+             */
+            this.waterDebuffIndicator
+                .setProgress(
+                    drowningMeter,
+                );
+        } else if (
+            this.waterDebuffIndicator
+        ) {
+            this.debuffHud?.remove(
+                "water-death",
+            );
+
+            this.waterDebuffIndicator =
+                null;
+        }
+
+        this.debuffHud
+            ?.update(deltaTime);
+
         this.renderer.render();
 
         this.inputManager.update();
@@ -614,6 +890,56 @@ export class Game {
         this.shotController =
             null;
 
+        this.ballDeathValidation?.destroy();
+
+        this.ballDeathValidation =
+            null;
+
+        this.unsubscribeBallDeathState?.();
+
+        this.unsubscribeBallDeathState =
+            null;
+
+        this.ballDeathController?.destroy();
+
+        this.ballDeathController =
+            null;
+
+        this.resetBallButton?.destroy();
+
+        this.resetBallButton =
+            null;
+
+        this.ballDrowningOverlay?.destroy();
+        this.ballDrowningOverlay = null;
+        this.waterDebuffIndicator = null;
+
+        this.ballHeatOverlay?.destroy();
+
+        this.ballHeatOverlay =
+            null;
+
+        this.fireDebuffIndicator =
+            null;
+
+        this.debuffHud?.destroy();
+
+        this.debuffHud =
+            null;
+
+        this.ballLivesHud?.destroy();
+
+        this.ballLivesHud =
+            null;
+
+        this.hudContainer?.destroy({
+            children: false,
+        });
+
+        this.hudContainer =
+            null;
+
+        this.world?.setBallDeathReporter(null);
         this.world?.destroy();
 
         this.world =
