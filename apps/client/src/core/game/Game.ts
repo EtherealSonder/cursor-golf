@@ -52,6 +52,9 @@ import { BallHeatOverlay } from "./ui/BallHeatOverlay";
 import { WaterDebuffIndicator } from "./ui/WaterDebuffIndicator";
 import { BallDrowningOverlay } from "./ui/BallDrowningOverlay";
 import { BallLifeState } from "./death/BallLifeState";
+import { BallDeathTransitionController } from "./death/BallDeathTransitionController";
+import { BallDeathTransitionRenderer } from "./death/BallDeathTransitionRenderer";
+import { BallDeathTransitionValidation } from "./debug/BallDeathTransitionValidation";
 
 export class Game {
 
@@ -109,6 +112,17 @@ export class Game {
 
     private ballDeathValidation:
         BallDeathArchitectureValidation | null = null;
+
+    private lifeLossAnimationTriggered = false;
+
+    private readonly ballDeathTransitionController =
+        new BallDeathTransitionController();
+
+    private ballDeathTransitionRenderer:
+        BallDeathTransitionRenderer | null = null;
+
+    private ballDeathTransitionDeathX = 0;
+    private ballDeathTransitionDeathY = 0;
 
     private unsubscribeBallDeathState:
         (() => void) | null = null;
@@ -200,6 +214,22 @@ export class Game {
 
         this.world.initialize();
 
+        BallDeathTransitionValidation.validate();
+
+        this.ballDeathTransitionRenderer =
+            new BallDeathTransitionRenderer(
+                this.world.getCamera(),
+            );
+
+        this.ballDeathTransitionRenderer.resize(
+            this.renderer.getViewportWidth(),
+            this.renderer.getViewportHeight(),
+        );
+
+        app.stage.addChild(
+            this.ballDeathTransitionRenderer.getContainer(),
+        );
+
         /*
          * D-1 screen-space HUD. This container is attached directly to the
          * Pixi stage after World initialization, so it remains independent of
@@ -220,7 +250,39 @@ export class Game {
 
         this.world.setBallDeathReporter(
             (cause) => {
-                this.ballDeathController?.requestDeath(cause);
+                const event =
+                    this.ballDeathController
+                        ?.requestDeath(cause);
+
+                if (!event) {
+                    return;
+                }
+
+                const deathPosition =
+                    this.world
+                        ?.getBallWorldPosition();
+
+                if (deathPosition) {
+                    this.ballDeathTransitionDeathX = deathPosition.x;
+                    this.ballDeathTransitionDeathY = deathPosition.y;
+
+                    this.ballDeathTransitionRenderer
+                        ?.setDeathWorldPoint(
+                            deathPosition.x,
+                            deathPosition.y,
+                        );
+                }
+
+                if (
+                    this.ballDeathTransitionController
+                        .begin()
+                ) {
+                    this.lifeLossAnimationTriggered = false;
+                    this.world?.beginDeathCameraFocus();
+                    this.playerController?.reset();
+                    this.shotController?.reset();
+                    this.world?.setClubVisible(false);
+                }
             },
         );
 
@@ -668,6 +730,12 @@ export class Game {
             ?.layout(
                 width,
             );
+
+        this.ballDeathTransitionRenderer
+            ?.resize(
+                width,
+                height,
+            );
     };
 
     // -------------------------------------------------------------------------
@@ -691,13 +759,134 @@ export class Game {
         this.ballDeathController
             ?.update(deltaTime);
 
+        let transitionSnapshot =
+            this.ballDeathTransitionController
+                .update(deltaTime);
+
         if (
+            transitionSnapshot.state === "lifeLoss" &&
+            !this.lifeLossAnimationTriggered
+        ) {
+            this.lifeLossAnimationTriggered = true;
+            this.ballLivesHud?.playPendingLifeLossAnimation();
+        }
+
+        if (
+            transitionSnapshot.state === "relocating" &&
+            transitionSnapshot.retryRequested &&
             this.ballDeathController
                 ?.getSnapshot()
                 .state === BallLifeState.AwaitingRetry
         ) {
+            const camera = this.world?.getCamera();
+            const cameraX = camera?.getPositionX() ?? 0;
+            const cameraY = camera?.getPositionY() ?? 0;
+
             this.retryBallAfterDeath();
+
+            this.world
+                ?.beginBallDeathRetryRelocation(
+                    this.ballDeathTransitionDeathX,
+                    this.ballDeathTransitionDeathY,
+                    cameraX,
+                    cameraY,
+                );
+
+            this.ballDeathTransitionController
+                .acknowledgeRetry();
+
+            transitionSnapshot =
+                this.ballDeathTransitionController
+                    .getSnapshot();
         }
+
+        if (transitionSnapshot.state === "relocating") {
+            this.world
+                ?.updateBallDeathRetryRelocation(
+                    transitionSnapshot.progress,
+                );
+
+            const position =
+                this.world
+                    ?.getBallWorldPosition();
+
+            if (position) {
+                this.ballDeathTransitionRenderer
+                    ?.setCurrentWorldPoint(
+                        position.x,
+                        position.y,
+                    );
+            }
+        } else if (transitionSnapshot.state === "opening") {
+            const position =
+                this.world
+                    ?.getBallWorldPosition();
+
+            if (position) {
+                this.ballDeathTransitionRenderer
+                    ?.setCurrentWorldPoint(
+                        position.x,
+                        position.y,
+                    );
+            }
+        }
+
+        this.ballDeathTransitionRenderer
+            ?.render(
+                transitionSnapshot,
+            );
+
+        if (transitionSnapshot.state === "complete") {
+            // Renderer intentionally hides directly from the fully open frame.
+            // There is no intermediate full-charcoal frame.
+            this.ballDeathTransitionController
+                .finish();
+
+            this.ballDeathTransitionRenderer
+                ?.render(
+                    this.ballDeathTransitionController
+                        .getSnapshot(),
+                );
+
+            this.world
+                ?.setClubVisible(true);
+        }
+
+        const cameraFocusActive =
+            this.ballDeathTransitionController
+                .isCameraFocusActive();
+
+        const slowMotionActive =
+            this.ballDeathTransitionController
+                .isSlowMotionActive();
+
+        const feedbackActive =
+            cameraFocusActive || slowMotionActive;
+
+        const gameplayFrozen =
+            this.ballDeathTransitionController
+                .isActive() &&
+            !feedbackActive;
+
+        if (feedbackActive) {
+            const slowedDeltaTime =
+                deltaTime *
+                this.ballDeathTransitionController
+                    .getGameplayTimeScale();
+
+            this.cameraController?.setEnabled(false);
+
+            // World motion continues slowly, but player control stays locked.
+            this.world?.update(slowedDeltaTime);
+
+            if (cameraFocusActive) {
+                this.world?.updateDeathCameraFocus(
+                    transitionSnapshot.progress,
+                );
+            } else {
+                this.world?.keepDeathCameraCenteredOnBall();
+            }
+        } else if (!gameplayFrozen) {
 
         /*
          * Development/test input retained intentionally. Right-click creates
@@ -748,6 +937,8 @@ export class Game {
             ?.update(
                 deltaTime,
             );
+
+        }
 
         const fireHeat =
             this.world?.getBallFireHeat() ?? 0;
@@ -845,6 +1036,9 @@ export class Game {
                 null;
         }
 
+        this.ballLivesHud
+            ?.update(deltaTime);
+
         this.debuffHud
             ?.update(deltaTime);
 
@@ -909,6 +1103,10 @@ export class Game {
 
         this.resetBallButton =
             null;
+
+        this.ballDeathTransitionRenderer?.destroy();
+        this.ballDeathTransitionRenderer = null;
+        this.ballDeathTransitionController.reset();
 
         this.ballDrowningOverlay?.destroy();
         this.ballDrowningOverlay = null;

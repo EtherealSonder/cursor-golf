@@ -1,7 +1,10 @@
 /**
- * Defines the rectangular playable world used by
- * Ball physics, obstacle collision and Camera
- * boundary calculation.
+ * Defines the large technical world safety boundary used by
+ * Ball hard containment and Camera boundary calculation.
+ *
+ * D-5 gameplay course/OOB geometry is intentionally separate and lives in
+ * GameplayCourseDefinition. Crossing that authored course is allowed; this
+ * boundary remains only as a final simulation safety net.
  *
  * These dimensions describe world coordinates.
  *
@@ -32,12 +35,11 @@ export interface CourseBoundaryDefinition {
 }
 
 /**
- * Expanded temporary Phase 4 camera-validation
- * course.
+ * Expanded technical world/camera safety boundary.
  *
  * The visible logical viewport remains:
  *
- * 1200 × 720
+ * 1200 Ã— 720
  *
  * The initial Camera position remains:
  *
@@ -50,22 +52,22 @@ export interface CourseBoundaryDefinition {
  * Y: 0 to 720
  *
  * The course uses dimensions based on whole
- * multiples of the temporary 980 × 980 terrain
+ * multiples of the temporary 980 Ã— 980 terrain
  * texture.
  *
  * Horizontal size:
  *
- * 6 × 980 = 5880 world pixels
+ * 6 Ã— 980 = 5880 world pixels
  *
  * Vertical size:
  *
- * 4 × 980 = 3920 world pixels
+ * 4 Ã— 980 = 3920 world pixels
  *
  * Total playable size:
  *
- * 5880 × 3920 world pixels
+ * 5880 Ã— 3920 world pixels
  *
- * Camera limits for a 1200 × 720 viewport become:
+ * Camera limits for a 1200 Ã— 720 viewport become:
  *
  * Camera X:
  * -1960 to 2720

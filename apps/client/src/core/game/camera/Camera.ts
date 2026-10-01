@@ -376,6 +376,51 @@ export class Camera {
         );
     }
 
+    /**
+     * Immediately centers the logical viewport on a world-space point.
+     * Velocity and movement intent are cleared so a retry cannot inherit the
+     * camera motion that existed before the Ball was reset.
+     */
+    public snapToWorldPoint(
+        worldX:
+            number,
+
+        worldY:
+            number,
+    ): void {
+
+        if (
+            !Number.isFinite(
+                worldX,
+            ) ||
+            !Number.isFinite(
+                worldY,
+            )
+        ) {
+            throw new Error(
+                "Camera snap world position values must be finite numbers.",
+            );
+        }
+
+        this.velocityX =
+            0;
+
+        this.velocityY =
+            0;
+
+        this.clearMovementIntent();
+
+        this.setPosition(
+            worldX -
+                this.getVisibleWorldWidth() /
+                2,
+
+            worldY -
+                this.getVisibleWorldHeight() /
+                2,
+        );
+    }
+
     public resetToInitialPosition():
         void {
 

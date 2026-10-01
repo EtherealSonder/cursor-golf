@@ -37,6 +37,21 @@ export class BallLivesHud {
     private readonly lifeBalls:
         Sprite[] = [];
 
+    private currentLives = 0;
+    private maximumLives = 0;
+    private initializedLives = false;
+
+    private readonly lifeLossAnimations =
+        new Map<number, number>();
+
+    private readonly pendingLifeLossIndices: number[] = [];
+
+    /**
+     * Layout owns the sprites' native display scale. Death feedback must only
+     * multiply that established scale, never replace it with an absolute 1.
+     */
+    private readonly lifeBallBaseScales: number[] = [];
+
     constructor(
         definition:
             BallLivesHudDefinition =
@@ -182,18 +197,153 @@ export class BallLivesHud {
             Math.max(0, maximumLives),
         );
 
-        // Zero lives is a valid development state during D-3. Keep every
-        // socket visible while hiding all Ball sprites, and never allow a
-        // negative count to leak into presentation.
         const clampedLives = Math.min(
             visibleSlots,
             Math.max(0, Math.floor(currentLives)),
         );
 
+        if (!this.initializedLives) {
+            this.initializedLives = true;
+            this.currentLives = clampedLives;
+            this.maximumLives = visibleSlots;
+
+            for (let index = 0; index < this.lifeBalls.length; index += 1) {
+                this.sockets[index].visible = index < visibleSlots;
+                this.lifeBalls[index].visible = index < clampedLives;
+                this.restoreLifeBallBaseScale(index);
+            }
+            return;
+        }
+
+        if (clampedLives < this.currentLives) {
+            for (
+                let index = clampedLives;
+                index < this.currentLives;
+                index += 1
+            ) {
+                if (index < visibleSlots) {
+                    this.lifeBalls[index].visible = true;
+                    this.restoreLifeBallBaseScale(index);
+                    if (!this.pendingLifeLossIndices.includes(index)) {
+                        this.pendingLifeLossIndices.push(index);
+                    }
+                }
+            }
+        } else if (clampedLives > this.currentLives) {
+            for (let index = this.currentLives; index < clampedLives; index += 1) {
+                this.lifeLossAnimations.delete(index);
+                this.lifeBalls[index].visible = true;
+                this.restoreLifeBallBaseScale(index);
+            }
+        }
+
+        this.currentLives = clampedLives;
+        this.maximumLives = visibleSlots;
+
         for (let index = 0; index < this.lifeBalls.length; index += 1) {
             this.sockets[index].visible = index < visibleSlots;
-            this.lifeBalls[index].visible = index < clampedLives;
+
+            if (
+                !this.lifeLossAnimations.has(index) &&
+                !this.pendingLifeLossIndices.includes(index)
+            ) {
+                this.lifeBalls[index].visible = index < clampedLives;
+                this.restoreLifeBallBaseScale(index);
+            }
         }
+    }
+
+    public playPendingLifeLossAnimation(): void {
+        for (const index of this.pendingLifeLossIndices.splice(0)) {
+            const ball = this.lifeBalls[index];
+            if (!ball) continue;
+
+            ball.visible = true;
+            this.restoreLifeBallBaseScale(index);
+            this.lifeLossAnimations.set(index, 0);
+        }
+    }
+
+    /**
+     * Uses unscaled frame time. Life-loss feedback therefore remains readable
+     * while the world itself runs at the death-feedback slow-motion scale.
+     */
+    public update(deltaTime: number): void {
+        const dt = Math.max(0, deltaTime);
+        const popDuration = Math.max(
+            0.001,
+            this.definition.lifeLossPopDurationSeconds,
+        );
+        const shrinkDuration = Math.max(
+            0.001,
+            this.definition.lifeLossShrinkDurationSeconds,
+        );
+        const totalDuration = popDuration + shrinkDuration;
+
+        for (const [index, previousElapsed] of [...this.lifeLossAnimations]) {
+            const elapsed = previousElapsed + dt;
+            const ball = this.lifeBalls[index];
+
+            if (!ball) {
+                this.lifeLossAnimations.delete(index);
+                continue;
+            }
+
+            if (elapsed < popDuration) {
+                const t = elapsed / popDuration;
+                const scale =
+                    1 +
+                    (this.definition.lifeLossPopScale - 1) *
+                    this.easeOutCubic(t);
+                this.applyLifeBallScaleMultiplier(index, scale);
+            } else {
+                const t = Math.min(
+                    1,
+                    (elapsed - popDuration) / shrinkDuration,
+                );
+                this.applyLifeBallScaleMultiplier(index, 1 - this.easeInCubic(t));
+            }
+
+            if (elapsed >= totalDuration) {
+                this.applyLifeBallScaleMultiplier(index, 0);
+                ball.visible = false;
+                this.lifeLossAnimations.delete(index);
+            } else {
+                this.lifeLossAnimations.set(index, elapsed);
+            }
+        }
+    }
+
+    private restoreLifeBallBaseScale(index: number): void {
+        this.applyLifeBallScaleMultiplier(index, 1);
+    }
+
+    private applyLifeBallScaleMultiplier(
+        index: number,
+        multiplier: number,
+    ): void {
+        const ball = this.lifeBalls[index];
+        if (!ball) {
+            return;
+        }
+
+        const baseScale =
+            this.lifeBallBaseScales[index] ??
+            ball.scale.x;
+
+        ball.scale.set(
+            baseScale * Math.max(0, multiplier),
+        );
+    }
+
+    private easeOutCubic(value: number): number {
+        const t = Math.max(0, Math.min(1, value));
+        return 1 - Math.pow(1 - t, 3);
+    }
+
+    private easeInCubic(value: number): number {
+        const t = Math.max(0, Math.min(1, value));
+        return t * t * t;
     }
 
     public layout(
@@ -206,6 +356,9 @@ export class BallLivesHud {
                 this.definition.holderWidth,
             this.definition.topMargin,
         );
+        for (let index = 0; index < this.lifeBalls.length; index += 1) {
+            this.lifeBallBaseScales[index] = this.lifeBalls[index].scale.x;
+        }
     }
 
     public getContainer(): Container {

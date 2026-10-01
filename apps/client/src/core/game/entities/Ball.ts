@@ -365,6 +365,11 @@ export class Ball extends Entity {
 
     private tensionPower = 0;
 
+
+    /** D-5 authored retry spawn, defaulting to the legacy viewport center. */
+    private retrySpawnX: number | null = null;
+    private retrySpawnY: number | null = null;
+
     private vibrationTime = 0;
 
     private readonly minimumVibrationFrequency = 3;
@@ -639,6 +644,7 @@ export class Ball extends Entity {
             this.normalScale;
 
         this.tensionPower = 0;
+        this.outOfBoundsVisualScale = 1;
 
         this.applyVisualScale();
 
@@ -669,23 +675,24 @@ export class Ball extends Entity {
 
     private getInitialPositionX():
         number {
-
-        return (
-            DEFAULT_GAME_VIEWPORT_DEFINITION
-                .width /
-            2
-        );
+        return this.retrySpawnX ?? (DEFAULT_GAME_VIEWPORT_DEFINITION.width / 2);
     }
 
     private getInitialPositionY():
         number {
-
-        return (
-            DEFAULT_GAME_VIEWPORT_DEFINITION
-                .height /
-            2
-        );
+        return this.retrySpawnY ?? (DEFAULT_GAME_VIEWPORT_DEFINITION.height / 2);
     }
+
+    /** D-5 authored course spawn. Also moves the current Ball immediately. */
+    public setRetrySpawnPosition(x: number, y: number): void {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        this.retrySpawnX = x;
+        this.retrySpawnY = y;
+        this.setPosition(x, y);
+        this.launchPositionX = x;
+        this.launchPositionY = y;
+    }
+
 
     // -------------------------------------------------------
     // Ball Data

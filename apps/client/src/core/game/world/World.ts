@@ -16,6 +16,9 @@ import { BallFireHeatController } from "../fire/BallFireHeatController";
 import { BallDrowningController } from "../water/BallDrowningController";
 import { BallExplosionDeathEvaluator } from "../death/BallExplosionDeathEvaluator";
 import { BallExplosionDeathValidation } from "../debug/BallExplosionDeathValidation";
+import { DEFAULT_GAMEPLAY_COURSE_DEFINITION } from "../config/GameplayCourseDefinition";
+import type { GameplayCourseOpening, GameplayCourseSide } from "../config/GameplayCourseDefinition";
+import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
@@ -451,6 +454,11 @@ export class World {
     private courseBackground:
         TilingSprite | null = null;
 
+    private courseOutsideBackground: Graphics | null = null;
+    private courseWallGraphics: Graphics | null = null;
+    private readonly ballOutOfBoundsController =
+        new BallOutOfBoundsController(DEFAULT_GAMEPLAY_COURSE_DEFINITION);
+
     /**
      * Development-only world-space surface visualization.
      *
@@ -794,6 +802,12 @@ export class World {
     /** D-2 bridge. Later hazards report causes through this callback only. */
     private ballDeathReporter:
         ((cause: BallDeathCause) => void) | null = null;
+    private ballDeathRelocationStartX = 0;
+    private ballDeathRelocationStartY = 0;
+    private ballDeathRelocationCameraStartX = 0;
+    private ballDeathRelocationCameraStartY = 0;
+    private ballDeathFocusCameraStartX = 0;
+    private ballDeathFocusCameraStartY = 0;
 
     /** D-6 pure mine-explosion lethality evaluator. */
     private readonly ballExplosionDeathEvaluator =
@@ -1076,26 +1090,9 @@ export class World {
         // R-2.1 Robot Navigation Test Obstacles
         // ---------------------------------------------------
 
-        this.staticObstacleDefinitions = [
-            { id: "robot-test-square-1", shape: "rectangle", positionX: 760, positionY: 260, width: 72, height: 72, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-2", shape: "rectangle", positionX: 980, positionY: 460, width: 108, height: 108, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-3", shape: "rectangle", positionX: 1500, positionY: 240, width: 84, height: 84, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-4", shape: "rectangle", positionX: 1620, positionY: 610, width: 128, height: 128, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-5", shape: "rectangle", positionX: 1180, positionY: 720, width: 64, height: 64, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-6", shape: "rectangle", positionX: 1840, positionY: 390, width: 96, height: 96, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            // Expanded stress-test blockers. These remain deterministic so FPS and
-            // interaction comparisons are repeatable between runs.
-            { id: "robot-test-square-7", shape: "rectangle", positionX: 560, positionY: 600, width: 88, height: 88, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-8", shape: "rectangle", positionX: 1320, positionY: 300, width: 76, height: 112, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-9", shape: "rectangle", positionX: 2050, positionY: 650, width: 112, height: 76, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-            { id: "robot-test-square-10", shape: "rectangle", positionX: 2140, positionY: 220, width: 72, height: 104, fillColor: 0x8b6f47, outlineColor: 0x2f2419, outlineWidth: 2.6, material: { restitution: 0.45, collisionFriction: 0.24 } },
-        ];
-
-        for (const definition of this.staticObstacleDefinitions) {
-            this.physicsWorld.registerStaticDefinition(definition);
-            this.robotInteractionRegistry.registerStaticObstacle(definition);
-            this.addEntity(new StaticObstacle(definition));
-        }
+        // D-5 course walls are registered by createCourse(). Legacy square
+        // navigation blockers are removed from this authored test course.
+        this.staticObstacleDefinitions = [];
 
         // ---------------------------------------------------
         // DB-5 Multi-bumper development layout
@@ -1104,8 +1101,8 @@ export class World {
         // than per-load randomness. They stay clear of the brown blocker layout
         // and the current mechanism spawn regions, keeping collision tests repeatable.
         const radialBumperPlacements = [
-            { id: "radial-bumper-test-1", x: 1080, y: 150 },
-            { id: "radial-bumper-test-2", x: 2240, y: 500 },
+            { id: "radial-bumper-test-1", x: 610, y: -500 },
+            { id: "radial-bumper-test-2", x: 610, y: 430 },
         ];
 
         for (const placement of radialBumperPlacements) {
@@ -1131,10 +1128,12 @@ export class World {
 
         // One Directional Bumper for each cardinal direction: right, down, left, up.
         const directionalBumperPlacements = [
-            { id: "directional-bumper-test-right", x: 700, y: 430, rotation: 0 },
-            { id: "directional-bumper-test-down", x: 1080, y: 360, rotation: Math.PI / 2 },
-            { id: "directional-bumper-test-left", x: 1460, y: 450, rotation: Math.PI },
-            { id: "directional-bumper-test-up", x: 1980, y: 430, rotation: -Math.PI / 2 },
+            { id: "directional-bumper-test-right", x: 300, y: -650, rotation: 0 },
+            { id: "directional-bumper-test-down", x: 900, y: -470, rotation: Math.PI / 2 },
+            { id: "directional-bumper-test-left", x: 880, y: -160, rotation: Math.PI },
+            { id: "directional-bumper-test-up", x: 300, y: -90, rotation: -Math.PI / 2 },
+            { id: "directional-bumper-test-right-2", x: 310, y: 760, rotation: 0 },
+            { id: "directional-bumper-test-left-2", x: 850, y: 820, rotation: Math.PI },
         ];
 
         for (const placement of directionalBumperPlacements) {
@@ -1183,9 +1182,8 @@ export class World {
         // Authored clear test positions. These are surface mechanisms, so their
         // sprites sit above ground state but beneath standing Water and actors.
         const rotatingPaddlePlacements = [
-            // RP-2.2 focused test lane: two paddles vertically aligned with clear grass around them.
-            { id: "rotating-paddle-clockwise", x: 900, y: 280, direction: "clockwise" as const },
-            { id: "rotating-paddle-counter-clockwise", x: 900, y: 700, direction: "counterClockwise" as const },
+            { id: "rotating-paddle-clockwise", x: 600, y: -180, direction: "clockwise" as const },
+            { id: "rotating-paddle-counter-clockwise", x: 600, y: 760, direction: "counterClockwise" as const },
         ];
         for (const placement of rotatingPaddlePlacements) {
             const paddle = new RotatingPaddle(
@@ -1230,6 +1228,11 @@ export class World {
         this.addEntity(
             this.ball,
             WorldRenderLayer.GameplayActors,
+        );
+
+        this.ball.setRetrySpawnPosition(
+            DEFAULT_GAMEPLAY_COURSE_DEFINITION.ballSpawn.x,
+            DEFAULT_GAMEPLAY_COURSE_DEFINITION.ballSpawn.y,
         );
 
         // Ball intentionally remains outside PhysicsWorld's dynamic-collider list
@@ -1959,6 +1962,18 @@ export class World {
         this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
         this.updateProximityMineTargets();
 
+        if (this.ball) {
+            const oob = this.ballOutOfBoundsController.update(
+                this.ball.getX(), this.ball.getY(), deltaTime,
+            );
+            if (oob.state === "deathRequested") {
+                this.ball.stop(false);
+            }
+            if (oob.requestDeath) {
+                this.reportBallDeath(BallDeathCauseValue.OutOfBounds);
+            }
+        }
+
         /*
          * D-7 direct Wind Robot nozzle trigger. This is deliberately evaluated
          * before entity physics so a successful suction capture resets the Ball
@@ -2535,6 +2550,11 @@ export class World {
         this.courseBackground =
             null;
 
+        this.courseOutsideBackground?.destroy();
+        this.courseOutsideBackground = null;
+        this.courseWallGraphics?.destroy();
+        this.courseWallGraphics = null;
+
         // Release only instance sprites; shared textures remain owned by AssetLoader.
         this.explosionRenderer.destroy();
 
@@ -2624,6 +2644,8 @@ export class World {
         this.ball
             .resetToInitialPosition();
 
+        this.ballOutOfBoundsController.reset();
+
         this.ballFireHeatController
             .reset();
 
@@ -2640,7 +2662,10 @@ export class World {
             ?.resetEntryState();
 
         this.camera
-            .resetToInitialPosition();
+            .snapToWorldPoint(
+                this.ball.getX(),
+                this.ball.getY(),
+            );
 
         this.cameraFeedbackController
             .clear();
@@ -3502,9 +3527,10 @@ export class World {
         }
 
         const placements = [
-            // RP-2.2 focused test layout: one sprinkler above and one below the paddle lane.
-            { id: "sprinkler-1", x: 900, y: 110, rotation: Math.PI / 2 },
-            { id: "sprinkler-2", x: 900, y: 870, rotation: -Math.PI / 2 },
+            { id: "sprinkler-1", x: 260, y: -1040, rotation: 0 },
+            { id: "sprinkler-2", x: 930, y: -600, rotation: Math.PI },
+            { id: "sprinkler-3", x: 250, y: 230, rotation: 0 },
+            { id: "sprinkler-4", x: 900, y: 1030, rotation: Math.PI },
         ];
 
         for (const placement of placements) {
@@ -3696,9 +3722,9 @@ export class World {
     private createFireRobotR1R2(): void {
         const definition = {
             ...DEFAULT_FIRE_ROBOT_DEFINITION,
-            positionX: 650,
-            positionY: 280,
-            roamRadius: 320,
+            positionX: 340,
+            positionY: -880,
+            roamRadius: 150,
         };
         if (!definition.enabled) {
             return;
@@ -3788,9 +3814,10 @@ export class World {
     /** PM-1 temporary test placements; mine collision is a sensor, not a solid body. */
     private createProximityMines(): void {
         const placements = [
-            { id: "mine-1", x: 400, y: 280 },
-            { id: "mine-2", x: 850, y: 500 },
-            { id: "mine-3", x: 460, y: 700 },
+            { id: "mine-1", x: 470, y: -860 },
+            { id: "mine-2", x: 800, y: -720 },
+            { id: "mine-3", x: 420, y: 70 },
+            { id: "mine-4", x: 790, y: 610 },
         ];
         for (const placement of placements) {
             const mine = new ProximityMine(placement.id, placement.x, placement.y);
@@ -3966,7 +3993,7 @@ export class World {
         // its authored zero rotation, so each Robot starts directly left of its
         // assigned paddle and initially faces that paddle.
         const placements = [
-            { idSuffix: "rp35-upper", x: 620, y: 280 },
+            { idSuffix: "rp35-upper", x: 850, y: -330 },
         ] as const;
 
         const createTestRobot = (
@@ -4077,9 +4104,9 @@ export class World {
     private createWindRobot(): void {
         const definition = {
             ...DEFAULT_WIND_ROBOT_DEFINITION,
-            positionX: 650,
-            positionY: 700,
-            roamRadius: 320,
+            positionX: 330,
+            positionY: 560,
+            roamRadius: 150,
         };
         if (!definition.enabled) return;
         if (this.windRobot) throw new Error("World Wind Robot has already been created.");
@@ -4658,6 +4685,113 @@ export class World {
         return this.club;
     }
 
+    public beginDeathCameraFocus(): void {
+        this.ballDeathFocusCameraStartX = this.camera.getPositionX();
+        this.ballDeathFocusCameraStartY = this.camera.getPositionY();
+    }
+
+    public updateDeathCameraFocus(progress: number): void {
+        if (!this.ball) return;
+
+        const t = Math.max(0, Math.min(1, progress));
+        const eased = t * t * (3 - 2 * t);
+        const targetX =
+            this.ball.getX() - this.camera.getVisibleWorldWidth() / 2;
+        const targetY =
+            this.ball.getY() - this.camera.getVisibleWorldHeight() / 2;
+
+        this.camera.setPosition(
+            this.ballDeathFocusCameraStartX +
+                (targetX - this.ballDeathFocusCameraStartX) * eased,
+            this.ballDeathFocusCameraStartY +
+                (targetY - this.ballDeathFocusCameraStartY) * eased,
+        );
+        this.applyCameraTransform();
+    }
+
+    public keepDeathCameraCenteredOnBall(): void {
+        if (!this.ball) return;
+        this.camera.snapToWorldPoint(this.ball.getX(), this.ball.getY());
+        this.applyCameraTransform();
+    }
+
+    /** Shared death-transition presentation bridge. */
+    public setClubVisible(
+        visible: boolean,
+    ): void {
+        if (visible) {
+            this.club?.show();
+        } else {
+            this.club?.hide();
+            this.aimIndicator?.hide();
+        }
+    }
+
+    public getBallWorldPosition(): {
+        readonly x: number;
+        readonly y: number;
+    } | null {
+        if (!this.ball) return null;
+
+        return {
+            x: this.ball.getX(),
+            y: this.ball.getY(),
+        };
+    }
+
+    /**
+     * Restores the visible Ball/camera to the death pose immediately after the
+     * authoritative retry reset. The transition can then visibly carry both
+     * toward the authored spawn while gameplay remains frozen.
+     */
+    public beginBallDeathRetryRelocation(
+        deathX: number,
+        deathY: number,
+        cameraX: number,
+        cameraY: number,
+    ): void {
+        if (!this.ball) return;
+
+        this.ballDeathRelocationStartX = deathX;
+        this.ballDeathRelocationStartY = deathY;
+        this.ballDeathRelocationCameraStartX = cameraX;
+        this.ballDeathRelocationCameraStartY = cameraY;
+
+        this.ball.setPosition(deathX, deathY);
+        this.camera.setPosition(cameraX, cameraY);
+        this.applyCameraTransform();
+    }
+
+    public updateBallDeathRetryRelocation(progress: number): void {
+        if (!this.ball) return;
+
+        const t = Math.max(0, Math.min(1, progress));
+        const eased = t < 0.5
+            ? 4 * t * t * t
+            : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const spawn = DEFAULT_GAMEPLAY_COURSE_DEFINITION.ballSpawn;
+        const targetCameraX =
+            spawn.x - this.camera.getVisibleWorldWidth() / 2;
+        const targetCameraY =
+            spawn.y - this.camera.getVisibleWorldHeight() / 2;
+
+        this.ball.setPosition(
+            this.ballDeathRelocationStartX +
+                (spawn.x - this.ballDeathRelocationStartX) * eased,
+            this.ballDeathRelocationStartY +
+                (spawn.y - this.ballDeathRelocationStartY) * eased,
+        );
+
+        this.camera.setPosition(
+            this.ballDeathRelocationCameraStartX +
+                (targetCameraX - this.ballDeathRelocationCameraStartX) * eased,
+            this.ballDeathRelocationCameraStartY +
+                (targetCameraY - this.ballDeathRelocationCameraStartY) * eased,
+        );
+
+        this.applyCameraTransform();
+    }
+
     public getAimIndicator():
         AimIndicator | null {
 
@@ -4875,8 +5009,10 @@ export class World {
         ) ?? existingSources.find((candidate): boolean => candidate.enabled) ?? existingSources[0];
 
         const fanPlacements = [
-            { id: "stress-fan-wind-1", x: 520, y: 180, directionRadians: Math.PI / 2 },
-            { id: "stress-fan-wind-2", x: 1240, y: 620, directionRadians: -Math.PI / 2 },
+            // D-5: fans intentionally aim toward authored OOB openings.
+            { id: "stress-fan-wind-1", x: 260, y: -435, directionRadians: Math.PI },
+            { id: "stress-fan-wind-2", x: 940, y: -30, directionRadians: 0 },
+            { id: "stress-fan-wind-3", x: 930, y: 850, directionRadians: 0 },
         ];
 
         const preservedSources = existingSources.filter(
@@ -5350,68 +5486,83 @@ export class World {
         void {
 
         if (this.courseBackground) {
-            throw new Error(
-                "World course background has already been created.",
-            );
+            throw new Error("World course background has already been created.");
         }
 
-        const minX =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION.minimumX;
+        const d = DEFAULT_GAMEPLAY_COURSE_DEFINITION;
+        const hard = DEFAULT_COURSE_BOUNDARY_DEFINITION;
 
-        const minY =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION.minimumY;
-
-        const width =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION.maximumX -
-            minX;
-
-        const height =
-            DEFAULT_COURSE_BOUNDARY_DEFINITION.maximumY -
-            minY;
-
-        this.courseBackground =
-            new TilingSprite({
-                texture:
-                    AssetLoader.getTexture(
-                        this.courseVisualDefinition
-                            .grassTextureKey,
-                    ),
-                width,
-                height,
-            });
-
-        this.courseBackground.position.set(
-            minX,
-            minY,
+        this.courseOutsideBackground = new Graphics();
+        this.courseOutsideBackground.rect(
+            hard.minimumX, hard.minimumY,
+            hard.maximumX - hard.minimumX, hard.maximumY - hard.minimumY,
         );
+        this.courseOutsideBackground.fill(this.courseVisualDefinition.outsideBackgroundColor);
+        this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain)
+            .addChild(this.courseOutsideBackground);
 
-        /*
-         * Render the striped Grass texture at a larger scale so each mowing
-         * band reads as a broad golf-fairway stripe instead of a dense
-         * pinstripe pattern.
-         *
-         * This is presentation-only. Surface physics and camera zoom remain
-         * unchanged.
-         */
-        this.courseBackground.tileScale.set(
-            this.courseVisualDefinition
-                .grassTileScale *
-            3,
-        );
+        this.courseBackground = new TilingSprite({
+            texture: AssetLoader.getTexture(this.courseVisualDefinition.grassTextureKey),
+            width: d.maximumX - d.minimumX,
+            height: d.maximumY - d.minimumY,
+        });
+        this.courseBackground.position.set(d.minimumX, d.minimumY);
+        this.courseBackground.tileScale.set(this.courseVisualDefinition.grassTileScale * 3);
+        this.courseBackground.alpha = this.courseVisualDefinition.terrainAlpha;
+        this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain).addChild(this.courseBackground);
 
-        this.courseBackground.alpha =
-            this.courseVisualDefinition
-                .terrainAlpha;
+        this.createGameplayCourseWalls();
+    }
 
-        this.presentationLayers
-            .getLayer(
-                WorldRenderLayer.BaseTerrain,
-            )
-            .addChild(
-                this.courseBackground,
-            );
+    private createGameplayCourseWalls(): void {
+        const d = DEFAULT_GAMEPLAY_COURSE_DEFINITION;
+        this.courseWallGraphics = new Graphics();
+        const graphics = this.courseWallGraphics;
 
-        this.createSandTexture();
+        const register = (id: string, x: number, y: number, width: number, height: number): void => {
+            const definition: StaticObstacleDefinition = {
+                id, shape: "rectangle", positionX: x, positionY: y, width, height,
+                fillColor: this.courseVisualDefinition.gameplayWallColor,
+                outlineColor: this.courseVisualDefinition.gameplayWallOutlineColor,
+                outlineWidth: 3,
+                material: { restitution: 0.72, collisionFriction: 0.16 },
+            };
+            this.physicsWorld.registerStaticDefinition(definition);
+            this.robotInteractionRegistry.registerStaticObstacle(definition);
+            graphics.rect(x - width / 2, y - height / 2, width, height);
+            graphics.fill(this.courseVisualDefinition.gameplayWallColor);
+            graphics.stroke({ width: 3, color: this.courseVisualDefinition.gameplayWallOutlineColor });
+        };
+
+        const buildSide = (side: GameplayCourseSide): void => {
+            const vertical = side === "left" || side === "right";
+            const minimum = vertical ? d.minimumY : d.minimumX;
+            const maximum = vertical ? d.maximumY : d.maximumX;
+            const openings = d.openings
+                .filter((opening: GameplayCourseOpening) => opening.side === side)
+                .slice().sort((a, b) => a.start - b.start);
+            let cursor = minimum;
+            let index = 0;
+            const addSegment = (a: number, b: number): void => {
+                if (b - a <= 1) return;
+                const center = (a + b) / 2;
+                const length = b - a;
+                const x = side === "left" ? d.minimumX - d.wallThickness / 2 :
+                    side === "right" ? d.maximumX + d.wallThickness / 2 : center;
+                const y = side === "top" ? d.minimumY - d.wallThickness / 2 :
+                    side === "bottom" ? d.maximumY + d.wallThickness / 2 : center;
+                register(`gameplay-wall-${side}-${index++}`, x, y,
+                    vertical ? d.wallThickness : length, vertical ? length : d.wallThickness);
+            };
+            for (const opening of openings) {
+                addSegment(cursor, Math.max(cursor, opening.start));
+                cursor = Math.max(cursor, opening.end);
+            }
+            addSegment(cursor, maximum);
+        };
+
+        buildSide("left"); buildSide("right"); buildSide("top"); buildSide("bottom");
+        this.presentationLayers.getLayer(WorldRenderLayer.SurfaceMechanisms).addChild(graphics);
     }
 
     private createSandTexture():

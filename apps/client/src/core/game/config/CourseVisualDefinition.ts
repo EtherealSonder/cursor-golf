@@ -4,6 +4,9 @@ export interface CourseVisualDefinition {
     readonly grassTileScale: number;
     readonly sandTileScale: number;
     readonly terrainAlpha: number;
+    readonly outsideBackgroundColor: number;
+    readonly gameplayWallColor: number;
+    readonly gameplayWallOutlineColor: number;
 }
 
 export const DEFAULT_COURSE_VISUAL_DEFINITION:
@@ -13,4 +16,7 @@ export const DEFAULT_COURSE_VISUAL_DEFINITION:
     grassTileScale: 0.167,
     sandTileScale: 0.25,
     terrainAlpha: 1,
+    outsideBackgroundColor: 0xeee8ef,
+    gameplayWallColor: 0xa96f2a,
+    gameplayWallOutlineColor: 0x81511d,
 };

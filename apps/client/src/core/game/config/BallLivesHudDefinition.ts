@@ -15,6 +15,11 @@ export interface BallLivesHudDefinition {
     readonly socketSpacing: number;
     readonly socketColor: number;
     readonly socketAlpha: number;
+
+    /** Unscaled presentation timing for a consumed life icon. */
+    readonly lifeLossPopDurationSeconds: number;
+    readonly lifeLossShrinkDurationSeconds: number;
+    readonly lifeLossPopScale: number;
 }
 
 export const DEFAULT_BALL_LIVES_HUD_DEFINITION:
@@ -39,4 +44,8 @@ export const DEFAULT_BALL_LIVES_HUD_DEFINITION:
 
     socketColor: 0x55545c,
     socketAlpha: 0.28,
+
+    lifeLossPopDurationSeconds: 0.16,
+    lifeLossShrinkDurationSeconds: 0.48,
+    lifeLossPopScale: 1.16,
 };
