@@ -30,6 +30,12 @@ export class AirborneWaterCollisionField {
     private readonly candidateScratch: number[] = [];
     private candidateGeneration = 1;
 
+    public hasCircleObstacle(id: string): boolean {
+        return this.obstacles.some(
+            (obstacle) => obstacle.id === id && obstacle.shape === "circle",
+        );
+    }
+
     public clear(): void {
         this.shapes.length = 0;
         this.spatialBuckets.clear();

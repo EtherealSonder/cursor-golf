@@ -12,6 +12,7 @@ export interface WindSuctionCaptureTarget {
     readonly beginCapture: () => void;
     /** Presentation scale, 1 at contact and 0 at completion. */
     readonly setCaptureScale: (scale: number) => void;
+    readonly canCapture?: () => boolean;
 }
 
 interface ActiveCapture {
@@ -79,7 +80,7 @@ export class WindSuctionCaptureSystem {
         if (pullSources.length === 0) return;
 
         for (const target of this.targets.values()) {
-            if (this.active.has(target.id) || target.body.getInverseMass() <= 0) continue;
+            if (this.active.has(target.id) || target.body.getInverseMass() <= 0 || target.canCapture?.() === false) continue;
 
             for (const source of pullSources) {
                 const dx = target.body.getX() - source.positionX;

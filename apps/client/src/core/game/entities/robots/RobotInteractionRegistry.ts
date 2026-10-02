@@ -53,6 +53,30 @@ export class RobotInteractionRegistry {
         });
     }
 
+    public registerCircularEntity(
+        id: string, label: string, radius: number, getX: () => number, getY: () => number,
+        capabilities: RobotInteractionCapabilities = { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+    ): () => void {
+        return this.register({ id, label, capabilities, shape: { kind: "circle", radius }, getX, getY });
+    }
+
+    public registerRock(
+        id: string,
+        label: "Small Rock" | "Boulder",
+        radius: number,
+        getX: () => number,
+        getY: () => number,
+    ): () => void {
+        return this.registerCircularEntity(
+            id,
+            label,
+            radius,
+            getX,
+            getY,
+            { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+        );
+    }
+
     public getNavigationBlockers(): readonly RobotInteractionEntry[] {
         return this.filter((entry) => entry.capabilities.navigationBlocker);
     }

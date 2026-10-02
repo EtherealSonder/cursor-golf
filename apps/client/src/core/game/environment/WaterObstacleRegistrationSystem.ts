@@ -23,7 +23,7 @@ import type {
 /**
  * Phase 8D-7E Water adapter for PhysicsWorld.
  *
- * Gameplay objects register once with PhysicsWorld. This class now projects
+ * Gameplay objects register once with PhysicsWorld. R-ROCK-3 projects dynamic Small Rocks and fixed Boulders through this same Water collision cache. This class now projects
  * only the Water-participating subset into the existing ground-Water and
  * airborne-Water collision caches.
  */
@@ -90,6 +90,12 @@ export class WaterObstacleRegistrationSystem {
             .hasRegistration(
                 id,
             );
+    }
+
+    public hasLiveAirborneRockCollider(id: string): boolean {
+        return this.physicsWorld.getAirborneWaterRegistrations().some(
+            (registration) => registration.id === id,
+        );
     }
 
     public getStaticRegistrationCount():

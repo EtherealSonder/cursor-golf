@@ -15,6 +15,12 @@ export interface ProximityMineBlastTarget {
     readonly radius: number;
 }
 
+export function calculateProximityMineBlastSurfaceDistance(
+    event: ProximityMineExplosionEvent, bodyX: number, bodyY: number, radius: number,
+): number {
+    return Math.max(0, Math.hypot(bodyX-event.x, bodyY-event.y)-Math.max(0,radius));
+}
+
 /** Pure impulse calculation, separately testable from the World lifecycle. */
 export function calculateProximityMineBlastImpulse(
     event: ProximityMineExplosionEvent,
@@ -24,7 +30,7 @@ export function calculateProximityMineBlastImpulse(
     const dx = bodyX - event.x;
     const dy = bodyY - event.y;
     const centerDistance = Math.hypot(dx, dy);
-    const surfaceDistance = Math.max(0, centerDistance - Math.max(0, radius));
+    const surfaceDistance = calculateProximityMineBlastSurfaceDistance(event, bodyX, bodyY, radius);
     if (surfaceDistance >= event.blastRadius) return null;
     // Arcade blast: substantial kick throughout the inner radius, but zero at the edge.
     const normalizedDistance = surfaceDistance / event.blastRadius;

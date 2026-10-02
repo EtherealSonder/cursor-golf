@@ -11,8 +11,10 @@ export interface LocalWindObstacleResolution {
 }
 
 /**
- * Cheap static-only obstruction query shared by Local Wind gameplay and VFX.
- * Dynamic bodies intentionally never block airflow.
+ * Obstruction query shared by Local Wind gameplay and VFX.
+ * Movable Small Rocks remain non-blocking so Wind can push them. Immovable
+ * Boulders register as fixed shapes and therefore cut off gameplay airflow and
+ * Local Wind particles at the same boundary.
  */
 export class LocalWindObstacleQuery {
     public constructor(
@@ -72,6 +74,8 @@ export class LocalWindObstacleQuery {
         const distance = Math.hypot(x1 - x0, y1 - y0);
         const steps = Math.max(1, Math.ceil(distance / this.definition.sampleSpacing));
         const obstacles = this.physicsWorld.getRigidStaticDefinitions();
+        // Fixed shapes include R-ROCK-3 Boulders. Dynamic Small Rocks are intentionally
+        // absent so the authoritative Wind force can move them.
         const fixedShapes = this.physicsWorld.getRigidFixedShapes();
         for (let i = 1; i <= steps; i += 1) {
             const t = i / steps;

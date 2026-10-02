@@ -90,7 +90,9 @@ export class RobotObstacleAvoidance {
             x: x + directionX * probeDistance,
             y: y + directionY * probeDistance,
         };
-        if (!this.navigationQuery.isPositionClear(probePoint.x, probePoint.y, clearanceRadius)) return null;
+        if (!this.navigationQuery.isSegmentClear(
+            x, y, probePoint.x, probePoint.y, clearanceRadius,
+        )) return null;
         return { directionX, directionY, probePoint, avoiding: turnDegrees !== 0, turnDegrees };
     }
 }

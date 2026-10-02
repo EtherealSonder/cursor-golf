@@ -23,6 +23,7 @@ import type {
 import {
     resolvePhysicsColliderParticipation,
 } from "./PhysicsColliderRegistration";
+import type { PhysicsMaterial } from "./PhysicsMaterial";
 
 /**
  * Phase 8D-7E authoritative collider registry.
@@ -152,6 +153,32 @@ export class PhysicsWorld {
 
         this.addRegistration(
             registration,
+        );
+    }
+
+    public registerFixedCircleProvider(
+        id: string,
+        getCircle: () => {
+            readonly positionX: number;
+            readonly positionY: number;
+            readonly radius: number;
+            readonly material: PhysicsMaterial;
+        },
+        options: PhysicsColliderRegistrationOptions = {},
+    ): void {
+        this.registerFixedShapeProvider(
+            id,
+            () => {
+                const circle = getCircle();
+                return {
+                    shape: "circle",
+                    positionX: circle.positionX,
+                    positionY: circle.positionY,
+                    radius: circle.radius,
+                    material: circle.material,
+                };
+            },
+            options,
         );
     }
 

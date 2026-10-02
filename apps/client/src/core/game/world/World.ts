@@ -19,6 +19,12 @@ import { BallExplosionDeathValidation } from "../debug/BallExplosionDeathValidat
 import { DEFAULT_GAMEPLAY_COURSE_DEFINITION } from "../config/GameplayCourseDefinition";
 import type { GameplayCourseOpening, GameplayCourseSide } from "../config/GameplayCourseDefinition";
 import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
+import { Rock } from "../entities/props/Rock";
+import { RockPresentationType } from "../entities/props/RockPresentationType";
+import { SmallRockPhysicsValidation } from "../debug/SmallRockPhysicsValidation";
+import { RockInteractionValidation } from "../debug/RockInteractionValidation";
+import { RockInteractionSystem } from "./RockInteractionSystem";
+import { DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION } from "../config/SmallRockPhysicsDefinition";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
@@ -543,6 +549,11 @@ export class World {
     private readonly sprinklers:
         Sprinkler[] = [];
 
+    /** R-ROCK-3/4 authoritative Rock population and runtime registrations. */
+    private readonly rocks: Rock[] = [];
+    private readonly rockInteractionSystem = new RockInteractionSystem();
+    private readonly rockRobotInteractionUnregister = new Map<Rock, () => void>();
+
     /** Unregister callbacks for Sprinklers exposed to Robot perception/navigation. */
     private readonly sprinklerRobotInteractionUnregister =
         new Map<Sprinkler, () => void>();
@@ -834,6 +845,8 @@ export class World {
 
 
         BallExplosionDeathValidation.validate();
+        SmallRockPhysicsValidation.validate();
+        RockInteractionValidation.validate();
 
         this.worldContainer =
             new Container();
@@ -1100,9 +1113,9 @@ export class World {
         // These are deterministic, deliberately scattered test placements rather
         // than per-load randomness. They stay clear of the brown blocker layout
         // and the current mechanism spawn regions, keeping collision tests repeatable.
-        const radialBumperPlacements = [
-            { id: "radial-bumper-test-1", x: 610, y: -500 },
-            { id: "radial-bumper-test-2", x: 610, y: 430 },
+        const radialBumperPlacements: Array<{ id: string; x: number; y: number }> = [
+            { id: "radial-bumper-upper-left", x: 300, y: -820 },
+            { id: "radial-bumper-middle-right", x: 900, y: 80 },
         ];
 
         for (const placement of radialBumperPlacements) {
@@ -1127,13 +1140,9 @@ export class World {
         }
 
         // One Directional Bumper for each cardinal direction: right, down, left, up.
-        const directionalBumperPlacements = [
-            { id: "directional-bumper-test-right", x: 300, y: -650, rotation: 0 },
-            { id: "directional-bumper-test-down", x: 900, y: -470, rotation: Math.PI / 2 },
-            { id: "directional-bumper-test-left", x: 880, y: -160, rotation: Math.PI },
-            { id: "directional-bumper-test-up", x: 300, y: -90, rotation: -Math.PI / 2 },
-            { id: "directional-bumper-test-right-2", x: 310, y: 760, rotation: 0 },
-            { id: "directional-bumper-test-left-2", x: 850, y: 820, rotation: Math.PI },
+        const directionalBumperPlacements: Array<{ id: string; x: number; y: number; rotation: number }> = [
+            { id: "directional-bumper-upper-right", x: 900, y: -1030, rotation: Math.PI },
+            { id: "directional-bumper-middle-left", x: 280, y: -170, rotation: 0 },
         ];
 
         for (const placement of directionalBumperPlacements) {
@@ -1181,9 +1190,9 @@ export class World {
         // ---------------------------------------------------
         // Authored clear test positions. These are surface mechanisms, so their
         // sprites sit above ground state but beneath standing Water and actors.
-        const rotatingPaddlePlacements = [
-            { id: "rotating-paddle-clockwise", x: 600, y: -180, direction: "clockwise" as const },
-            { id: "rotating-paddle-counter-clockwise", x: 600, y: 760, direction: "counterClockwise" as const },
+        const rotatingPaddlePlacements: Array<{ id: string; x: number; y: number; direction: "clockwise" | "counterClockwise" }> = [
+            { id: "rotating-paddle-upper", x: 570, y: -650, direction: "clockwise" },
+            { id: "rotating-paddle-middle", x: 720, y: 260, direction: "counterClockwise" },
         ];
         for (const placement of rotatingPaddlePlacements) {
             const paddle = new RotatingPaddle(
@@ -1205,6 +1214,88 @@ export class World {
             });
 
             this.addEntity(paddle, WorldRenderLayer.SurfaceMechanisms);
+        }
+
+        // ---------------------------------------------------
+        // R-ROCK-1 Procedural Rock Presentation Prototype
+        // ---------------------------------------------------
+        // Presentation-only authored samples. Physics and elemental behaviour
+        // intentionally begin in R-ROCK-2 and later phases.
+        const rockPresentationPlacements = [
+            // Upper course
+            { type: RockPresentationType.SmallRock, x: 430, y: -1080, radius: 12, seed: 101 },
+            { type: RockPresentationType.SmallRock, x: 760, y: -920, radius: 15, seed: 207 },
+            { type: RockPresentationType.Boulder, x: 600, y: -1160, radius: 48, seed: 1201 },
+
+            // Upper-middle
+            { type: RockPresentationType.SmallRock, x: 310, y: -520, radius: 13, seed: 313 },
+            { type: RockPresentationType.Boulder, x: 930, y: -430, radius: 55, seed: 1409 },
+
+            // Middle
+            { type: RockPresentationType.SmallRock, x: 520, y: 20, radius: 11, seed: 419 },
+            { type: RockPresentationType.SmallRock, x: 940, y: 340, radius: 14, seed: 523 },
+            { type: RockPresentationType.Boulder, x: 300, y: 330, radius: 59, seed: 1613 },
+
+            // Lower/start region, enough for immediate Robot interaction checks
+            { type: RockPresentationType.SmallRock, x: 470, y: 890, radius: 12, seed: 631 },
+            { type: RockPresentationType.SmallRock, x: 650, y: 960, radius: 14, seed: 739 },
+            { type: RockPresentationType.SmallRock, x: 820, y: 870, radius: 16, seed: 847 },
+            { type: RockPresentationType.Boulder, x: 650, y: 760, radius: 52, seed: 1811 },
+        ] as const;
+
+        for (const placement of rockPresentationPlacements) {
+            const rock = new Rock(placement);
+            this.rocks.push(rock);
+
+            if (rock.isSmallRock()) {
+                this.physicsWorld.registerDynamicCollidable(
+                    `small-rock-${rock.id}`,
+                    rock,
+                );
+
+                if (this.rockInteractionSystem.shouldRegisterForSuction(rock)) {
+                    this.windSuctionCaptureSystem.registerTarget({
+                        id: `small-rock-${rock.id}`,
+                        body: rock,
+                        canCapture: (): boolean => rock.canBeWindSuctionTarget(),
+                        beginCapture: (): void => {
+                            rock.beginSuctionCapture();
+                            this.physicsWorld.unregisterDynamicBody(rock);
+                            this.rockRobotInteractionUnregister.get(rock)?.();
+                            this.rockRobotInteractionUnregister.delete(rock);
+                            this.invalidateRobotTargets();
+                        },
+                        setCaptureScale: (scale: number): void => {
+                            rock.setSuctionCaptureScale(scale);
+                        },
+                    });
+                }
+            } else if (this.rockInteractionSystem.shouldRegisterAsFixedBoulder(rock)) {
+                this.physicsWorld.registerFixedCircleProvider(
+                    `boulder-${rock.id}`,
+                    () => ({
+                        positionX: rock.getX(),
+                        positionY: rock.getY(),
+                        radius: rock.getRadius(),
+                        material: DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION.material,
+                    }),
+                );
+            }
+
+            if (this.rockInteractionSystem.shouldRegisterAsRobotTarget(rock)) {
+                this.rockRobotInteractionUnregister.set(
+                    rock,
+                    this.robotInteractionRegistry.registerRock(
+                        `rock-${rock.id}`,
+                        rock.isSmallRock() ? "Small Rock" : "Boulder",
+                        rock.getRobotCollisionRadius(),
+                        () => rock.getX(),
+                        () => rock.getY(),
+                    ),
+                );
+            }
+
+            this.addEntity(rock, WorldRenderLayer.PhysicalObjects);
         }
 
         // ---------------------------------------------------
@@ -1282,7 +1373,7 @@ export class World {
 
         this.createWaterVfxSystem();
         this.createWaterRobot();
-        this.createProximityMines();
+        // R-ROCK acceptance layout: proximity mines intentionally omitted.
         this.createWindRobot();
 
         // Normal development population: one Robot of each element.
@@ -2357,7 +2448,28 @@ export class World {
             const entity
             of this.entities
         ) {
-            entity.destroy();
+            if (entity instanceof Rock) {
+            this.rockRobotInteractionUnregister.get(entity)?.();
+            this.rockRobotInteractionUnregister.delete(entity);
+            this.fireRobot?.invalidateCurrentTarget();
+            this.waterRobot?.invalidateCurrentTarget();
+            this.secondFireRobot?.invalidateCurrentTarget();
+            this.secondWaterRobot?.invalidateCurrentTarget();
+            this.windRobot?.invalidateCurrentTarget();
+            this.secondWindRobot?.invalidateCurrentTarget();
+
+            if (entity.isSmallRock()) {
+                this.windSuctionCaptureSystem.unregisterTarget(`small-rock-${entity.id}`);
+                this.physicsWorld.unregisterDynamicBody(entity);
+            } else {
+                /* Boulder fixed registration remains until World teardown. */
+            }
+
+            const rockIndex = this.rocks.indexOf(entity);
+            if (rockIndex !== -1) this.rocks.splice(rockIndex, 1);
+        }
+
+        entity.destroy();
         }
 
         this.entities.length =
@@ -3527,10 +3639,10 @@ export class World {
         }
 
         const placements = [
-            { id: "sprinkler-1", x: 260, y: -1040, rotation: 0 },
-            { id: "sprinkler-2", x: 930, y: -600, rotation: Math.PI },
-            { id: "sprinkler-3", x: 250, y: 230, rotation: 0 },
-            { id: "sprinkler-4", x: 900, y: 1030, rotation: Math.PI },
+            { id: "sprinkler-1", x: 250, y: -930, rotation: 0 },
+            { id: "sprinkler-2", x: 960, y: -650, rotation: Math.PI },
+            { id: "sprinkler-3", x: 250, y: 170, rotation: 0 },
+            { id: "sprinkler-4", x: 950, y: 610, rotation: Math.PI },
         ];
 
         for (const placement of placements) {
@@ -3722,8 +3834,8 @@ export class World {
     private createFireRobotR1R2(): void {
         const definition = {
             ...DEFAULT_FIRE_ROBOT_DEFINITION,
-            positionX: 340,
-            positionY: -880,
+            positionX: 390,
+            positionY: 745,
             roamRadius: 150,
         };
         if (!definition.enabled) {
@@ -3945,6 +4057,11 @@ export class World {
                     );
 
             this.proximityMineExplosionSystem.apply(event, targets);
+            for (const rock of [...this.rocks]) {
+                if (this.rockInteractionSystem.shouldPulverizeSmallRock(event, rock)) {
+                    this.removeEntity(rock);
+                }
+            }
 
             if (ballCaughtInLethalCore) {
                 this.reportBallDeath(
@@ -3993,7 +4110,7 @@ export class World {
         // its authored zero rotation, so each Robot starts directly left of its
         // assigned paddle and initially faces that paddle.
         const placements = [
-            { idSuffix: "rp35-upper", x: 850, y: -330 },
+            { idSuffix: "rock-acceptance", x: 600, y: 710 },
         ] as const;
 
         const createTestRobot = (
@@ -4104,8 +4221,8 @@ export class World {
     private createWindRobot(): void {
         const definition = {
             ...DEFAULT_WIND_ROBOT_DEFINITION,
-            positionX: 330,
-            positionY: 560,
+            positionX: 810,
+            positionY: 745,
             roamRadius: 150,
         };
         if (!definition.enabled) return;
@@ -4182,6 +4299,13 @@ export class World {
      */
     private processCompletedWindSuctionCaptures(): void {
         for (const target of this.windSuctionCaptureSystem.consumeCompletedTargets()) {
+            const rock = this.rocks.find((candidate) => candidate === target.body);
+            if (rock) {
+                rock.completeSuctionCapture();
+                this.removeEntity(rock);
+                continue;
+            }
+
             const sprinkler = this.sprinklers.find((candidate) => candidate === target.body);
             if (!sprinkler) continue;
 
@@ -4219,6 +4343,15 @@ export class World {
             );
     }
 
+    private invalidateRobotTargets(): void {
+        this.fireRobot?.invalidateCurrentTarget();
+        this.waterRobot?.invalidateCurrentTarget();
+        this.secondFireRobot?.invalidateCurrentTarget();
+        this.secondWaterRobot?.invalidateCurrentTarget();
+        this.windRobot?.invalidateCurrentTarget();
+        this.secondWindRobot?.invalidateCurrentTarget();
+    }
+
     public removeEntity(
         entity:
             Entity,
@@ -4239,6 +4372,22 @@ export class World {
 
         // World-owned registrations must be released before destroy() nulls
         // presentation state that Robot vision/navigation callbacks may read.
+        if (entity instanceof Rock) {
+            this.rockRobotInteractionUnregister.get(entity)?.();
+            this.rockRobotInteractionUnregister.delete(entity);
+            this.invalidateRobotTargets();
+
+            if (entity.isSmallRock()) {
+                this.windSuctionCaptureSystem.unregisterTarget(`small-rock-${entity.id}`);
+                this.physicsWorld.unregisterDynamicBody(entity);
+            } else {
+                this.physicsWorld.unregister(`boulder-${entity.id}`);
+            }
+
+            const rockIndex = this.rocks.indexOf(entity);
+            if (rockIndex !== -1) this.rocks.splice(rockIndex, 1);
+        }
+
         if (entity instanceof Sprinkler) {
             this.sprinklerRobotInteractionUnregister.get(entity)?.();
             this.sprinklerRobotInteractionUnregister.delete(entity);
@@ -5009,10 +5158,10 @@ export class World {
         ) ?? existingSources.find((candidate): boolean => candidate.enabled) ?? existingSources[0];
 
         const fanPlacements = [
-            // D-5: fans intentionally aim toward authored OOB openings.
-            { id: "stress-fan-wind-1", x: 260, y: -435, directionRadians: Math.PI },
-            { id: "stress-fan-wind-2", x: 940, y: -30, directionRadians: 0 },
-            { id: "stress-fan-wind-3", x: 930, y: 850, directionRadians: 0 },
+            { id: "stress-fan-wind-1", x: 250, y: -690, directionRadians: 0 },
+            { id: "stress-fan-wind-2", x: 950, y: -120, directionRadians: Math.PI },
+            { id: "stress-fan-wind-3", x: 250, y: 620, directionRadians: 0 },
+            { id: "stress-fan-wind-4", x: 950, y: 980, directionRadians: Math.PI },
         ];
 
         const preservedSources = existingSources.filter(

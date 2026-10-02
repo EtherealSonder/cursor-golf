@@ -71,6 +71,27 @@ export class RobotNavigationQuery {
         return true;
     }
 
+    public isSegmentClear(
+        x0: number,
+        y0: number,
+        x1: number,
+        y1: number,
+        clearanceRadius: number,
+    ): boolean {
+        const distance = Math.hypot(x1 - x0, y1 - y0);
+        const step = Math.max(4, clearanceRadius * 0.45);
+        const count = Math.max(1, Math.ceil(distance / step));
+        for (let index = 1; index <= count; index += 1) {
+            const t = index / count;
+            if (!this.isPositionClear(
+                x0 + (x1 - x0) * t,
+                y0 + (y1 - y0) * t,
+                clearanceRadius,
+            )) return false;
+        }
+        return true;
+    }
+
     private intersects(x: number, y: number, radius: number, entry: RobotInteractionEntry): boolean {
         if (entry.shape.kind === "circle") {
             const dx = x - entry.getX(); const dy = y - entry.getY();
