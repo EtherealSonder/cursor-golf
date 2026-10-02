@@ -12,7 +12,9 @@ export class RockInteractionValidation {
         if (!D.boulderRobotTargetEnabled ||
             !D.boulderBlocksLocalWind ||
             !D.boulderBlocksAirborneElements ||
-            !D.boulderWaterWindImmune) {
+            !D.boulderWaterWindImmune ||
+            !(D.boulderExplosionFractureRadiusFraction > 0 &&
+              D.boulderExplosionFractureRadiusFraction <= 1)) {
             throw new Error("[R-ROCK-4] Boulder static/elemental interaction contract is incomplete.");
         }
     }

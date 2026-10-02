@@ -51,6 +51,9 @@ export class PhysicsWorld {
     private readonly rigidStaticDefinitions:
         StaticObstacleDefinition[] = [];
 
+    private readonly legacyBallStaticDefinitionsByFixedId =
+        new Map<string, StaticObstacleDefinition>();
+
     public registerStaticDefinition(
         definition:
             StaticObstacleDefinition,
@@ -165,6 +168,7 @@ export class PhysicsWorld {
             readonly material: PhysicsMaterial;
         },
         options: PhysicsColliderRegistrationOptions = {},
+        includeInLegacyBallStaticView = false,
     ): void {
         this.registerFixedShapeProvider(
             id,
@@ -180,6 +184,30 @@ export class PhysicsWorld {
             },
             options,
         );
+
+        if (includeInLegacyBallStaticView) {
+            const circle = getCircle();
+            const definition: StaticObstacleDefinition = {
+                id: `${id}-ball-static`,
+                shape: "circle",
+                positionX: circle.positionX,
+                positionY: circle.positionY,
+                radius: circle.radius,
+                fillColor: 0,
+                outlineColor: 0,
+                outlineWidth: 0,
+                material: {
+                    restitution: circle.material.restitution,
+                    collisionFriction: Math.max(
+                        0,
+                        Math.min(1, circle.material.friction),
+                    ),
+                },
+            };
+
+            this.legacyBallStaticDefinitionsByFixedId.set(id, definition);
+            this.rigidStaticDefinitions.push(definition);
+        }
     }
 
     public registerAirbornePolylineProvider(
@@ -266,6 +294,17 @@ export class PhysicsWorld {
             registration,
         );
 
+        const legacyBallStatic =
+            this.legacyBallStaticDefinitionsByFixedId.get(id);
+        if (legacyBallStatic) {
+            const staticIndex =
+                this.rigidStaticDefinitions.indexOf(legacyBallStatic);
+            if (staticIndex >= 0) {
+                this.rigidStaticDefinitions.splice(staticIndex, 1);
+            }
+            this.legacyBallStaticDefinitionsByFixedId.delete(id);
+        }
+
         return true;
     }
 
@@ -307,6 +346,8 @@ export class PhysicsWorld {
         this.rigidStaticDefinitions
             .length =
             0;
+
+        this.legacyBallStaticDefinitionsByFixedId.clear();
     }
 
     public hasRegistration(

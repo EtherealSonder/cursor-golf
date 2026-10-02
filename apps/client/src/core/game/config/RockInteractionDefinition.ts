@@ -6,6 +6,7 @@ export interface RockInteractionDefinition {
     readonly boulderBlocksLocalWind: boolean;
     readonly boulderBlocksAirborneElements: boolean;
     readonly boulderWaterWindImmune: boolean;
+    readonly boulderExplosionFractureRadiusFraction: number;
 }
 
 export const DEFAULT_ROCK_INTERACTION_DEFINITION: RockInteractionDefinition = {
@@ -16,4 +17,5 @@ export const DEFAULT_ROCK_INTERACTION_DEFINITION: RockInteractionDefinition = {
     boulderBlocksLocalWind: true,
     boulderBlocksAirborneElements: true,
     boulderWaterWindImmune: true,
+    boulderExplosionFractureRadiusFraction: 0.75,
 };

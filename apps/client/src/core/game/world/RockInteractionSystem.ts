@@ -28,6 +28,23 @@ export class RockInteractionSystem {
             this.definition.boulderWaterWindImmune;
     }
 
+
+
+    public shouldFractureBoulder(
+        event: ProximityMineExplosionEvent,
+        rock: Rock,
+    ): boolean {
+        if (!rock.isBoulder()) return false;
+        const surfaceDistance = Math.max(
+            0,
+            Math.hypot(rock.getX() - event.x, rock.getY() - event.y) -
+                rock.getRadius(),
+        );
+        return surfaceDistance <
+            event.blastRadius *
+                this.definition.boulderExplosionFractureRadiusFraction;
+    }
+
     public shouldPulverizeSmallRock(
         event: ProximityMineExplosionEvent,
         rock: Rock,

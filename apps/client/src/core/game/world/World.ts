@@ -24,6 +24,8 @@ import { RockPresentationType } from "../entities/props/RockPresentationType";
 import { SmallRockPhysicsValidation } from "../debug/SmallRockPhysicsValidation";
 import { RockInteractionValidation } from "../debug/RockInteractionValidation";
 import { RockInteractionSystem } from "./RockInteractionSystem";
+import { BoulderFractureSystem } from "./BoulderFractureSystem";
+import { BoulderFractureValidation } from "../debug/BoulderFractureValidation";
 import { DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION } from "../config/SmallRockPhysicsDefinition";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
@@ -552,6 +554,7 @@ export class World {
     /** R-ROCK-3/4 authoritative Rock population and runtime registrations. */
     private readonly rocks: Rock[] = [];
     private readonly rockInteractionSystem = new RockInteractionSystem();
+    private readonly boulderFractureSystem = new BoulderFractureSystem();
     private readonly rockRobotInteractionUnregister = new Map<Rock, () => void>();
 
     /** Unregister callbacks for Sprinklers exposed to Robot perception/navigation. */
@@ -847,6 +850,7 @@ export class World {
         BallExplosionDeathValidation.validate();
         SmallRockPhysicsValidation.validate();
         RockInteractionValidation.validate();
+        BoulderFractureValidation.validate();
 
         this.worldContainer =
             new Container();
@@ -1229,6 +1233,7 @@ export class World {
 
             // Upper-middle
             { type: RockPresentationType.SmallRock, x: 310, y: -520, radius: 13, seed: 313 },
+            { type: RockPresentationType.SmallRock, x: 850, y: -520, radius: 12, seed: 351 },
             { type: RockPresentationType.Boulder, x: 930, y: -430, radius: 55, seed: 1409 },
 
             // Middle
@@ -1240,62 +1245,11 @@ export class World {
             { type: RockPresentationType.SmallRock, x: 470, y: 890, radius: 12, seed: 631 },
             { type: RockPresentationType.SmallRock, x: 650, y: 960, radius: 14, seed: 739 },
             { type: RockPresentationType.SmallRock, x: 820, y: 870, radius: 16, seed: 847 },
-            { type: RockPresentationType.Boulder, x: 650, y: 760, radius: 52, seed: 1811 },
+            { type: RockPresentationType.Boulder, x: 760, y: 1000, radius: 52, seed: 1811 },
         ] as const;
 
         for (const placement of rockPresentationPlacements) {
-            const rock = new Rock(placement);
-            this.rocks.push(rock);
-
-            if (rock.isSmallRock()) {
-                this.physicsWorld.registerDynamicCollidable(
-                    `small-rock-${rock.id}`,
-                    rock,
-                );
-
-                if (this.rockInteractionSystem.shouldRegisterForSuction(rock)) {
-                    this.windSuctionCaptureSystem.registerTarget({
-                        id: `small-rock-${rock.id}`,
-                        body: rock,
-                        canCapture: (): boolean => rock.canBeWindSuctionTarget(),
-                        beginCapture: (): void => {
-                            rock.beginSuctionCapture();
-                            this.physicsWorld.unregisterDynamicBody(rock);
-                            this.rockRobotInteractionUnregister.get(rock)?.();
-                            this.rockRobotInteractionUnregister.delete(rock);
-                            this.invalidateRobotTargets();
-                        },
-                        setCaptureScale: (scale: number): void => {
-                            rock.setSuctionCaptureScale(scale);
-                        },
-                    });
-                }
-            } else if (this.rockInteractionSystem.shouldRegisterAsFixedBoulder(rock)) {
-                this.physicsWorld.registerFixedCircleProvider(
-                    `boulder-${rock.id}`,
-                    () => ({
-                        positionX: rock.getX(),
-                        positionY: rock.getY(),
-                        radius: rock.getRadius(),
-                        material: DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION.material,
-                    }),
-                );
-            }
-
-            if (this.rockInteractionSystem.shouldRegisterAsRobotTarget(rock)) {
-                this.rockRobotInteractionUnregister.set(
-                    rock,
-                    this.robotInteractionRegistry.registerRock(
-                        `rock-${rock.id}`,
-                        rock.isSmallRock() ? "Small Rock" : "Boulder",
-                        rock.getRobotCollisionRadius(),
-                        () => rock.getX(),
-                        () => rock.getY(),
-                    ),
-                );
-            }
-
-            this.addEntity(rock, WorldRenderLayer.PhysicalObjects);
+            this.addRockEntity(new Rock(placement));
         }
 
         // ---------------------------------------------------
@@ -1373,7 +1327,7 @@ export class World {
 
         this.createWaterVfxSystem();
         this.createWaterRobot();
-        // R-ROCK acceptance layout: proximity mines intentionally omitted.
+        this.createProximityMines();
         this.createWindRobot();
 
         // Normal development population: one Robot of each element.
@@ -3926,8 +3880,16 @@ export class World {
     /** PM-1 temporary test placements; mine collision is a sensor, not a solid body. */
     private createProximityMines(): void {
         const placements = [
-            { id: "mine-1", x: 470, y: -860 },
-            { id: "mine-2", x: 800, y: -720 },
+            // Direct fracture check: the nearby Small Rock arms this Mine while
+            // the upper Boulder sits safely inside the 220 px blast.
+            { id: "mine-rock-fracture-direct", x: 650, y: 1050 },
+
+            // Systemic check: the dedicated Fan pushes this Mine rightward
+            // toward the upper-middle Boulder. The Small Rock near that Boulder
+            // provides an ordinary proximity target as the Mine approaches.
+            { id: "mine-rock-fracture-wind", x: 690, y: -430 },
+
+            // Retain two general course Mines.
             { id: "mine-3", x: 420, y: 70 },
             { id: "mine-4", x: 790, y: 610 },
         ];
@@ -4060,6 +4022,35 @@ export class World {
             for (const rock of [...this.rocks]) {
                 if (this.rockInteractionSystem.shouldPulverizeSmallRock(event, rock)) {
                     this.removeEntity(rock);
+                }
+            }
+
+            const fracturedBoulders = this.rocks.filter(
+                (rock) => this.rockInteractionSystem.shouldFractureBoulder(event, rock),
+            );
+            for (const boulder of fracturedBoulders) {
+                const fragments =
+                    this.boulderFractureSystem.createFragments(boulder, event);
+
+                // Remove the authoritative fixed Boulder before fragments enter
+                // the same space, then spawn ordinary Small Rocks.
+                this.removeEntity(boulder);
+
+                for (const fragment of fragments) {
+                    const rock = new Rock({
+                        type: RockPresentationType.SmallRock,
+                        x: fragment.x,
+                        y: fragment.y,
+                        radius: fragment.radius,
+                        seed: fragment.seed,
+                    });
+                    this.addRockEntity(rock);
+                    rock.applyImpulseAtWorldPoint(
+                        fragment.impulseX,
+                        fragment.impulseY,
+                        fragment.contactPointX,
+                        fragment.contactPointY,
+                    );
                 }
             }
 
@@ -4341,6 +4332,62 @@ export class World {
                 entity
                     .getContainer(),
             );
+    }
+
+    private addRockEntity(rock: Rock): void {
+        this.rocks.push(rock);
+
+        if (rock.isSmallRock()) {
+            this.physicsWorld.registerDynamicCollidable(
+                `small-rock-${rock.id}`,
+                rock,
+            );
+
+            if (this.rockInteractionSystem.shouldRegisterForSuction(rock)) {
+                this.windSuctionCaptureSystem.registerTarget({
+                    id: `small-rock-${rock.id}`,
+                    body: rock,
+                    canCapture: (): boolean => rock.canBeWindSuctionTarget(),
+                    beginCapture: (): void => {
+                        rock.beginSuctionCapture();
+                        this.physicsWorld.unregisterDynamicBody(rock);
+                        this.rockRobotInteractionUnregister.get(rock)?.();
+                        this.rockRobotInteractionUnregister.delete(rock);
+                        this.invalidateRobotTargets();
+                    },
+                    setCaptureScale: (scale: number): void => {
+                        rock.setSuctionCaptureScale(scale);
+                    },
+                });
+            }
+        } else if (this.rockInteractionSystem.shouldRegisterAsFixedBoulder(rock)) {
+            this.physicsWorld.registerFixedCircleProvider(
+                `boulder-${rock.id}`,
+                () => ({
+                    positionX: rock.getX(),
+                    positionY: rock.getY(),
+                    radius: rock.getRadius(),
+                    material: rock.getBoulderStaticCollisionMaterial(),
+                }),
+                {},
+                true,
+            );
+        }
+
+        if (this.rockInteractionSystem.shouldRegisterAsRobotTarget(rock)) {
+            this.rockRobotInteractionUnregister.set(
+                rock,
+                this.robotInteractionRegistry.registerRock(
+                    `rock-${rock.id}`,
+                    rock.isSmallRock() ? "Small Rock" : "Boulder",
+                    rock.getRobotCollisionRadius(),
+                    () => rock.getX(),
+                    () => rock.getY(),
+                ),
+            );
+        }
+
+        this.addEntity(rock, WorldRenderLayer.PhysicalObjects);
     }
 
     private invalidateRobotTargets(): void {
@@ -5158,6 +5205,7 @@ export class World {
         ) ?? existingSources.find((candidate): boolean => candidate.enabled) ?? existingSources[0];
 
         const fanPlacements = [
+            { id: "rock-fracture-mine-fan", x: 500, y: -430, directionRadians: 0 },
             { id: "stress-fan-wind-1", x: 250, y: -690, directionRadians: 0 },
             { id: "stress-fan-wind-2", x: 950, y: -120, directionRadians: Math.PI },
             { id: "stress-fan-wind-3", x: 250, y: 620, directionRadians: 0 },

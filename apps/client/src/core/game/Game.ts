@@ -214,6 +214,17 @@ export class Game {
 
         this.world.initialize();
 
+        // Startup camera authority is the live Ball spawn, not CameraDefinition's
+        // generic (0, 0) fallback. Viewport size has already been resolved above.
+        const initialBallPosition =
+            this.world.getBallWorldPosition();
+        if (initialBallPosition) {
+            this.world.getCamera().snapToWorldPoint(
+                initialBallPosition.x,
+                initialBallPosition.y,
+            );
+        }
+
         BallDeathTransitionValidation.validate();
 
         this.ballDeathTransitionRenderer =

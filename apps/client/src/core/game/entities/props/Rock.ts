@@ -127,12 +127,23 @@ export class Rock extends Entity implements DynamicCollidable {
         this.container.scale.set(0);
     }
 
+    public getBoulderStaticCollisionMaterial(): {
+        readonly restitution: number;
+        readonly friction: number;
+    } {
+        return this.collisionDefinition.material;
+    }
+
     public getRobotCollisionRadius(): number {
         return this.options.radius;
     }
 
     public canBeWindSuctionTarget(): boolean {
         return this.isSmallRock() && !this.suctionCaptured;
+    }
+
+    public getSeed(): number {
+        return this.options.seed;
     }
 
     public getRadius(): number {
