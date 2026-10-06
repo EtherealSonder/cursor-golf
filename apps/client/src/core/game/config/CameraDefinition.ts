@@ -27,6 +27,38 @@ export interface CameraDefinition {
     readonly zoom:
     number;
 
+    /** Runtime zoom clamps. Smaller values reveal more world area. */
+    readonly minimumZoom:
+    number;
+
+    readonly maximumZoom:
+    number;
+
+    /**
+     * "Immediate" pulls back on press. "DragDriven" progressively moves the
+     * zoom target as normalized drag power increases.
+     */
+    readonly shotPreparationZoomMode:
+    "Immediate" | "DragDriven";
+
+    /** Zoom reached at full shot preparation / drag power. */
+    readonly shotPreparationZoom:
+    number;
+
+    /** Exponential interpolation rates in 1/seconds. */
+    readonly shotZoomOutLerpRate:
+    number;
+
+    /** Softer response while DragDriven continuously moves its target. */
+    readonly dragDrivenZoomOutLerpRate:
+    number;
+
+    readonly normalZoomReturnLerpRate:
+    number;
+
+    readonly zoomSnapThreshold:
+    number;
+
     // -------------------------------------------------------
     // Initial Camera Position
     // -------------------------------------------------------
@@ -195,6 +227,34 @@ export const DEFAULT_CAMERA_DEFINITION:
      */
     zoom:
         1.25,
+
+    // About 1.47x more world span than the normal 1.25 zoom.
+    minimumZoom:
+        0.80,
+
+    maximumZoom:
+        1.25,
+
+    // Toggle this to "Immediate" to restore the original click/hold system.
+    shotPreparationZoomMode:
+        "DragDriven",
+
+    shotPreparationZoom:
+        0.85,
+
+    // Immediate mode pull-back.
+    shotZoomOutLerpRate:
+        14,
+
+    // Progressive mode follows drag smoothly instead of snapping outward.
+    dragDrivenZoomOutLerpRate:
+        5.5,
+
+    normalZoomReturnLerpRate:
+        3,
+
+    zoomSnapThreshold:
+        0.002,
 
     // -------------------------------------------------------
     // Initial Camera Position

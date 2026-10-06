@@ -1477,15 +1477,36 @@ export class World {
         // ---------------------------------------------------
 
         this.aimIndicator =
-            new AimIndicator(
-                this.club
-                    .getDefinition()
-                    .aimGuide,
-            );
+            new AimIndicator();
 
+        /*
+         * The meter begins at Ball centre. Keep it in GameplayActors and
+         * insert it immediately beneath the Ball so the Ball naturally masks
+         * the rear portion of the meter.
+         */
         this.addEntity(
             this.aimIndicator,
-            WorldRenderLayer.GameplayIndicators,
+            WorldRenderLayer.GameplayActors,
+        );
+
+        const aimIndicatorContainer =
+            this.aimIndicator.getContainer();
+
+        gameplayActors.removeChild(
+            aimIndicatorContainer,
+        );
+
+        const currentBallDisplayIndex =
+            gameplayActors.getChildIndex(
+                ballContainer,
+            );
+
+        gameplayActors.addChildAt(
+            aimIndicatorContainer,
+            Math.max(
+                0,
+                currentBallDisplayIndex,
+            ),
         );
 
         // ---------------------------------------------------

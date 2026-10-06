@@ -48,6 +48,21 @@ export class Camera {
     private viewportHeight:
         number;
 
+    private currentZoom:
+        number;
+
+    private targetZoom:
+        number;
+
+    private zoomAnchorX:
+        number | null = null;
+
+    private zoomAnchorY:
+        number | null = null;
+
+    private shotPreparationZoomActive =
+        false;
+
     // -------------------------------------------------------
     // Position and Velocity
     // -------------------------------------------------------
@@ -116,6 +131,16 @@ export class Camera {
         this.viewportHeight =
             definition.viewportHeight;
 
+        this.currentZoom =
+            this.clamp(
+                definition.zoom,
+                definition.minimumZoom,
+                definition.maximumZoom,
+            );
+
+        this.targetZoom =
+            this.currentZoom;
+
         this.recalculatePositionLimits();
 
         this.resetToInitialPosition();
@@ -147,6 +172,10 @@ export class Camera {
         ) {
             return;
         }
+
+        this.updateZoom(
+            safeDeltaTime,
+        );
 
         const responseRateX =
             this.selectResponseRate(
@@ -454,8 +483,7 @@ export class Camera {
     ): CameraPoint {
 
         const zoom =
-            this.definition
-                .zoom;
+            this.currentZoom;
 
         return {
             x:
@@ -479,8 +507,7 @@ export class Camera {
     ): CameraPoint {
 
         const zoom =
-            this.definition
-                .zoom;
+            this.currentZoom;
 
         return {
             x:
@@ -577,6 +604,96 @@ export class Camera {
             minimumInset,
             maximumInset,
         );
+    }
+
+    // -------------------------------------------------------
+    // Runtime Zoom
+    // -------------------------------------------------------
+
+    public setShotPreparationZoom(
+        anchorWorldX: number,
+        anchorWorldY: number,
+    ): void {
+        this.shotPreparationZoomActive = true;
+
+        this.setZoomTarget(
+            this.definition.shotPreparationZoomMode === "Immediate"
+                ? this.definition.shotPreparationZoom
+                : this.definition.zoom,
+            anchorWorldX,
+            anchorWorldY,
+        );
+    }
+
+    public setShotPreparationDragPower(
+        normalizedPower: number,
+        anchorWorldX: number,
+        anchorWorldY: number,
+    ): void {
+        if (
+            !this.shotPreparationZoomActive ||
+            this.definition.shotPreparationZoomMode !== "DragDriven"
+        ) {
+            return;
+        }
+
+        const power = this.clamp(
+            normalizedPower,
+            0,
+            1,
+        );
+
+        const targetZoom =
+            this.definition.zoom +
+            (
+                this.definition.shotPreparationZoom -
+                this.definition.zoom
+            ) * power;
+
+        this.setZoomTarget(
+            targetZoom,
+            anchorWorldX,
+            anchorWorldY,
+        );
+    }
+
+    public restoreNormalZoom(): void {
+        this.shotPreparationZoomActive = false;
+
+        this.setZoomTarget(
+            this.definition.zoom,
+        );
+    }
+
+    public setZoomTarget(
+        zoom: number,
+        anchorWorldX?: number,
+        anchorWorldY?: number,
+    ): void {
+        if (!Number.isFinite(zoom)) {
+            throw new Error("Camera zoom target must be finite.");
+        }
+
+        this.targetZoom = this.clamp(
+            zoom,
+            this.definition.minimumZoom,
+            this.definition.maximumZoom,
+        );
+
+        if (
+            Number.isFinite(anchorWorldX) &&
+            Number.isFinite(anchorWorldY)
+        ) {
+            this.zoomAnchorX = anchorWorldX as number;
+            this.zoomAnchorY = anchorWorldY as number;
+        } else {
+            this.zoomAnchorX = null;
+            this.zoomAnchorY = null;
+        }
+    }
+
+    public getTargetZoom(): number {
+        return this.targetZoom;
     }
 
     // -------------------------------------------------------
@@ -691,8 +808,7 @@ export class Camera {
     public getZoom():
         number {
 
-        return this.definition
-            .zoom;
+        return this.currentZoom;
     }
 
     /**
@@ -704,8 +820,7 @@ export class Camera {
 
         return (
             this.viewportWidth /
-            this.definition
-                .zoom
+            this.currentZoom
         );
     }
 
@@ -718,8 +833,7 @@ export class Camera {
 
         return (
             this.viewportHeight /
-            this.definition
-                .zoom
+            this.currentZoom
         );
     }
 
@@ -733,6 +847,66 @@ export class Camera {
         CourseBoundaryDefinition {
 
         return this.courseBoundaryDefinition;
+    }
+
+    private updateZoom(
+        deltaTime: number,
+    ): void {
+        if (
+            Math.abs(this.currentZoom - this.targetZoom) <=
+            this.definition.zoomSnapThreshold
+        ) {
+            if (this.currentZoom !== this.targetZoom) {
+                this.applyZoomKeepingAnchor(this.targetZoom);
+            }
+            return;
+        }
+
+        const zoomingOut =
+            this.targetZoom < this.currentZoom;
+        const rate = zoomingOut
+            ? (
+                this.shotPreparationZoomActive &&
+                this.definition.shotPreparationZoomMode === "DragDriven"
+                    ? this.definition.dragDrivenZoomOutLerpRate
+                    : this.definition.shotZoomOutLerpRate
+            )
+            : this.definition.normalZoomReturnLerpRate;
+        const alpha = 1 - Math.exp(-rate * deltaTime);
+        const nextZoom = this.currentZoom +
+            (this.targetZoom - this.currentZoom) * alpha;
+
+        this.applyZoomKeepingAnchor(
+            Math.abs(nextZoom - this.targetZoom) <=
+                this.definition.zoomSnapThreshold
+                ? this.targetZoom
+                : nextZoom,
+        );
+    }
+
+    private applyZoomKeepingAnchor(
+        nextZoom: number,
+    ): void {
+        const centerX =
+            this.positionX + this.getVisibleWorldWidth() / 2;
+        const centerY =
+            this.positionY + this.getVisibleWorldHeight() / 2;
+
+        const anchorX = this.zoomAnchorX ?? centerX;
+        const anchorY = this.zoomAnchorY ?? centerY;
+
+        this.currentZoom = this.clamp(
+            nextZoom,
+            this.definition.minimumZoom,
+            this.definition.maximumZoom,
+        );
+
+        this.recalculatePositionLimits();
+
+        this.setPosition(
+            anchorX - this.getVisibleWorldWidth() / 2,
+            anchorY - this.getVisibleWorldHeight() / 2,
+        );
     }
 
     // -------------------------------------------------------
@@ -1008,6 +1182,13 @@ export class Camera {
             definition.viewportWidth,
             definition.viewportHeight,
             definition.zoom,
+            definition.minimumZoom,
+            definition.maximumZoom,
+            definition.shotPreparationZoom,
+            definition.shotZoomOutLerpRate,
+            definition.dragDrivenZoomOutLerpRate,
+            definition.normalZoomReturnLerpRate,
+            definition.zoomSnapThreshold,
             definition.initialPositionX,
             definition.initialPositionY,
             definition.horizontalActivationInsetRatio,
@@ -1041,11 +1222,23 @@ export class Camera {
         );
 
         if (
-            definition.zoom <=
-            0
+            definition.minimumZoom <= 0 ||
+            definition.maximumZoom < definition.minimumZoom ||
+            definition.zoom < definition.minimumZoom ||
+            definition.zoom > definition.maximumZoom ||
+            definition.shotPreparationZoom < definition.minimumZoom ||
+            definition.shotPreparationZoom > definition.maximumZoom ||
+            (
+                definition.shotPreparationZoomMode !== "Immediate" &&
+                definition.shotPreparationZoomMode !== "DragDriven"
+            ) ||
+            definition.shotZoomOutLerpRate <= 0 ||
+            definition.dragDrivenZoomOutLerpRate <= 0 ||
+            definition.normalZoomReturnLerpRate <= 0 ||
+            definition.zoomSnapThreshold < 0
         ) {
             throw new Error(
-                "Camera zoom must be greater than zero.",
+                "Camera runtime zoom configuration is invalid.",
             );
         }
 

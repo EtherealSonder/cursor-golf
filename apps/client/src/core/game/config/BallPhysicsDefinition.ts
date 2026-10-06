@@ -38,6 +38,7 @@ export interface BallPhysicsDefinition {
 
     readonly maximumBallSpeed: number;
 
+    /** @deprecated 4A launch mapping is owned by ShotPowerModel. */
     readonly shotPowerExponent: number;
 
     // -------------------------------------------------------------------------
@@ -184,7 +185,7 @@ export const DEFAULT_BALL_PHYSICS_DEFINITION:
 
     maximumBallSpeed: 1200,
 
-    shotPowerExponent: 1.65,
+    shotPowerExponent: 1.0,
 
     // -------------------------------------------------------------------------
     // Rolling Resistance

@@ -25,6 +25,8 @@ import type {
     CourseBoundaryDefinition,
 } from "../config/CourseBoundaryDefinition";
 
+import { DEFAULT_SHOT_POWER_MODEL } from "../physics/ShotPowerModel";
+
 import type {
     StaticObstacleDefinition,
 } from "../config/ObstacleDefinition";
@@ -194,6 +196,8 @@ interface BoundaryCollisionResult {
 }
 
 export class Ball extends Entity {
+
+    private shotPowerBaselineValidationMode = false;
 
     private visualContainer:
         Container | null = null;
@@ -1200,6 +1204,46 @@ export class Ball extends Entity {
         );
     }
 
+    public setShotPowerBaselineValidationMode(enabled: boolean): void { this.shotPowerBaselineValidationMode = enabled; }
+
+    public prepareShotPowerBaselineValidationShot(x: number, y: number): void {
+        // 4A debug-only hard reset. Normal gameplay still earns club
+        // interactability through updateClubInteractionEligibility().
+        this.stop(false);
+        this.setPosition(x, y);
+
+        this.velocityX = 0;
+        this.velocityY = 0;
+        this.motionState = BallMotionState.Stationary;
+        this.clubInteractable = true;
+        this.clubInteractionSettleElapsedTime = 0;
+        this.restStabilityElapsedTime = 0;
+
+        this.movementDistanceTravelled = 0;
+        this.movementElapsedTime = 0;
+        this.boundaryCollisionCount = 0;
+        this.obstacleCollisionCount = 0;
+
+        this.resetStandingWaterInteraction();
+        this.setInteractionState(BallInteractionState.Normal);
+        this.setTensionPower(0);
+        this.resetVibration();
+    }
+
+    public getShotPowerBaselineValidationState(): {
+        readonly motionState: BallMotionState;
+        readonly clubInteractable: boolean;
+        readonly speed: number;
+        readonly interactionAvailable: boolean;
+    } {
+        return {
+            motionState: this.motionState,
+            clubInteractable: this.clubInteractable,
+            speed: this.getSpeed(),
+            interactionAvailable: this.isAvailableForInteraction(),
+        };
+    }
+
     // -------------------------------------------------------
     // Dynamic Collision Body Interface
     // -------------------------------------------------------
@@ -1574,24 +1618,14 @@ export class Ball extends Entity {
          * Phase 8E-4: standing Water is an independent additive resistance
          * contribution. Wet terrain remains owned by SurfaceSystem.
          */
-        const waterInteractionState =
-            this.updateStandingWaterInteraction(
-                deltaTime,
-                currentSurface.rollingResistanceMultiplier,
-            );
-
-        const combinedRollingResistance =
-            this.ballWaterInteraction
-                ? this.ballWaterInteraction
-                    .combineRollingResistance(
-                        currentSurface
-                            .rollingResistanceMultiplier,
-                        waterInteractionState
-                            ?.additionalResistance ??
-                        0,
-                    )
-                : currentSurface
-                    .rollingResistanceMultiplier;
+        const waterInteractionState = this.shotPowerBaselineValidationMode
+            ? null
+            : this.updateStandingWaterInteraction(deltaTime, currentSurface.rollingResistanceMultiplier);
+        const combinedRollingResistance = this.shotPowerBaselineValidationMode
+            ? 1
+            : this.ballWaterInteraction
+                ? this.ballWaterInteraction.combineRollingResistance(currentSurface.rollingResistanceMultiplier, waterInteractionState?.additionalResistance ?? 0)
+                : currentSurface.rollingResistanceMultiplier;
 
         const effectiveRollingDeceleration =
             this.physicsDefinition
@@ -1660,13 +1694,9 @@ export class Ball extends Entity {
                 )
                 : 0;
 
-        const globalWindAcceleration =
-            this.windManager
-                .getSafeScaledAcceleration(
-                    normalizedBallSpeed,
-                    this.velocityX,
-                    this.velocityY,
-                );
+        const globalWindAcceleration = this.shotPowerBaselineValidationMode
+            ? { x: 0, y: 0 }
+            : this.windManager.getSafeScaledAcceleration(normalizedBallSpeed, this.velocityX, this.velocityY);
 
         // Local Wind is applied once, generically, by
         // LocalWindDynamicForceSystem. Global course Wind remains Ball-specific.
@@ -1772,6 +1802,7 @@ export class Ball extends Entity {
         // 4. Collision Handling
         // ---------------------------------------------------
 
+        if (!this.shotPowerBaselineValidationMode) {
         this.resolveWorldBoundaryCollision();
 
         this.resolveStaticObstacleCollisions();
@@ -1791,6 +1822,7 @@ export class Ball extends Entity {
         }
 
         this.correctPositionInsideCourse();
+        }
 
         // ---------------------------------------------------
         // 5. Rest Evaluation
@@ -2968,57 +3000,8 @@ export class Ball extends Entity {
     // Launch-Speed Calculation
     // -------------------------------------------------------
 
-    private calculateLaunchSpeed(
-        normalizedPower:
-            number,
-    ): number {
-
-        const minimumPower =
-            this.physicsDefinition
-                .minimumLaunchPower;
-
-        const validPowerRange =
-            1 -
-            minimumPower;
-
-        const remappedPower =
-            validPowerRange >
-                0
-                ? (
-                    normalizedPower -
-                    minimumPower
-                ) /
-                validPowerRange
-                : 1;
-
-        const clampedRemappedPower =
-            Math.max(
-                0,
-                Math.min(
-                    remappedPower,
-                    1,
-                ),
-            );
-
-        const curvedPower =
-            Math.pow(
-                clampedRemappedPower,
-                this.physicsDefinition
-                    .shotPowerExponent,
-            );
-
-        const speedRange =
-            this.physicsDefinition
-                .maximumBallSpeed -
-            this.physicsDefinition
-                .minimumLaunchSpeed;
-
-        return (
-            this.physicsDefinition
-                .minimumLaunchSpeed +
-            curvedPower *
-            speedRange
-        );
+    private calculateLaunchSpeed(normalizedPower: number): number {
+        return DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(normalizedPower);
     }
 
     // -------------------------------------------------------

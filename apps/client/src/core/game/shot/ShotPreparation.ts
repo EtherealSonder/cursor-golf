@@ -169,15 +169,21 @@ export class ShotPreparation {
             );
         }
 
-        const clampedDistance =
-            Math.min(
-                this.dragDistance,
-                maximumDragDistance,
-            );
-
+        /*
+         * Keep the physical drag distance unbounded for presentation.
+         * Only normalized shot power is clamped. This allows the Club
+         * to continue following the real cursor after full power while
+         * gameplay power remains exactly 1.0.
+         */
         this.normalizedPower =
-            clampedDistance /
-            maximumDragDistance;
+            Math.max(
+                0,
+                Math.min(
+                    this.dragDistance /
+                    maximumDragDistance,
+                    1,
+                ),
+            );
 
         this.dragAngle =
             Math.atan2(

@@ -56,7 +56,10 @@ import { BallDeathTransitionController } from "./death/BallDeathTransitionContro
 import { BallDeathTransitionRenderer } from "./death/BallDeathTransitionRenderer";
 import { BallDeathTransitionValidation } from "./debug/BallDeathTransitionValidation";
 
+import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation";
+
 export class Game {
+    private shotPowerBaselineValidation: ShotPowerBaselineValidation | null = null;
 
     private readonly container:
         HTMLDivElement;
@@ -213,6 +216,11 @@ export class Game {
             );
 
         this.world.initialize();
+        if (new URLSearchParams(window.location.search).get("shotPowerValidation") === "1") {
+            const ball = this.world.getBall();
+            const spawn = this.world.getBallWorldPosition();
+            if (ball && spawn) this.shotPowerBaselineValidation = new ShotPowerBaselineValidation(ball, spawn.x, spawn.y);
+        }
 
         // Startup camera authority is the live Ball spawn, not CameraDefinition's
         // generic (0, 0) fallback. Viewport size has already been resolved above.
@@ -948,6 +956,7 @@ export class Game {
             ?.update(
                 deltaTime,
             );
+        this.shotPowerBaselineValidation?.update();
 
         }
 

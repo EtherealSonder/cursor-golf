@@ -1,4 +1,4 @@
-﻿import {
+import {
     Sprite,
 } from "pixi.js";
 
@@ -353,74 +353,6 @@ export class Club extends Entity {
                 "Club swing definition contains invalid timing or geometry values.",
             );
         }
-
-        const aimGuide =
-            this.definition.aimGuide;
-
-        if (
-            !Number.isFinite(
-                aimGuide.startDistance,
-            ) ||
-            aimGuide.startDistance <
-            0
-        ) {
-            throw new Error(
-                "Aim-guide start distance must be a finite non-negative value.",
-            );
-        }
-
-        if (
-            !Number.isFinite(
-                aimGuide.dotSpacing,
-            ) ||
-            aimGuide.dotSpacing <=
-            0
-        ) {
-            throw new Error(
-                "Aim-guide dot spacing must be a finite value greater than zero.",
-            );
-        }
-
-        if (
-            !Number.isFinite(
-                aimGuide.dotRadius,
-            ) ||
-            aimGuide.dotRadius <=
-            0
-        ) {
-            throw new Error(
-                "Aim-guide dot radius must be a finite value greater than zero.",
-            );
-        }
-
-        if (
-            !Number.isInteger(
-                aimGuide.minimumDots,
-            ) ||
-            aimGuide.minimumDots <
-            1
-        ) {
-            throw new Error(
-                "Aim guide must contain at least one minimum dot.",
-            );
-        }
-
-        if (
-            !Number.isInteger(
-                aimGuide.maximumDots,
-            ) ||
-            aimGuide.maximumDots <
-            aimGuide.minimumDots
-        ) {
-            throw new Error(
-                "Aim-guide maximum dots cannot be lower than its minimum dots.",
-            );
-        }
-
-        this.validateNormalizedValue(
-            aimGuide.dotAlpha,
-            "Aim-guide dot alpha",
-        );
     }
 
     private validateNormalizedValue(
@@ -499,8 +431,16 @@ export class Club extends Entity {
             return;
         }
 
+        /*
+         * 4C: Connector presentation is intentionally disabled while
+         * retaining the Connector implementation for easy rollback.
+         *
+         * Connector.render() already treats this flag as the authoritative
+         * signal for whether the Ball-to-Club relationship visual should
+         * exist. Club positioning and shot preparation remain unchanged.
+         */
         this.shotVisualActive =
-            true;
+            false;
 
         this.currentAngle =
             angleRadians;

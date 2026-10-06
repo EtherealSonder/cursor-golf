@@ -111,16 +111,12 @@ export class ShotController {
         const club =
             this.world.getClub();
 
-        const connector =
-            this.world.getConnector();
-
         const aimIndicator =
             this.world.getAimIndicator();
 
         if (
             !ball ||
             !club ||
-            !connector ||
             !aimIndicator
         ) {
             return;
@@ -195,6 +191,14 @@ export class ShotController {
         const normalizedPower =
             this.shotPreparation
                 .getNormalizedPower();
+
+        this.world
+            .getCamera()
+            .setShotPreparationDragPower(
+                normalizedPower,
+                ball.getX(),
+                ball.getY(),
+            );
 
         const baseAimAngle =
             this.shotPreparation
@@ -385,7 +389,7 @@ export class ShotController {
 
         console.log(
             "Optimal Accuracy Tolerance:",
-            "±" +
+            "ï¿½" +
             this.radiansToDegrees(
                 optimalAccuracyTolerance,
             ).toFixed(2),
@@ -432,24 +436,34 @@ export class ShotController {
         );
 
         console.log(
-            "Aim Guide Dots:",
-            aimIndicator
-                .getDotCount(),
-        );
-
-        console.log(
-            "Aim Guide End Distance:",
-            aimIndicator
-                .getGuideEndDistance()
-                .toFixed(2),
+            "Aim Meter Length:",
+            aimIndicator.getMeterLength().toFixed(2),
             "px",
         );
 
         console.log(
-            "Aim Guide Alpha:",
-            aimIndicator
-                .getCurrentDotAlpha()
-                .toFixed(3),
+            "Aim Meter Thickness:",
+            aimIndicator.getMeterThickness().toFixed(2),
+            "px",
+        );
+
+        console.log(
+            "Aim Meter Filled Length:",
+            aimIndicator.getFilledLength().toFixed(2),
+            "px",
+        );
+
+        console.log(
+            "Aim Meter Active Bands:",
+            aimIndicator.getActiveBandCount(),
+            "/ 6",
+        );
+
+        console.log(
+            "Aim Meter Pulse Band:",
+            aimIndicator.getPulseBandIndex() >= 0
+                ? aimIndicator.getPulseBandIndex() + 1
+                : "gap",
         );
 
         console.log(
@@ -457,13 +471,6 @@ export class ShotController {
             ball
                 .getTensionPower()
                 .toFixed(2),
-        );
-
-        console.log(
-            "Connector Color:",
-            connector.getColorName(
-                normalizedPower,
-            ),
         );
 
         console.log(
@@ -516,6 +523,13 @@ export class ShotController {
             .getAimIndicator()
             ?.show();
 
+        this.world
+            .getCamera()
+            .setShotPreparationZoom(
+                ball.getX(),
+                ball.getY(),
+            );
+
         console.log(
             "Shot Started",
         );
@@ -550,6 +564,10 @@ export class ShotController {
         this.world
             .getAimIndicator()
             ?.hide();
+
+        this.world
+            .getCamera()
+            .restoreNormalZoom();
 
         console.log(
             "Shot Cancelled",
@@ -687,6 +705,10 @@ export class ShotController {
             .getAimIndicator()
             ?.hide();
 
+        this.world
+            .getCamera()
+            .restoreNormalZoom();
+
         club.beginSwing(
             ball.getX(),
             ball.getY(),
@@ -809,6 +831,10 @@ export class ShotController {
         this.world
             .getAimIndicator()
             ?.hide();
+
+        this.world
+            .getCamera()
+            .restoreNormalZoom();
     }
 
     /**

@@ -6,52 +6,7 @@ export const MINIMUM_CLUB_DRAG_DISTANCE = 80;
 /**
  * Largest full-power drag distance that any club definition may use.
  */
-export const MAXIMUM_CLUB_DRAG_DISTANCE = 150;
-
-/**
- * Simple visual configuration for the dotted aim guide.
- *
- * The guide communicates current aim direction and approximate
- * power through dot count. It does not display trajectory prediction,
- * accuracy colour, fading, pulses, tapering, or endpoint markers.
- */
-export interface AimGuideDefinition {
-
-    /**
-     * Empty distance between the Ball centre and the first dot centre.
-     */
-    readonly startDistance: number;
-
-    /**
-     * Constant centre-to-centre spacing between neighbouring dots.
-     */
-    readonly dotSpacing: number;
-
-    /**
-     * Constant radius used by every guide dot.
-     */
-    readonly dotRadius: number;
-
-    /**
-     * Number of dots displayed at zero or minimum power.
-     */
-    readonly minimumDots: number;
-
-    /**
-     * Number of dots displayed at full power.
-     */
-    readonly maximumDots: number;
-
-    /**
-     * Constant colour used by every guide dot.
-     */
-    readonly dotColor: number;
-
-    /**
-     * Constant opacity used by every guide dot.
-     */
-    readonly dotAlpha: number;
-}
+export const MAXIMUM_CLUB_DRAG_DISTANCE = 360;
 
 /**
  * Sprite-space configuration for the current club artwork.
@@ -142,12 +97,6 @@ export interface ClubDefinition {
      */
     readonly oscillationCurveStrength: number;
 
-    // -------------------------------------------------------------------------
-    // Aim Guide
-    // -------------------------------------------------------------------------
-
-    readonly aimGuide:
-    AimGuideDefinition;
 }
 
 /**
@@ -186,7 +135,7 @@ export const BASIC_CLUB_DEFINITION:
     },
 
     maximumDragDistance:
-        150,
+        360,
 
     oscillationEnabled:
         false,
@@ -214,30 +163,4 @@ export const BASIC_CLUB_DEFINITION:
     oscillationCurveStrength:
         0.20,
 
-    aimGuide: {
-
-        startDistance:
-            28,
-
-        dotSpacing:
-            13,
-
-        dotRadius:
-            3,
-
-        /*
-         * Guide length grows intuitively with power.
-         */
-        minimumDots:
-            8,
-
-        maximumDots:
-            20,
-
-        dotColor:
-            0xffffff,
-
-        dotAlpha:
-            0.92,
-    },
 };
