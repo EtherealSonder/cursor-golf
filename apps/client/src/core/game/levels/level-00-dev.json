@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "id": "level-00-dev",
+  "name": "Development Course",
+  "course": {
+    "width": 1000,
+    "height": 2500,
+    "baseSurface": "grass",
+    "openings": [
+      { "side": "left", "start": 730, "end": 900 },
+      { "side": "left", "start": 1610, "end": 1780 },
+      { "side": "right", "start": 350, "end": 530 },
+      { "side": "right", "start": 1130, "end": 1310 },
+      { "side": "right", "start": 2010, "end": 2190 }
+    ]
+  },
+  "ball": { "x": 500, "y": 2385 },
+  "hole": { "x": 800, "y": 1610 },
+  "terrain": [],
+  "objects": [
+    { "type": "radialBumper", "id": "radial-bumper-upper-left", "x": 200, "y": 430 },
+    { "type": "radialBumper", "id": "radial-bumper-middle-right", "x": 800, "y": 1330 },
+    { "type": "directionalBumper", "id": "directional-bumper-upper-right", "x": 800, "y": 220, "rotation": 3.141592653589793 },
+    { "type": "directionalBumper", "id": "directional-bumper-middle-left", "x": 180, "y": 1080, "rotation": 0 },
+    { "type": "rotatingPaddle", "id": "rotating-paddle-upper", "x": 470, "y": 600, "direction": "clockwise" },
+    { "type": "rotatingPaddle", "id": "rotating-paddle-middle", "x": 620, "y": 1510, "direction": "counterClockwise" },
+
+    { "type": "smallRock", "id": "small-rock-101", "x": 330, "y": 170, "radius": 12, "seed": 101 },
+    { "type": "smallRock", "id": "small-rock-207", "x": 660, "y": 330, "radius": 15, "seed": 207 },
+    { "type": "boulder", "id": "boulder-1201", "x": 500, "y": 90, "radius": 48, "seed": 1201 },
+    { "type": "smallRock", "id": "small-rock-313", "x": 210, "y": 730, "radius": 13, "seed": 313 },
+    { "type": "smallRock", "id": "small-rock-351", "x": 750, "y": 730, "radius": 12, "seed": 351 },
+    { "type": "boulder", "id": "boulder-1409", "x": 830, "y": 820, "radius": 55, "seed": 1409 },
+    { "type": "smallRock", "id": "small-rock-419", "x": 420, "y": 1270, "radius": 11, "seed": 419 },
+    { "type": "smallRock", "id": "small-rock-523", "x": 840, "y": 1590, "radius": 14, "seed": 523 },
+    { "type": "boulder", "id": "boulder-1613", "x": 200, "y": 1580, "radius": 59, "seed": 1613 },
+    { "type": "smallRock", "id": "small-rock-631", "x": 370, "y": 2140, "radius": 12, "seed": 631 },
+    { "type": "smallRock", "id": "small-rock-739", "x": 550, "y": 2210, "radius": 14, "seed": 739 },
+    { "type": "smallRock", "id": "small-rock-847", "x": 720, "y": 2120, "radius": 16, "seed": 847 },
+    { "type": "boulder", "id": "boulder-1811", "x": 660, "y": 2250, "radius": 52, "seed": 1811 },
+
+    { "type": "sprinkler", "id": "sprinkler-1", "x": 150, "y": 320, "rotation": 0 },
+    { "type": "sprinkler", "id": "sprinkler-2", "x": 860, "y": 600, "rotation": 3.141592653589793 },
+    { "type": "sprinkler", "id": "sprinkler-3", "x": 150, "y": 1420, "rotation": 0 },
+    { "type": "sprinkler", "id": "sprinkler-4", "x": 850, "y": 1860, "rotation": 3.141592653589793 },
+
+    { "type": "fan", "id": "rock-fracture-mine-fan", "x": 400, "y": 820, "rotation": 0 },
+    { "type": "fan", "id": "stress-fan-wind-1", "x": 150, "y": 560, "rotation": 0 },
+    { "type": "fan", "id": "stress-fan-wind-2", "x": 850, "y": 1130, "rotation": 3.141592653589793 },
+    { "type": "fan", "id": "stress-fan-wind-3", "x": 150, "y": 1870, "rotation": 0 },
+    { "type": "fan", "id": "stress-fan-wind-4", "x": 850, "y": 2230, "rotation": 3.141592653589793 },
+
+    { "type": "proximityMine", "id": "mine-rock-fracture-direct", "x": 550, "y": 2300 },
+    { "type": "proximityMine", "id": "mine-rock-fracture-wind", "x": 590, "y": 820 },
+    { "type": "proximityMine", "id": "mine-3", "x": 320, "y": 1320 },
+    { "type": "proximityMine", "id": "mine-4", "x": 690, "y": 1860 },
+
+    { "type": "fireRobot", "id": "fire-robot", "x": 290, "y": 1995, "roamRadius": 150 },
+    { "type": "waterRobot", "id": "water-robot-rock-acceptance", "x": 500, "y": 1960, "roamRadius": 90 },
+    { "type": "windRobot", "id": "wind-robot", "x": 710, "y": 1995, "roamRadius": 150 }
+  ]
+}

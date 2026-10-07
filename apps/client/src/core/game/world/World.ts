@@ -17,7 +17,10 @@ import { BallDrowningController } from "../water/BallDrowningController";
 import { BallExplosionDeathEvaluator } from "../death/BallExplosionDeathEvaluator";
 import { BallExplosionDeathValidation } from "../debug/BallExplosionDeathValidation";
 import { DEFAULT_GAMEPLAY_COURSE_DEFINITION } from "../config/GameplayCourseDefinition";
-import type { GameplayCourseOpening, GameplayCourseSide } from "../config/GameplayCourseDefinition";
+import type { GameplayCourseSide } from "../config/GameplayCourseDefinition";
+import level00Dev from "../levels/level-00-dev.json";
+import { loadLevelDefinition } from "../level/LevelLoader";
+import { runtimeObjectsOfType, type RuntimeLevelDefinition } from "../level/LevelRuntimeDefinition";
 import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
 import { Rock } from "../entities/props/Rock";
 import { RockPresentationType } from "../entities/props/RockPresentationType";
@@ -464,8 +467,7 @@ export class World {
 
     private courseOutsideBackground: Graphics | null = null;
     private courseWallGraphics: Graphics | null = null;
-    private readonly ballOutOfBoundsController =
-        new BallOutOfBoundsController(DEFAULT_GAMEPLAY_COURSE_DEFINITION);
+    private readonly ballOutOfBoundsController: BallOutOfBoundsController;
 
     /**
      * Development-only world-space surface visualization.
@@ -827,6 +829,9 @@ export class World {
     private readonly ballExplosionDeathEvaluator =
         new BallExplosionDeathEvaluator();
 
+    /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
+    private readonly runtimeLevel: RuntimeLevelDefinition;
+
     constructor(
         app:
             Application,
@@ -845,6 +850,29 @@ export class World {
 
         this.courseVisualDefinition =
             courseVisualDefinition;
+
+        const levelLoad = loadLevelDefinition(level00Dev, {
+            worldOrigin: {
+                x: DEFAULT_GAMEPLAY_COURSE_DEFINITION.minimumX,
+                y: DEFAULT_GAMEPLAY_COURSE_DEFINITION.minimumY,
+            },
+        });
+        if (!levelLoad.ok) {
+            const details = levelLoad.validation.errors
+                .map((issue) => `${issue.code}: ${issue.message}`)
+                .join("\n");
+            throw new Error(`World could not load level-00-dev.\n${details}`);
+        }
+        this.runtimeLevel = levelLoad.level;
+        this.ballOutOfBoundsController = new BallOutOfBoundsController({
+            ...DEFAULT_GAMEPLAY_COURSE_DEFINITION,
+            minimumX: this.runtimeLevel.course.minimumX,
+            maximumX: this.runtimeLevel.course.maximumX,
+            minimumY: this.runtimeLevel.course.minimumY,
+            maximumY: this.runtimeLevel.course.maximumY,
+            openings: this.runtimeLevel.course.openings,
+            ballSpawn: this.runtimeLevel.ball,
+        });
 
 
         BallExplosionDeathValidation.validate();
@@ -1117,10 +1145,7 @@ export class World {
         // These are deterministic, deliberately scattered test placements rather
         // than per-load randomness. They stay clear of the brown blocker layout
         // and the current mechanism spawn regions, keeping collision tests repeatable.
-        const radialBumperPlacements: Array<{ id: string; x: number; y: number }> = [
-            { id: "radial-bumper-upper-left", x: 300, y: -820 },
-            { id: "radial-bumper-middle-right", x: 900, y: 80 },
-        ];
+        const radialBumperPlacements = runtimeObjectsOfType(this.runtimeLevel, "radialBumper");
 
         for (const placement of radialBumperPlacements) {
             const bumper = new RadialBumper(placement.id, placement.x, placement.y);
@@ -1144,10 +1169,7 @@ export class World {
         }
 
         // One Directional Bumper for each cardinal direction: right, down, left, up.
-        const directionalBumperPlacements: Array<{ id: string; x: number; y: number; rotation: number }> = [
-            { id: "directional-bumper-upper-right", x: 900, y: -1030, rotation: Math.PI },
-            { id: "directional-bumper-middle-left", x: 280, y: -170, rotation: 0 },
-        ];
+        const directionalBumperPlacements = runtimeObjectsOfType(this.runtimeLevel, "directionalBumper");
 
         for (const placement of directionalBumperPlacements) {
             const bumper = new DirectionalBumper(
@@ -1194,10 +1216,7 @@ export class World {
         // ---------------------------------------------------
         // Authored clear test positions. These are surface mechanisms, so their
         // sprites sit above ground state but beneath standing Water and actors.
-        const rotatingPaddlePlacements: Array<{ id: string; x: number; y: number; direction: "clockwise" | "counterClockwise" }> = [
-            { id: "rotating-paddle-upper", x: 570, y: -650, direction: "clockwise" },
-            { id: "rotating-paddle-middle", x: 720, y: 260, direction: "counterClockwise" },
-        ];
+        const rotatingPaddlePlacements = runtimeObjectsOfType(this.runtimeLevel, "rotatingPaddle");
         for (const placement of rotatingPaddlePlacements) {
             const paddle = new RotatingPaddle(
                 placement.id, placement.x, placement.y, placement.direction,
@@ -1226,27 +1245,13 @@ export class World {
         // Presentation-only authored samples. Physics and elemental behaviour
         // intentionally begin in R-ROCK-2 and later phases.
         const rockPresentationPlacements = [
-            // Upper course
-            { type: RockPresentationType.SmallRock, x: 430, y: -1080, radius: 12, seed: 101 },
-            { type: RockPresentationType.SmallRock, x: 760, y: -920, radius: 15, seed: 207 },
-            { type: RockPresentationType.Boulder, x: 600, y: -1160, radius: 48, seed: 1201 },
-
-            // Upper-middle
-            { type: RockPresentationType.SmallRock, x: 310, y: -520, radius: 13, seed: 313 },
-            { type: RockPresentationType.SmallRock, x: 850, y: -520, radius: 12, seed: 351 },
-            { type: RockPresentationType.Boulder, x: 930, y: -430, radius: 55, seed: 1409 },
-
-            // Middle
-            { type: RockPresentationType.SmallRock, x: 520, y: 20, radius: 11, seed: 419 },
-            { type: RockPresentationType.SmallRock, x: 940, y: 340, radius: 14, seed: 523 },
-            { type: RockPresentationType.Boulder, x: 300, y: 330, radius: 59, seed: 1613 },
-
-            // Lower/start region, enough for immediate Robot interaction checks
-            { type: RockPresentationType.SmallRock, x: 470, y: 890, radius: 12, seed: 631 },
-            { type: RockPresentationType.SmallRock, x: 650, y: 960, radius: 14, seed: 739 },
-            { type: RockPresentationType.SmallRock, x: 820, y: 870, radius: 16, seed: 847 },
-            { type: RockPresentationType.Boulder, x: 760, y: 1000, radius: 52, seed: 1811 },
-        ] as const;
+            ...runtimeObjectsOfType(this.runtimeLevel, "smallRock").map((placement) => ({
+                ...placement, type: RockPresentationType.SmallRock,
+            })),
+            ...runtimeObjectsOfType(this.runtimeLevel, "boulder").map((placement) => ({
+                ...placement, type: RockPresentationType.Boulder,
+            })),
+        ];
 
         for (const placement of rockPresentationPlacements) {
             this.addRockEntity(new Rock(placement));
@@ -1276,8 +1281,8 @@ export class World {
         );
 
         this.ball.setRetrySpawnPosition(
-            DEFAULT_GAMEPLAY_COURSE_DEFINITION.ballSpawn.x,
-            DEFAULT_GAMEPLAY_COURSE_DEFINITION.ballSpawn.y,
+            this.runtimeLevel.ball.x,
+            this.runtimeLevel.ball.y,
         );
 
         // Ball intentionally remains outside PhysicsWorld's dynamic-collider list
@@ -1384,7 +1389,11 @@ export class World {
         this.hole =
             new Hole(
                 this.ball,
-                DEFAULT_HOLE_DEFINITION,
+                {
+                    ...DEFAULT_HOLE_DEFINITION,
+                    positionX: this.runtimeLevel.hole.x,
+                    positionY: this.runtimeLevel.hole.y,
+                },
             );
 
         this.addEntity(
@@ -3613,12 +3622,7 @@ export class World {
             throw new Error("World requires Ball before creating Sprinklers.");
         }
 
-        const placements = [
-            { id: "sprinkler-1", x: 250, y: -930, rotation: 0 },
-            { id: "sprinkler-2", x: 960, y: -650, rotation: Math.PI },
-            { id: "sprinkler-3", x: 250, y: 170, rotation: 0 },
-            { id: "sprinkler-4", x: 950, y: 610, rotation: Math.PI },
-        ];
+        const placements = runtimeObjectsOfType(this.runtimeLevel, "sprinkler");
 
         for (const placement of placements) {
             const sprinkler = new Sprinkler(
@@ -3807,11 +3811,14 @@ export class World {
     // -------------------------------------------------------
 
     private createFireRobotR1R2(): void {
+        const placement = runtimeObjectsOfType(this.runtimeLevel, "fireRobot")[0];
+        if (!placement) return;
         const definition = {
             ...DEFAULT_FIRE_ROBOT_DEFINITION,
-            positionX: 390,
-            positionY: 745,
-            roamRadius: 150,
+            id: placement.id,
+            positionX: placement.x,
+            positionY: placement.y,
+            ...(placement.roamRadius !== undefined ? { roamRadius: placement.roamRadius } : {}),
         };
         if (!definition.enabled) {
             return;
@@ -3900,20 +3907,7 @@ export class World {
     /** Water Robot reuses the complete shared Robot behaviour and swaps only elemental output/art. */
     /** PM-1 temporary test placements; mine collision is a sensor, not a solid body. */
     private createProximityMines(): void {
-        const placements = [
-            // Direct fracture check: the nearby Small Rock arms this Mine while
-            // the upper Boulder sits safely inside the 220 px blast.
-            { id: "mine-rock-fracture-direct", x: 650, y: 1050 },
-
-            // Systemic check: the dedicated Fan pushes this Mine rightward
-            // toward the upper-middle Boulder. The Small Rock near that Boulder
-            // provides an ordinary proximity target as the Mine approaches.
-            { id: "mine-rock-fracture-wind", x: 690, y: -430 },
-
-            // Retain two general course Mines.
-            { id: "mine-3", x: 420, y: 70 },
-            { id: "mine-4", x: 790, y: 610 },
-        ];
+        const placements = runtimeObjectsOfType(this.runtimeLevel, "proximityMine");
         for (const placement of placements) {
             const mine = new ProximityMine(placement.id, placement.x, placement.y);
             this.proximityMines.push(mine);
@@ -4121,9 +4115,7 @@ export class World {
         // RP-3.5 deterministic Water test pair. Robot artwork/nozzle faces +X at
         // its authored zero rotation, so each Robot starts directly left of its
         // assigned paddle and initially faces that paddle.
-        const placements = [
-            { idSuffix: "rock-acceptance", x: 600, y: 710 },
-        ] as const;
+        const placements = runtimeObjectsOfType(this.runtimeLevel, "waterRobot");
 
         const createTestRobot = (
             placement: (typeof placements)[number],
@@ -4131,11 +4123,10 @@ export class World {
         ): Robot => {
             const definition = {
                 ...DEFAULT_WATER_ROBOT_DEFINITION,
-                id: `${DEFAULT_WATER_ROBOT_DEFINITION.id}-${placement.idSuffix}`,
+                id: placement.id,
                 positionX: placement.x,
                 positionY: placement.y,
-                // Keep the Robots near their dedicated paddles during this test.
-                roamRadius: 90,
+                ...(placement.roamRadius !== undefined ? { roamRadius: placement.roamRadius } : {}),
             };
             const navigationQuery = new RobotNavigationQuery(
                 this.robotInteractionRegistry,
@@ -4231,11 +4222,14 @@ export class World {
 
     /** Wind Robot reuses shared AI and drives an authoritative conical Local Wind pull source. */
     private createWindRobot(): void {
+        const placement = runtimeObjectsOfType(this.runtimeLevel, "windRobot")[0];
+        if (!placement) return;
         const definition = {
             ...DEFAULT_WIND_ROBOT_DEFINITION,
-            positionX: 810,
-            positionY: 745,
-            roamRadius: 150,
+            id: placement.id,
+            positionX: placement.x,
+            positionY: placement.y,
+            ...(placement.roamRadius !== undefined ? { roamRadius: placement.roamRadius } : {}),
         };
         if (!definition.enabled) return;
         if (this.windRobot) throw new Error("World Wind Robot has already been created.");
@@ -4986,7 +4980,7 @@ export class World {
         const eased = t < 0.5
             ? 4 * t * t * t
             : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        const spawn = DEFAULT_GAMEPLAY_COURSE_DEFINITION.ballSpawn;
+        const spawn = this.runtimeLevel.ball;
         const targetCameraX =
             spawn.x - this.camera.getVisibleWorldWidth() / 2;
         const targetCameraY =
@@ -5225,13 +5219,7 @@ export class World {
             candidate.enabled && !candidate.id.startsWith("fire-validation-field-"),
         ) ?? existingSources.find((candidate): boolean => candidate.enabled) ?? existingSources[0];
 
-        const fanPlacements = [
-            { id: "rock-fracture-mine-fan", x: 500, y: -430, directionRadians: 0 },
-            { id: "stress-fan-wind-1", x: 250, y: -690, directionRadians: 0 },
-            { id: "stress-fan-wind-2", x: 950, y: -120, directionRadians: Math.PI },
-            { id: "stress-fan-wind-3", x: 250, y: 620, directionRadians: 0 },
-            { id: "stress-fan-wind-4", x: 950, y: 980, directionRadians: Math.PI },
-        ];
+        const fanPlacements = runtimeObjectsOfType(this.runtimeLevel, "fan");
 
         const preservedSources = existingSources.filter(
             (candidate): boolean => !candidate.id.startsWith("stress-fan-wind-") && candidate.id !== "8d7-test-fan-wind",
@@ -5240,7 +5228,7 @@ export class World {
             id: placement.id,
             positionX: placement.x,
             positionY: placement.y,
-            directionRadians: placement.directionRadians,
+            directionRadians: placement.rotation,
             range: template?.range ?? 560,
             startHalfWidth: template?.startHalfWidth ?? 55,
             endHalfWidth: template?.endHalfWidth ?? 55,
@@ -5269,7 +5257,7 @@ export class World {
                     ...source,
                     positionX: placement.x,
                     positionY: placement.y,
-                    directionRadians: placement.directionRadians,
+                    directionRadians: placement.rotation,
                 },
                 this.localWindSystem,
             );
@@ -5707,7 +5695,7 @@ export class World {
             throw new Error("World course background has already been created.");
         }
 
-        const d = DEFAULT_GAMEPLAY_COURSE_DEFINITION;
+        const d = this.runtimeLevel.course;
         const hard = DEFAULT_COURSE_BOUNDARY_DEFINITION;
 
         this.courseOutsideBackground = new Graphics();
@@ -5721,8 +5709,8 @@ export class World {
 
         this.courseBackground = new TilingSprite({
             texture: AssetLoader.getTexture(this.courseVisualDefinition.grassTextureKey),
-            width: d.maximumX - d.minimumX,
-            height: d.maximumY - d.minimumY,
+            width: d.width,
+            height: d.height,
         });
         this.courseBackground.position.set(d.minimumX, d.minimumY);
         this.courseBackground.tileScale.set(this.courseVisualDefinition.grassTileScale * 3);
@@ -5733,7 +5721,7 @@ export class World {
     }
 
     private createGameplayCourseWalls(): void {
-        const d = DEFAULT_GAMEPLAY_COURSE_DEFINITION;
+        const d = this.runtimeLevel.course;
         this.courseWallGraphics = new Graphics();
         const graphics = this.courseWallGraphics;
 
@@ -5757,7 +5745,7 @@ export class World {
             const minimum = vertical ? d.minimumY : d.minimumX;
             const maximum = vertical ? d.maximumY : d.maximumX;
             const openings = d.openings
-                .filter((opening: GameplayCourseOpening) => opening.side === side)
+                .filter((opening) => opening.side === side)
                 .slice().sort((a, b) => a.start - b.start);
             let cursor = minimum;
             let index = 0;
@@ -5765,12 +5753,12 @@ export class World {
                 if (b - a <= 1) return;
                 const center = (a + b) / 2;
                 const length = b - a;
-                const x = side === "left" ? d.minimumX - d.wallThickness / 2 :
-                    side === "right" ? d.maximumX + d.wallThickness / 2 : center;
-                const y = side === "top" ? d.minimumY - d.wallThickness / 2 :
-                    side === "bottom" ? d.maximumY + d.wallThickness / 2 : center;
+                const x = side === "left" ? d.minimumX - DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 :
+                    side === "right" ? d.maximumX + DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 : center;
+                const y = side === "top" ? d.minimumY - DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 :
+                    side === "bottom" ? d.maximumY + DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 : center;
                 register(`gameplay-wall-${side}-${index++}`, x, y,
-                    vertical ? d.wallThickness : length, vertical ? length : d.wallThickness);
+                    vertical ? DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness : length, vertical ? length : DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness);
             };
             for (const opening of openings) {
                 addSegment(cursor, Math.max(cursor, opening.start));
