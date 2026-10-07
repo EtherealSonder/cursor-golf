@@ -196,8 +196,6 @@ export class ShotController {
             .getCamera()
             .setShotPreparationDragPower(
                 normalizedPower,
-                ball.getX(),
-                ball.getY(),
             );
 
         const baseAimAngle =

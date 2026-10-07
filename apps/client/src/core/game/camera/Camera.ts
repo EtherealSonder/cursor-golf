@@ -177,6 +177,20 @@ export class Camera {
             safeDeltaTime,
         );
 
+        // During DragDriven shot preparation, the captured viewport-centre
+        // anchor owns framing. Suppress ordinary camera target velocity so
+        // edge/cursor movement cannot fight the zoom interpolation.
+        const suppressMovementForShotZoom =
+            this.shotPreparationZoomActive &&
+            this.definition.shotPreparationZoomMode === "DragDriven";
+
+        if (suppressMovementForShotZoom) {
+            this.targetVelocityX = 0;
+            this.targetVelocityY = 0;
+            this.velocityX = 0;
+            this.velocityY = 0;
+        }
+
         const responseRateX =
             this.selectResponseRate(
                 this.velocityX,
@@ -616,10 +630,32 @@ export class Camera {
     ): void {
         this.shotPreparationZoomActive = true;
 
+        if (this.definition.shotPreparationZoomMode === "DragDriven") {
+            // Freeze the current viewport centre as the zoom anchor for the
+            // entire drag session. This preserves the existing framing even
+            // when the Ball is off-centre.
+            this.zoomAnchorX =
+                this.positionX +
+                this.viewportWidth /
+                (2 * this.currentZoom);
+
+            this.zoomAnchorY =
+                this.positionY +
+                this.viewportHeight /
+                (2 * this.currentZoom);
+
+            this.targetZoom =
+                this.clamp(
+                    this.definition.zoom,
+                    this.definition.minimumZoom,
+                    this.definition.maximumZoom,
+                );
+
+            return;
+        }
+
         this.setZoomTarget(
-            this.definition.shotPreparationZoomMode === "Immediate"
-                ? this.definition.shotPreparationZoom
-                : this.definition.zoom,
+            this.definition.shotPreparationZoom,
             anchorWorldX,
             anchorWorldY,
         );
@@ -627,8 +663,6 @@ export class Camera {
 
     public setShotPreparationDragPower(
         normalizedPower: number,
-        anchorWorldX: number,
-        anchorWorldY: number,
     ): void {
         if (
             !this.shotPreparationZoomActive ||
@@ -650,15 +684,20 @@ export class Camera {
                 this.definition.zoom
             ) * power;
 
-        this.setZoomTarget(
-            targetZoom,
-            anchorWorldX,
-            anchorWorldY,
-        );
+        // Keep the shot-session anchor captured on press. Only the
+        // target zoom changes as drag power changes.
+        this.targetZoom =
+            this.clamp(
+                targetZoom,
+                this.definition.minimumZoom,
+                this.definition.maximumZoom,
+            );
     }
 
     public restoreNormalZoom(): void {
         this.shotPreparationZoomActive = false;
+        this.zoomAnchorX = null;
+        this.zoomAnchorY = null;
 
         this.setZoomTarget(
             this.definition.zoom,
