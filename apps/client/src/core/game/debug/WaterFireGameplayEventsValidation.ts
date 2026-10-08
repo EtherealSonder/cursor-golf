@@ -21,7 +21,7 @@ export class WaterFireGameplayEventsValidation {
         const interaction = new WaterFireInteraction();
         const checks: Array<{name: string; passed: boolean}> = [];
 
-        fire.ignite(500, 400, 1);
+        fire.ignite(500, 400);
         const sweep: AirborneWaterSweep = {
             sourceId: "8f10-hose", sequence: 1, waterAmount: 0.01,
             startX: 500, startY: 320, startHeight: 24,
@@ -82,7 +82,7 @@ export class WaterFireGameplayEventsValidation {
 
         water.injectWater(600, 600, 0.08);
         sources.beginDirectionalWaterSuppressionFrame();
-        interaction.updateStandingWaterDirectionalFire(water, sources);
+        interaction.updateStandingWaterDirectionalFire(water, sources, 1 / 60);
         const standing = interaction.consumeContactEvents();
 
         checks.push({

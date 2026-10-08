@@ -31,7 +31,6 @@ import { RockInteractionValidation } from "../debug/RockInteractionValidation";
 import { RockInteractionSystem } from "./RockInteractionSystem";
 import { BoulderFractureSystem } from "./BoulderFractureSystem";
 import { BoulderFractureValidation } from "../debug/BoulderFractureValidation";
-import { DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION } from "../config/SmallRockPhysicsDefinition";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
@@ -2482,6 +2481,12 @@ export class World {
         this.robotDebugVisualizer =
             null;
 
+            this.fireRobot?.invalidateCurrentTarget();
+            this.waterRobot?.invalidateCurrentTarget();
+            this.secondFireRobot?.invalidateCurrentTarget();
+            this.secondWaterRobot?.invalidateCurrentTarget();
+            this.windRobot?.invalidateCurrentTarget();
+            this.secondWindRobot?.invalidateCurrentTarget();
         this.fireRobot =
             null;
 
@@ -2499,12 +2504,6 @@ export class World {
             if (entity instanceof Rock) {
             this.rockRobotInteractionUnregister.get(entity)?.();
             this.rockRobotInteractionUnregister.delete(entity);
-            this.fireRobot?.invalidateCurrentTarget();
-            this.waterRobot?.invalidateCurrentTarget();
-            this.secondFireRobot?.invalidateCurrentTarget();
-            this.secondWaterRobot?.invalidateCurrentTarget();
-            this.windRobot?.invalidateCurrentTarget();
-            this.secondWindRobot?.invalidateCurrentTarget();
 
             if (entity.isSmallRock()) {
                 this.windSuctionCaptureSystem.unregisterTarget(`small-rock-${entity.id}`);
@@ -2626,8 +2625,6 @@ export class World {
         this.fireManager
             .reset();
 
-        this.fireVfxSystem
-            ?.reset();
         this.waterGroundInteractionSystem
             .reset();
 
@@ -2710,7 +2707,6 @@ export class World {
         this.courseBackground =
             null;
 
-        if (this.courseBackground) this.courseBackground.mask = null;
         this.courseGrassMask?.destroy();
         this.courseGrassMask = null;
         this.courseOutsideBackground?.destroy();
@@ -3329,8 +3325,6 @@ export class World {
 
         this.fireManager.reset();
 
-        this.fireVfxSystem
-            ?.reset();
 
         this.fireManager
             .setValidationRandomSeed(
@@ -3643,7 +3637,7 @@ export class World {
         }
 
         this.ballWaterSplashVfxUnsubscribe =
-            this.ball.addWaterSplashListener(
+            this.ball!.addWaterSplashListener(
                 (event): void => {
                     this.waterVfxSystem
                         ?.handleBallSplash(event);
@@ -5861,49 +5855,6 @@ export class World {
             graphics.stroke({ width: 3, color: outline });
         }
         this.presentationLayers.getLayer(WorldRenderLayer.SurfaceMechanisms).addChild(graphics);
-    }
-
-    private createSandTexture():
-        void {
-
-        const definition =
-            DEFAULT_FIRE_TEST_DEFINITION
-                .sandBlocker;
-
-        const sand =
-            new TilingSprite({
-                texture:
-                    AssetLoader.getTexture(
-                        this.courseVisualDefinition
-                            .sandTextureKey,
-                    ),
-                width:
-                    definition.width,
-                height:
-                    definition.height,
-            });
-
-        sand.position.set(
-            definition.x,
-            definition.y,
-        );
-
-        sand.tileScale.set(
-            this.courseVisualDefinition
-                .sandTileScale,
-        );
-
-        sand.alpha =
-            this.courseVisualDefinition
-                .terrainAlpha;
-
-        this.presentationLayers
-            .getLayer(
-                WorldRenderLayer.BaseTerrain,
-            )
-            .addChild(
-                sand,
-            );
     }
 
     // -------------------------------------------------------

@@ -100,6 +100,8 @@ export interface FireParticleVfxDefinition {
         readonly enabled: boolean;
         readonly startLifetimeFraction: number;
         readonly endLifetimeFraction: number;
+        readonly maximumCutoffFromBottom: number;
+        readonly edgeFeather: number;
     };
 }
 

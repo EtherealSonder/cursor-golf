@@ -61,7 +61,6 @@ export class BallWindSuctionDeathValidation {
         captureSystem.registerTarget({
             id: "d7-validation-ball",
             body,
-            captureMode: "instant",
             beginCapture: (): void => {
                 deathRequests += 1;
             },

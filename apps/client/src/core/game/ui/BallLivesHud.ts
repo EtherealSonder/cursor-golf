@@ -38,7 +38,6 @@ export class BallLivesHud {
         Sprite[] = [];
 
     private currentLives = 0;
-    private maximumLives = 0;
     private initializedLives = false;
 
     private readonly lifeLossAnimations =
@@ -205,7 +204,6 @@ export class BallLivesHud {
         if (!this.initializedLives) {
             this.initializedLives = true;
             this.currentLives = clampedLives;
-            this.maximumLives = visibleSlots;
 
             for (let index = 0; index < this.lifeBalls.length; index += 1) {
                 this.sockets[index].visible = index < visibleSlots;
@@ -238,7 +236,6 @@ export class BallLivesHud {
         }
 
         this.currentLives = clampedLives;
-        this.maximumLives = visibleSlots;
 
         for (let index = 0; index < this.lifeBalls.length; index += 1) {
             this.sockets[index].visible = index < visibleSlots;

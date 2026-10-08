@@ -197,25 +197,18 @@ export class HoseWaterVfx {
          * terminal point so the visible jet does not jump backward for the
          * frame(s) between successive impacts.
          */
-        let newestImpact:
-            {
-                readonly x: number;
-                readonly y: number;
-                readonly ageSeconds: number;
-            } |
-            null =
-            null;
+        const impactHolder: { value: { readonly x: number; readonly y: number; readonly ageSeconds: number } | null } = { value: null };
 
         this.airborneWaterSystem
             .forEachRecentPresentationImpact(
                 sourceId,
                 (impact): void => {
                     if (
-                        newestImpact === null ||
+                        impactHolder.value === null ||
                         impact.ageSeconds <
-                        newestImpact.ageSeconds
+                        impactHolder.value.ageSeconds
                     ) {
-                        newestImpact = {
+                        impactHolder.value = {
                             x:
                                 impact.positionX,
                             y:
@@ -227,6 +220,7 @@ export class HoseWaterVfx {
                 },
             );
 
+        const newestImpact = impactHolder.value;
         if (
             newestImpact !==
             null &&

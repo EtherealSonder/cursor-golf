@@ -15,7 +15,7 @@ export class ExplosionInstance {
     private readonly embers: Particle[] = [];
     private readonly blastRingTextures: ExplosionTextureSet["blastRings"];
     private detonationSequence = 0;
-    private elapsed = VFX.totalDuration;
+    private elapsed: number = VFX.totalDuration;
     private active = false;
     public constructor(textures: ExplosionTextureSet) {
         this.container.label = "ExplosionVfx:instance";

@@ -117,6 +117,7 @@ export class WaterImpactIntensityValidation {
         return {
             sourceId: "8i7b-validation",
             emissionOrdinal: 7,
+            sequence: 7,
             positionX: 100,
             positionY: 200,
             velocityX,

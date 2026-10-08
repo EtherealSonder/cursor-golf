@@ -1304,8 +1304,7 @@ export class WaterGroundInteractionValidation {
                         ),
                     );
 
-                const initialWater =
-                    this.waterField
+                this.waterField
                         .injectWater(
                             waterCenter.x,
                             waterCenter.y,
@@ -1442,8 +1441,7 @@ export class WaterGroundInteractionValidation {
                 const eastIndex =
                     index + 1;
 
-                const addedMoisture =
-                    this.environmentField
+                this.environmentField
                         .addMoistureByIndex(
                             index,
                             0.60,
@@ -2301,7 +2299,7 @@ export class WaterGroundInteractionValidation {
         );
 
         this.moistureSurfaceBridge
-            .update();
+            .update(1 / 60);
 
         const middleFromDryState =
             this.surfaceSystem
@@ -2321,7 +2319,7 @@ export class WaterGroundInteractionValidation {
         );
 
         this.moistureSurfaceBridge
-            .update();
+            .update(1 / 60);
 
         const wetState =
             this.surfaceSystem
@@ -2340,7 +2338,7 @@ export class WaterGroundInteractionValidation {
         );
 
         this.moistureSurfaceBridge
-            .update();
+            .update(1 / 60);
 
         const middleFromWetState =
             this.surfaceSystem
@@ -2363,7 +2361,7 @@ export class WaterGroundInteractionValidation {
         );
 
         this.moistureSurfaceBridge
-            .update();
+            .update(1 / 60);
 
         const dryStateAfter =
             this.surfaceSystem
@@ -2484,7 +2482,7 @@ export class WaterGroundInteractionValidation {
                 ),
             );
 
-        sandBridge.update();
+        sandBridge.update(1 / 60);
 
         const sandWetState =
             sandSurfaceSystem
@@ -2518,7 +2516,7 @@ export class WaterGroundInteractionValidation {
                 ),
             );
 
-        sandBridge.update();
+        sandBridge.update(1 / 60);
 
         const sandDryState =
             sandSurfaceSystem
@@ -2661,7 +2659,7 @@ export class WaterGroundInteractionValidation {
                 ),
             );
 
-        scorchBridge.update();
+        scorchBridge.update(1 / 60);
 
         const scorchSampleAfterWater =
             scorchSurfaceSystem
@@ -2746,7 +2744,7 @@ export class WaterGroundInteractionValidation {
                 explicitSurfaceSystem,
             );
 
-        explicitBridge.update();
+        explicitBridge.update(1 / 60);
 
         const explicitStatePrecedencePassed =
             explicitSurfaceSystem
@@ -2787,7 +2785,7 @@ export class WaterGroundInteractionValidation {
             );
 
         this.moistureSurfaceBridge
-            .update();
+            .update(1 / 60);
 
         const resetWasWet =
             this.surfaceSystem
@@ -2929,7 +2927,7 @@ export class WaterGroundInteractionValidation {
                         );
 
                     this.moistureSurfaceBridge
-                        .update();
+                        .update(1 / 60);
                 }
 
                 const wetAfterWatering =
@@ -2980,7 +2978,7 @@ export class WaterGroundInteractionValidation {
                         );
 
                     this.moistureSurfaceBridge
-                        .update();
+                        .update(1 / 60);
                 }
 
                 const wetInHysteresisBand =
@@ -3034,7 +3032,7 @@ export class WaterGroundInteractionValidation {
                         );
 
                     this.moistureSurfaceBridge
-                        .update();
+                        .update(1 / 60);
                 }
 
                 const dryAfterDrying =

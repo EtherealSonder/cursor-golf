@@ -8,7 +8,7 @@ import {
 export class BallHeatOverlay {
     private readonly graphic = new Graphics();
 
-    constructor(private readonly ball: Ball) {
+    constructor(ball: Ball) {
         const definition = DEFAULT_BALL_FIRE_HEAT_DEFINITION;
         this.graphic
             .circle(0, 0, ball.getRadius())

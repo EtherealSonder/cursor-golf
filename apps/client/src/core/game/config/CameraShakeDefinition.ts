@@ -113,7 +113,7 @@ export interface ShotCameraFeedbackDefinition {
     /**
      * Nonlinear power response.
      *
-     * A value of 2 means amplitude grows with power².
+     * A value of 2 means amplitude grows with powerÂ².
      */
     readonly powerExponent: number;
 

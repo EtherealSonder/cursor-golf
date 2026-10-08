@@ -14,7 +14,7 @@ export interface FireIgnitionDefinition {
     readonly minimumHeatForIgnition: number;
 
     /**
-     * Final heat × fuel × dryness score required for ignition.
+     * Final heat Ã— fuel Ã— dryness score required for ignition.
      */
     readonly minimumIgnitionScore: number;
 

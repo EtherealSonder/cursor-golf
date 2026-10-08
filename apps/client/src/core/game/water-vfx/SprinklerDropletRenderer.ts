@@ -423,12 +423,6 @@ export class SprinklerDropletRenderer {
                 0.75 + t * 0.25;
         }
 
-        const variationMultiplier =
-            this.lerp(
-                1,
-                this.definition.downstreamVariationMultiplier,
-                this.clamp01(downstreamProgress),
-            );
 
         /*
          * 8I-7A.1 gives each packet restrained deterministic individuality.

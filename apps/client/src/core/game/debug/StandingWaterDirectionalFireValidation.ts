@@ -95,6 +95,7 @@ export class StandingWaterDirectionalFireValidation {
                 .updateStandingWaterDirectionalFire(
                     waterField,
                     fireSourceSystem,
+                    1 / 60,
                 );
         };
 
@@ -315,7 +316,8 @@ export class StandingWaterDirectionalFireValidation {
             .updateStandingWaterDirectionalFire(
                 waterField,
                 fireSourceSystem,
-            );
+                    1 / 60,
+                );
 
         checks.push({
             name:

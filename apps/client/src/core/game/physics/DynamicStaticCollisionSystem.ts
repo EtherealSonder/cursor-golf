@@ -1,3 +1,5 @@
+import type { StaticObstacleDefinition } from "../config/ObstacleDefinition";
+
 import type {
     DynamicCollidable,
 } from "./DynamicCollidable";

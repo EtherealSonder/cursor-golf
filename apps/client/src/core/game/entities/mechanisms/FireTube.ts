@@ -67,7 +67,6 @@ export class FireTube extends Entity {
 
     private readonly initialPositionX: number;
     private readonly initialPositionY: number;
-    private readonly initialRotationRadians: number;
 
     private readonly fireSourceSystem:
         FireSourceSystem;
@@ -119,7 +118,6 @@ export class FireTube extends Entity {
         this.sourceId = sourceId;
         this.initialPositionX = positionX;
         this.initialPositionY = positionY;
-        this.initialRotationRadians = rotationRadians;
         this.rotationRadians = rotationRadians;
         this.fireSourceSystem = fireSourceSystem;
         this.definition = definition;

@@ -22,5 +22,13 @@
     "erasableSyntaxOnly": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/core/game/fire-vfx/fire_vfx_unused/**",
+    "src/core/game/fire-vfx/ScorchFieldTextureGenerator.ts",
+    "src/core/game/fire-vfx/ScorchPatternSampler.ts",
+    "src/core/game/fire-vfx/TopDownGroundFireRenderer.ts",
+    "src/core/rendering/WaterSurfaceRenderer.ts",
+    "src/core/rendering/WetSurfaceVisualizer.ts"
+  ]
 }

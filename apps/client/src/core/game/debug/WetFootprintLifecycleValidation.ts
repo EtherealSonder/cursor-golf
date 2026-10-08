@@ -172,7 +172,7 @@ export class WetFootprintLifecycleValidation {
             );
 
         this.bridge
-            .update();
+            .update(1 / 60);
 
         const maximumWetCellCount =
             this.bridge
@@ -234,7 +234,7 @@ export class WetFootprintLifecycleValidation {
         }
 
         this.bridge
-            .update();
+            .update(1 / 60);
 
         const wetCellsAfterPuddleRemoval =
             this.bridge
@@ -267,7 +267,7 @@ export class WetFootprintLifecycleValidation {
                 );
 
             this.bridge
-                .update();
+                .update(1 / 60);
         }
 
         const wetCellsAfterShortDrying =

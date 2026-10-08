@@ -81,19 +81,6 @@ export class WaterDepositDebugController {
             this.depositAccumulator = 0;
         };
 
-    private readonly onContextMenuBound =
-        (
-            event: MouseEvent,
-        ): void => {
-            if (
-                this.definition
-                    .interactiveDepositEnabled
-            ) {
-                return;
-            }
-
-            event.preventDefault();
-        };
 
     public constructor(
         private readonly canvas:

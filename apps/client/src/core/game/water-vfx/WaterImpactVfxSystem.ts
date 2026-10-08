@@ -1,4 +1,4 @@
-import { Container, type Texture } from "pixi.js";
+import { Container } from "pixi.js";
 import { DEFAULT_WATER_IMPACT_VFX_DEFINITION, type WaterImpactVfxDefinition } from "../config/WaterImpactVfxDefinition";
 import { WaterImpactTier, type WaterImpactPresentationProfile } from "./WaterImpactIntensityModel";
 import {

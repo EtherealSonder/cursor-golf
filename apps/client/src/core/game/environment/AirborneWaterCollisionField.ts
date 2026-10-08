@@ -31,8 +31,8 @@ export class AirborneWaterCollisionField {
     private candidateGeneration = 1;
 
     public hasCircleObstacle(id: string): boolean {
-        return this.obstacles.some(
-            (obstacle) => obstacle.id === id && obstacle.shape === "circle",
+        return this.shapes.some(
+            (obstacle) => obstacle.colliderId === id && obstacle.kind === "circle",
         );
     }
 

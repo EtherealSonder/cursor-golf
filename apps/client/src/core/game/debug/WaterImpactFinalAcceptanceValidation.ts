@@ -216,21 +216,9 @@ export class WaterImpactFinalAcceptanceValidation {
                 D.hoseObstaclePositionSmoothing,
             );
 
-        groundContact.addImpact(
-            100,
-            100,
-            200,
-            0,
-            0.2,
-        );
+        groundContact.addImpact({ sourceId: "validation", emissionOrdinal: 0, sequence: 0, positionX: 100, positionY: 100, velocityX: 200, velocityY: 0, waterAmount: 0.2, isStaticCollision: false, ageSeconds: 0 });
 
-        obstacleContact.addImpact(
-            200,
-            100,
-            -200,
-            0,
-            0.2,
-        );
+        obstacleContact.addImpact({ sourceId: "validation", emissionOrdinal: 0, sequence: 0, positionX: 200, positionY: 100, velocityX: -200, velocityY: 0, waterAmount: 0.2, isStaticCollision: false, ageSeconds: 0 });
 
         groundContact.reset();
         obstacleContact.reset();
@@ -269,8 +257,8 @@ export class WaterImpactFinalAcceptanceValidation {
         checks.push(
             [
                 "Impact tier model remains presentation classification",
-                WaterImpactTier.Fine !==
-                    WaterImpactTier.Heavy,
+                Object.values(WaterImpactTier).includes(WaterImpactTier.Fine) &&
+                    Object.values(WaterImpactTier).includes(WaterImpactTier.Heavy),
             ],
             [
                 "Shared impact foundation is ready for downstream consumers",

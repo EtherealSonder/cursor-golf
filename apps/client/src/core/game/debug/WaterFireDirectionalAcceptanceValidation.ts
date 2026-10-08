@@ -84,7 +84,7 @@ export class WaterFireDirectionalAcceptanceValidation {
 
         sources.beginDirectionalWaterSuppressionFrame();
         water.injectWater(600, 600, 0.08);
-        const puddle = interaction.updateStandingWaterDirectionalFire(water, sources);
+        const puddle = interaction.updateStandingWaterDirectionalFire(water, sources, 1 / 60);
         checks.push({
             name: "Puddle suppresses Fire jet",
             passed:

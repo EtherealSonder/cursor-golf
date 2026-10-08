@@ -2,9 +2,6 @@ import {
     DEFAULT_BALL_WATER_INTERACTION_DEFINITION,
 } from "../config/BallWaterInteractionDefinition";
 
-import {
-    DEFAULT_BALL_WATER_SPLASH_DEFINITION,
-} from "../config/BallWaterSplashDefinition";
 
 import {
     BallWaterInteraction,

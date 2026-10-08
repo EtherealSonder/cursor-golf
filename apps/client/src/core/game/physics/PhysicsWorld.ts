@@ -175,6 +175,7 @@ export class PhysicsWorld {
             () => {
                 const circle = getCircle();
                 return {
+                    id,
                     shape: "circle",
                     positionX: circle.positionX,
                     positionY: circle.positionY,

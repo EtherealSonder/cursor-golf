@@ -129,7 +129,7 @@ export class InputManager {
      * Game initialization.
      *
      * In fixed-resolution mode this normally receives
-     * the same 1200 × 720 values once during startup.
+     * the same 1200 Ã— 720 values once during startup.
      */
     public setViewportSize(
         viewportWidth:
@@ -512,10 +512,10 @@ export class InputManager {
      * Example:
      *
      * Displayed canvas:
-     * 1500 × 650
+     * 1500 Ã— 650
      *
      * Logical viewport:
-     * 1200 × 720
+     * 1200 Ã— 720
      *
      * Browser X and Y are scaled independently back
      * into the fixed logical coordinate system.

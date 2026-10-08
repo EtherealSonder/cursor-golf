@@ -70,16 +70,16 @@ export class HydrantHoseRuntimeValidation {
     private observedStateTime =
         0;
 
-    private observedPressureBuilding =
+    public observedPressureBuilding =
         false;
 
-    private observedActive =
+    public observedActive =
         false;
 
-    private observedPressureReleasing =
+    public observedPressureReleasing =
         false;
 
-    private observedReturnToInactive =
+    public observedReturnToInactive =
         false;
 
     private initialCompletedCycleCount =

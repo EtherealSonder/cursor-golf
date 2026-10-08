@@ -130,7 +130,7 @@ export interface WindDefinition {
      *
      * base acceleration:
      *
-     * 80 × 3 = 240 px/s²
+     * 80 Ã— 3 = 240 px/sÂ²
      *
      * This conversion affects physics only. The HUD
      * continues displaying the original 80 km/h.
@@ -149,7 +149,7 @@ export interface WindDefinition {
      * maximumStrength = 100 km/h
      * accelerationPerKph = 3
      *
-     * maximumAcceleration = 300 px/s²
+     * maximumAcceleration = 300 px/sÂ²
      *
      * Units: pixels per second squared.
      */
@@ -296,15 +296,15 @@ export const DEFAULT_WIND_DEFINITION:
     // -------------------------------------------------------------------------
 
     /*
-     * Every displayed 1 km/h produces 3 px/s² of
+     * Every displayed 1 km/h produces 3 px/sÂ² of
      * base game acceleration.
      *
      * Examples:
      *
-     * 20 km/h = 60 px/s²
-     * 50 km/h = 150 px/s²
-     * 80 km/h = 240 px/s²
-     * 100 km/h = 300 px/s²
+     * 20 km/h = 60 px/sÂ²
+     * 50 km/h = 150 px/sÂ²
+     * 80 km/h = 240 px/sÂ²
+     * 100 km/h = 300 px/sÂ²
      */
     accelerationPerKph: 3,
 
@@ -313,9 +313,9 @@ export const DEFAULT_WIND_DEFINITION:
      *
      * This matches:
      *
-     * maximumStrength × accelerationPerKph
+     * maximumStrength Ã— accelerationPerKph
      *
-     * 100 × 3 = 300 px/s²
+     * 100 Ã— 3 = 300 px/sÂ²
      */
     maximumAcceleration: 300,
 

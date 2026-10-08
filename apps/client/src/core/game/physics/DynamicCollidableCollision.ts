@@ -1,7 +1,5 @@
 import type {
-    DynamicCircleObstacleDefinition,
     DynamicObstacleDefinition,
-    DynamicRectangleObstacleDefinition,
 } from "../config/ObstacleDefinition";
 
 import type {

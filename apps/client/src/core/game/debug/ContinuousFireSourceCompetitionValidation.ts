@@ -338,6 +338,7 @@ export class ContinuousFireSourceCompetitionValidation {
                 .updateStandingWaterDirectionalFire(
                     waterField,
                     fireSourceSystem,
+                    1 / 60,
                 );
 
         const puddleSuppressedLength =
@@ -440,6 +441,7 @@ export class ContinuousFireSourceCompetitionValidation {
                 .updateStandingWaterDirectionalFire(
                     waterField,
                     fireSourceSystem,
+                    1 / 60,
                 );
 
         checks.push({

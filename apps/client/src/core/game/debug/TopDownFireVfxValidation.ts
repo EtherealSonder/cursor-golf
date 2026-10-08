@@ -14,14 +14,14 @@ export class TopDownFireVfxValidation {
             ["Ground footprint orientation", d.ground.footprintOriented && d.ground.orientationNeutralLocalShapes],
             ["Ground has no global screen-up grammar", !d.perspective.screenUpIsFlameDirection && !d.perspective.verticalBaseToTipGrammar && !d.ground.dominantGlobalDirection],
             ["Ground local turbulence contract", d.ground.localRadialTurbulence && d.ground.denseOverlappingClusters],
-            ["Ground thermal nesting contract", d.ground.hotCentersInsideCoolerStructures && r.thermalNesting],
+            ["Ground thermal nesting contract", d.ground.hotCentersInsideCoolerStructures && r.clearLargeShapes],
             ["Directional macro-flow contract", d.directional.sourceToTargetMacroFlow],
             ["Directional continuous-plume contract", d.directional.continuousBody && !d.directional.chainOfFlameSprites],
             ["Directional local turbulence contract", d.directional.irregularLateralTurbulence && d.directional.denseOverlappingHotRegions],
             ["Directional breakup contract", d.directional.progressiveEdgeBreakup && d.directional.progressiveEndBreakup],
-            ["Shared crisp rendering contract", d.shared.hardAlpha && d.shared.flatColor && !d.shared.softGlow && !d.shared.featheredEdges && !d.shared.volumetricSmoke && r.pureTopDownPerspective],
+            ["Shared crisp rendering contract", d.shared.hardAlpha && d.shared.flatColor && !d.shared.softGlow && !d.shared.featheredEdges && !d.shared.volumetricSmoke && r.crispAlpha],
             ["Legacy Wind-tongue model superseded", d.legacy.windTongueGroundModelSuperseded && d.legacy.rootedVerticalFlameGrammarSuperseded && !d.perspective.wholeSpriteWindLean],
-            ["Presentation-only authority", d.shared.presentationOnly && GROUND_FIRE_PRESENTATION_CONTRACT.topDownVisualModel === d && DIRECTIONAL_FIRE_PRESENTATION_CONTRACT.topDownVisualModel === d],
+            ["Presentation-only authority", d.shared.presentationOnly && GROUND_FIRE_PRESENTATION_CONTRACT.readsAuthoritativeState && DIRECTIONAL_FIRE_PRESENTATION_CONTRACT.readsAuthoritativeState && !GROUND_FIRE_PRESENTATION_CONTRACT.ownsHeat && !DIRECTIONAL_FIRE_PRESENTATION_CONTRACT.ownsHeat],
         ];
 
         console.log("[F-4] REFERENCE-LOCKED TOP-DOWN FIRE CONTRACT");

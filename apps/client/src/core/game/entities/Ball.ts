@@ -73,9 +73,6 @@ import {
     BallWaterSampler,
 } from "../physics/water/BallWaterSampler";
 
-import type {
-    BallWaterSample,
-} from "../physics/water/BallWaterSampler";
 
 import {
     BallWaterInteraction,
@@ -297,9 +294,6 @@ export class Ball extends Entity {
 
     /** Continuous meaningful Water contact for future hazard/gameplay consumers. */
     private currentStandingWaterContactTime = 0;
-
-    private lastWaterSample:
-        BallWaterSample | null = null;
 
     private lastStandingWaterDebugSnapshot:
         BallStandingWaterDebugSnapshot | null = null;
@@ -648,7 +642,6 @@ export class Ball extends Entity {
             this.normalScale;
 
         this.tensionPower = 0;
-        this.outOfBoundsVisualScale = 1;
 
         this.applyVisualScale();
 
@@ -1838,7 +1831,6 @@ export class Ball extends Entity {
         surfaceResistance: number,
     ): BallWaterInteractionState | null {
         if (!this.ballWaterSampler || !this.ballWaterInteraction) {
-            this.lastWaterSample = null;
             this.lastWaterInteractionState = null;
             this.lastWaterContactProfile = null;
             this.currentStandingWaterContactTime = 0;
@@ -1871,7 +1863,6 @@ export class Ball extends Entity {
         }
 
         const state = this.ballWaterInteraction.update(sample, deltaTime);
-        this.lastWaterSample = sample;
         this.lastWaterInteractionState = state;
 
         /*
@@ -1955,7 +1946,6 @@ export class Ball extends Entity {
         this.ballWaterSplashSystem?.reset();
         this.splashCount = 0;
         this.lastSplashEvent = null;
-        this.lastWaterSample = null;
         this.lastWaterInteractionState = null;
         this.lastWaterContactProfile = null;
         this.currentStandingWaterContactTime = 0;

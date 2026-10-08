@@ -825,7 +825,7 @@ export class Robot extends Entity {
             this.translate(moveX * advance.distance, moveY * advance.distance);
         } else {
             this.stuckSeconds += deltaTime;
-            this.locomotion.reset();
+            locomotion.reset();
         }
     }
 

@@ -30,13 +30,7 @@ export class WaterImpactLifecycleValidation {
                 D.hoseGroundPositionSmoothing,
             );
 
-        groundContact.addImpact(
-            120,
-            180,
-            240,
-            20,
-            0.18,
-        );
+        groundContact.addImpact({ sourceId: "validation", emissionOrdinal: 0, sequence: 0, positionX: 120, positionY: 180, velocityX: 240, velocityY: 20, waterAmount: 0.18, isStaticCollision: false, ageSeconds: 0 });
 
         const groundActiveBeforeLoss =
             groundContact.isActive();
@@ -55,13 +49,7 @@ export class WaterImpactLifecycleValidation {
                 D.hoseObstaclePositionSmoothing,
             );
 
-        obstacleContact.addImpact(
-            300,
-            220,
-            -190,
-            35,
-            0.16,
-        );
+        obstacleContact.addImpact({ sourceId: "validation", emissionOrdinal: 0, sequence: 0, positionX: 300, positionY: 220, velocityX: -190, velocityY: 35, waterAmount: 0.16, isStaticCollision: false, ageSeconds: 0 });
 
         const obstacleActiveBeforeLoss =
             obstacleContact.isActive();
@@ -74,22 +62,10 @@ export class WaterImpactLifecycleValidation {
             obstacleActiveBeforeLoss &&
             !obstacleContact.isActive();
 
-        groundContact.addImpact(
-            10,
-            20,
-            30,
-            40,
-            0.2,
-        );
+        groundContact.addImpact({ sourceId: "validation", emissionOrdinal: 0, sequence: 0, positionX: 10, positionY: 20, velocityX: 30, velocityY: 40, waterAmount: 0.2, isStaticCollision: false, ageSeconds: 0 });
         groundContact.reset();
 
-        obstacleContact.addImpact(
-            50,
-            60,
-            70,
-            80,
-            0.2,
-        );
+        obstacleContact.addImpact({ sourceId: "validation", emissionOrdinal: 0, sequence: 0, positionX: 50, positionY: 60, velocityX: 70, velocityY: 80, waterAmount: 0.2, isStaticCollision: false, ageSeconds: 0 });
         obstacleContact.reset();
 
         const contactsReset =

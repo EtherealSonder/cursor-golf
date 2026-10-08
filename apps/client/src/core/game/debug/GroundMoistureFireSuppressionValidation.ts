@@ -1,6 +1,5 @@
 import type {
     FireManager,
-    FireMoistureResponse,
 } from "../environment/FireManager";
 
 interface MoistureCase {

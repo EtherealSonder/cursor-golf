@@ -1,5 +1,5 @@
 import { loadLevelDefinition } from "./LevelLoader";
-import type { RuntimeLevelDefinition, RuntimeLevelObjectPlacement } from "./LevelLoader";
+import type { RuntimeLevelDefinition, RuntimeLevelObjectPlacement } from "./LevelRuntimeDefinition";
 
 export interface LevelDevRegressionIssue {
     readonly path: string;

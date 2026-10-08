@@ -69,7 +69,7 @@ import fireTopdownFragment03Texture from "../../assets/textures/fire/masks/topdo
 
 import fireNoiseCloudTexture from "../../assets/textures/fire/noise/fire_noise_cloud.png";
 import fireNoisePerlinTexture from "../../assets/textures/fire/noise/fire_noise_perlin.png";
-import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG";
+import fireNoiseFineTexture from "../../assets/textures/fire/noise/fire_noise_02.PNG?url";
 
 import windStreak01Texture from "../../assets/textures/wind/masks/wind_streak_01.png";
 import windStreak02Texture from "../../assets/textures/wind/masks/wind_streak_02.png";

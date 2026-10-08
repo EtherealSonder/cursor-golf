@@ -1,6 +1,5 @@
 import type { Ball } from "../entities/Ball";
 import type { DirectionalBumper } from "../entities/mechanisms/DirectionalBumper";
-import type { DynamicCollidable } from "./DynamicCollidable";
 import { detectDynamicCollidableAgainstFixedCollision } from "./DynamicCollidableCollision";
 import type { PhysicsWorld } from "./PhysicsWorld";
 
@@ -91,7 +90,7 @@ export class DirectionalBumperCollisionSystem {
             outgoingX *= scale; outgoingY *= scale;
         }
         ball.applyDirectionalBumperVelocity(outgoingX, outgoingY);
-        this.publishPoweredImpact(bumper, collision.contactX, collision.contactY, collision.normalX, collision.normalY, outgoingX, outgoingY);
+        this.publishPoweredImpact( collision.contactX, collision.contactY, collision.normalX, collision.normalY, outgoingX, outgoingY);
         this.lastDiagnostic = { physicalContact: true, poweredHit: true, reason: "powered-hit" };
         return true;
     }
@@ -141,7 +140,7 @@ export class DirectionalBumperCollisionSystem {
             }
             body.applyImpulseAtWorldPoint((targetVX - vx) * mass, (targetVY - vy) * mass, manifold.contactPointX, manifold.contactPointY);
             body.notifyExternalImpact?.({ sourceKind: "other", sourceId: shape.id, positionX: manifold.contactPointX, positionY: manifold.contactPointY });
-            this.publishPoweredImpact(bumper, manifold.contactPointX, manifold.contactPointY, manifold.normalX, manifold.normalY, targetVX, targetVY);
+            this.publishPoweredImpact( manifold.contactPointX, manifold.contactPointY, manifold.normalX, manifold.normalY, targetVX, targetVY);
             poweredCount += 1;
         }
         this.activeDynamicContacts.clear();
@@ -149,7 +148,7 @@ export class DirectionalBumperCollisionSystem {
         return poweredCount;
     }
 
-    private publishPoweredImpact(bumper: DirectionalBumper, x: number, y: number, normalX: number, normalY: number, outgoingX: number, outgoingY: number): void {
+    private publishPoweredImpact( x: number, y: number, normalX: number, normalY: number, outgoingX: number, outgoingY: number): void {
         this.lastContact = { x, y, normalX, normalY, outgoingX, outgoingY };
         this.pendingPoweredImpact = this.lastContact;
     }

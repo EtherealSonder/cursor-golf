@@ -1,6 +1,5 @@
 import type { RadialBumperDefinition } from "../config/RadialBumperDefinition";
 import type { RadialBumper } from "../entities/mechanisms/RadialBumper";
-import type { DynamicCollidable } from "./DynamicCollidable";
 import { detectDynamicCollidableAgainstFixedCollision } from "./DynamicCollidableCollision";
 import type { FixedCircleCollisionShape } from "./DynamicCollidableCollision";
 import type { PhysicsWorld } from "./PhysicsWorld";
