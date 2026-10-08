@@ -1,3 +1,5 @@
+import { containsCoursePoint } from "../level/CourseGeometryQueries";
+import type { GeneratedCourseGeometry } from "../level/LevelRuntimeDefinition";
 import type { GameplayCourseDefinition } from "../config/GameplayCourseDefinition";
 
 export type BallOutOfBoundsState = "inside" | "deathRequested";
@@ -17,6 +19,7 @@ export class BallOutOfBoundsController {
 
     public constructor(
         private readonly definition: GameplayCourseDefinition,
+        private readonly polygonGeometry?: GeneratedCourseGeometry,
     ) {}
 
     public update(
@@ -45,6 +48,9 @@ export class BallOutOfBoundsController {
     }
 
     public isInsideGameplayCourse(x: number, y: number): boolean {
+        if (this.polygonGeometry) {
+            return containsCoursePoint(this.polygonGeometry, { x, y });
+        }
         return (
             x >= this.definition.minimumX &&
             x <= this.definition.maximumX &&

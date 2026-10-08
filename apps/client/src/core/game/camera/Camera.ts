@@ -402,6 +402,18 @@ export class Camera {
             );
     }
 
+    /** Smoothly frame a shot-driven Ball without bypassing technical bounds. */
+    public followWorldPoint(x: number, y: number, dt: number, response: number): void {
+        this.clearMovementIntent();
+        this.velocityX = 0;
+        this.velocityY = 0;
+        const factor = 1 - Math.exp(-response * Math.max(0, dt));
+        const targetX = x - this.viewportWidth / (2 * this.currentZoom);
+        const targetY = y - this.viewportHeight / (2 * this.currentZoom);
+        this.setPosition(this.positionX + (targetX - this.positionX) * factor,
+                         this.positionY + (targetY - this.positionY) * factor);
+    }
+
     public translate(
         deltaX:
             number,
@@ -1178,6 +1190,9 @@ export class Camera {
             maximum -
             minimum;
 
+        // When zoom makes the visible viewport larger than a level's
+        // technical envelope, lock the view to the envelope midpoint.
+        // This preserves zoom anchoring and prevents inverted clamp ranges.
         if (
             courseSize <=
             viewportSize

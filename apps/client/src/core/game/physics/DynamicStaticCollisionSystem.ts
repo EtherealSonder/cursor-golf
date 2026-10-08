@@ -190,7 +190,7 @@ export class DynamicStaticCollisionSystem {
                 positionY:
                     obstacle.positionY,
                 rotationRadians:
-                    0,
+                    obstacle.rotationRadians ?? 0,
                 width:
                     obstacle.width,
                 height:

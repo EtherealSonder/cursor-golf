@@ -62,6 +62,13 @@ export class Club extends Entity {
 
     private swingActive = false;
     private recoveryActive = false;
+    private shotHoldActive = false;
+    private reappearPhase: "none" | "return" = "none";
+    private reappearStartX = 0;
+    private reappearStartY = 0;
+    private reappearElapsed = 0;
+    private reappearTargetX = 0;
+    private reappearTargetY = 0;
 
     private swingElapsedTime = 0;
     private recoveryElapsedTime = 0;
@@ -170,6 +177,11 @@ export class Club extends Entity {
         }
 
         if (this.recoveryActive) {
+            if (this.shotHoldActive) return;
+            if (this.reappearPhase !== "none") {
+                this.updateReappearance(safeDeltaTime);
+                return;
+            }
             this.updateRecovery(safeDeltaTime);
         }
     }
@@ -557,6 +569,8 @@ export class Club extends Entity {
 
         this.swingActive = false;
         this.recoveryActive = true;
+        this.shotHoldActive = true;
+        this.reappearPhase = "none";
         this.recoveryElapsedTime = 0;
 
         this.recoveryFollowThroughComplete = false;
@@ -574,6 +588,9 @@ export class Club extends Entity {
 
         this.swingActive = false;
         this.recoveryActive = false;
+        this.shotHoldActive = false;
+        this.reappearPhase = "none";
+        if (this.clubSprite) this.clubSprite.scale.set(this.definition.visual.renderScale);
         this.swingElapsedTime = 0;
         this.recoveryElapsedTime = 0;
 
@@ -612,6 +629,7 @@ export class Club extends Entity {
     public hasCompletedRecovery(): boolean {
 
         if (
+            this.shotHoldActive || this.reappearPhase !== "none" ||
             !this.recoveryActive ||
             !this.recoveryFollowThroughComplete
         ) {
@@ -625,6 +643,40 @@ export class Club extends Entity {
             ) <=
             this.swingDefinition.cursorReturnSnapDistance
         );
+    }
+
+    public beginCursorReappearance(x: number, y: number): void {
+        if (!this.recoveryActive) return;
+        this.shotHoldActive = false;
+        this.reappearPhase = "return";
+        this.reappearElapsed = 0;
+        this.reappearStartX = this.getX();
+        this.reappearStartY = this.getY();
+        this.reappearTargetX = x;
+        this.reappearTargetY = y;
+        this.recoveryCursorX = x;
+        this.recoveryCursorY = y;
+        if (this.clubSprite) {
+            this.clubSprite.scale.set(this.definition.visual.renderScale);
+        }
+    }
+
+    private updateReappearance(dt: number): void {
+        const duration = 0.16;
+        this.reappearElapsed = Math.min(duration, this.reappearElapsed + dt);
+        const t = duration > 0 ? this.reappearElapsed / duration : 1;
+        const eased = 1 - Math.pow(1 - t, 3);
+        // PlayerController refreshes the cursor target every frame.
+        this.reappearTargetX = this.recoveryCursorX;
+        this.reappearTargetY = this.recoveryCursorY;
+        this.setPosition(
+            this.lerp(this.reappearStartX, this.reappearTargetX, eased),
+            this.lerp(this.reappearStartY, this.reappearTargetY, eased),
+        );
+        if (t >= 1) {
+            this.reappearPhase = "none";
+            this.recoveryFollowThroughComplete = true;
+        }
     }
 
     private updateSwing(

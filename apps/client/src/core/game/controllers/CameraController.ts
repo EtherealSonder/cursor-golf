@@ -1,4 +1,4 @@
-﻿import {
+import {
     InputManager,
 } from "../../input/InputManager";
 
@@ -24,6 +24,8 @@ export class CameraController {
 
     private enabled =
         true;
+
+    private shotFollowLocked = false;
 
     constructor(
         private readonly inputManager:
@@ -52,6 +54,11 @@ export class CameraController {
         }
     }
 
+    public setShotFollowLocked(locked: boolean): void {
+        this.shotFollowLocked = locked;
+        if (locked) this.camera.clearMovementIntent();
+    }
+
     public isEnabled():
         boolean {
 
@@ -66,6 +73,7 @@ export class CameraController {
 
         if (
             !this.enabled ||
+            this.shotFollowLocked ||
             !this.inputManager
                 .isPointerInsideTarget()
         ) {

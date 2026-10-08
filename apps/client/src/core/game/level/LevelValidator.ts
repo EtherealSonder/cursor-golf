@@ -1,3 +1,4 @@
+import { pointInPolygon, validatePolygonGeometry } from "./CourseGeometryValidation";
 import {
     isAuthoredTerrainType,
     isLevelCourseSide,
@@ -84,6 +85,10 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
     }
 
     const course = input.course;
+    const isPolygon = course.type === "polygon";
+    if (course.type !== undefined && course.type !== "rectangle" && !isPolygon) {
+        error("UNKNOWN_COURSE_GEOMETRY", "Unknown course geometry type.", "course.type");
+    }
     const width = course.width;
     const height = course.height;
 
@@ -114,6 +119,11 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
         );
     }
 
+    const polygonProblems = isPolygon
+        ? validatePolygonGeometry(course.vertices, Number(width), Number(height)) : [];
+    for (const issue of polygonProblems) error(issue.code, issue.message, issue.path);
+    const validPolygon = isPolygon && polygonProblems.length === 0 && Array.isArray(course.vertices);
+
     if (!Array.isArray(course.openings)) {
         error(
             "INVALID_COURSE_OPENINGS",
@@ -128,6 +138,25 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                 return;
             }
 
+            if (isPolygon) {
+                if (!Number.isInteger(opening.edgeIndex) || !Array.isArray(course.vertices) ||
+                    (opening.edgeIndex as number) < 0 || (opening.edgeIndex as number) >= course.vertices.length) {
+                    error("INVALID_POLYGON_OPENING_EDGE", "Opening edgeIndex is invalid.", `${path}.edgeIndex`);
+                    return;
+                }
+                if (!isFiniteNumber(opening.start) || !isFiniteNumber(opening.end) || opening.start >= opening.end) {
+                    error("INVALID_POLYGON_OPENING_RANGE", "Opening interval must be finite and increasing.", path);
+                    return;
+                }
+                if (validPolygon) {
+                    const a = course.vertices[opening.edgeIndex as number];
+                    const b = course.vertices[((opening.edgeIndex as number) + 1) % course.vertices.length];
+                    const length = Math.hypot(b.x - a.x, b.y - a.y);
+                    if (opening.start < 0 || opening.end > length)
+                        error("POLYGON_OPENING_OUTSIDE_EDGE", "Opening extends beyond polygon edge.", path);
+                }
+                return;
+            }
             if (!isLevelCourseSide(opening.side)) {
                 error("INVALID_COURSE_SIDE", "Course opening has an unknown side.", `${path}.side`);
             }
@@ -159,6 +188,18 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                 }
             }
         });
+        const intervals = new Map<string, {start:number;end:number}[]>();
+        for (const entry of course.openings) {
+            if (!isRecord(entry) || !isFiniteNumber(entry.start) || !isFiniteNumber(entry.end)) continue;
+            const key = isPolygon ? String(entry.edgeIndex) : String(entry.side);
+            const list = intervals.get(key) ?? [];
+            list.push({start:entry.start,end:entry.end}); intervals.set(key,list);
+        }
+        for (const [edge,list] of intervals) {
+            list.sort((a,b)=>a.start-b.start);
+            for (let i=1;i<list.length;i++) if (list[i].start < list[i-1].end)
+                error("OVERLAPPING_COURSE_OPENINGS", `Openings overlap on edge ${edge}.`, "course.openings");
+        }
     }
 
     const validatePoint = (
@@ -180,7 +221,8 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
         }
         if (
             courseDimensionsValid &&
-            (value.x < 0 || value.x > width || value.y < 0 || value.y > height)
+            (value.x < 0 || value.x > width || value.y < 0 || value.y > height ||
+                (validPolygon && !pointInPolygon({x:value.x,y:value.y}, course.vertices as import("./LevelDefinition").LevelPoint[])))
         ) {
             error(
                 `${codePrefix}_OUTSIDE_COURSE`,
@@ -274,7 +316,8 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                 error("INVALID_OBJECT_POSITION", "Object x/y must be finite numbers.", path, objectId);
             } else if (
                 courseDimensionsValid &&
-                (object.x < 0 || object.x > width || object.y < 0 || object.y > height)
+                (object.x < 0 || object.x > width || object.y < 0 || object.y > height ||
+                    (validPolygon && !pointInPolygon({x:object.x,y:object.y}, course.vertices as import("./LevelDefinition").LevelPoint[])))
             ) {
                 error(
                     "OBJECT_OUTSIDE_COURSE",
@@ -293,6 +336,15 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                     }
                     break;
 
+                case "staticMetalBox":
+                    if (!isFiniteNumber(object.width) || object.width <= 0 ||
+                        !isFiniteNumber(object.height) || object.height <= 0) {
+                        error("INVALID_STATIC_BOX_SIZE", "Static metal box width/height must be finite and positive.", path, objectId);
+                    }
+                    if (!isFiniteNumber(object.rotation)) {
+                        error("INVALID_ROTATION", "Static metal box rotation must be finite radians.", `${path}.rotation`, objectId);
+                    }
+                    break;
                 case "rotatingPaddle":
                     if (!isRotatingPaddleDirection(object.direction)) {
                         error("INVALID_PADDLE_DIRECTION", "Unknown rotating paddle direction.", `${path}.direction`, objectId);

@@ -100,6 +100,9 @@ export interface RectangleObstacleDefinition
 
     readonly shape: "rectangle";
 
+    /** Optional orientation of a fixed rectangle in world radians. */
+    readonly rotationRadians?: number;
+
     readonly width: number;
     readonly height: number;
 }

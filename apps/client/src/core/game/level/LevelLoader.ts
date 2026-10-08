@@ -1,3 +1,4 @@
+import { buildCourseGeometry } from "./CourseGeometryBuilder";
 import type { LevelDefinition } from "./LevelDefinition";
 import {
     levelToWorldPosition,
@@ -56,24 +57,18 @@ export function loadLevelDefinition(
         return { ...entry, x: position.x, y: position.y };
     });
 
+    // Includes staticMetalBox centres; width/height/rotation remain authored values.
     const objects: RuntimeLevelObjectPlacement[] = definition.objects.map((entry) => {
         const position = toWorld(entry.x, entry.y);
         return { ...entry, x: position.x, y: position.y } as RuntimeLevelObjectPlacement;
     });
 
-    const openings: RuntimeLevelCourseOpeningDefinition[] = definition.course.openings.map(
-        (opening) => ({
-            ...opening,
-            start: opening.start + (
-                opening.side === "left" || opening.side === "right"
-                    ? options.worldOrigin.y
-                    : options.worldOrigin.x
-            ),
-            end: opening.end + (
-                opening.side === "left" || opening.side === "right"
-                    ? options.worldOrigin.y
-                    : options.worldOrigin.x
-            ),
+    const polygon = definition.course.type === "polygon";
+    const generatedGeometry = buildCourseGeometry(definition.course, options.worldOrigin);
+    const openings: RuntimeLevelCourseOpeningDefinition[] = polygon ? [] : definition.course.openings.map(
+        opening => ({ ...opening,
+            start: opening.start + ((opening.side === "left" || opening.side === "right") ? options.worldOrigin.y : options.worldOrigin.x),
+            end: opening.end + ((opening.side === "left" || opening.side === "right") ? options.worldOrigin.y : options.worldOrigin.x),
         }),
     );
 
@@ -86,10 +81,16 @@ export function loadLevelDefinition(
             name: definition.name,
             worldOrigin: options.worldOrigin,
             course: {
-                minimumX: options.worldOrigin.x,
-                maximumX: options.worldOrigin.x + definition.course.width,
-                minimumY: options.worldOrigin.y,
-                maximumY: options.worldOrigin.y + definition.course.height,
+                generatedGeometry,
+                geometry: polygon ? {
+                    type: "polygon" as const,
+                    vertices: generatedGeometry.vertices,
+                    openings: definition.course.type === "polygon" ? definition.course.openings : [],
+                } : { type: "rectangle" as const },
+                minimumX: polygon ? generatedGeometry.bounds.minimumX : options.worldOrigin.x,
+                maximumX: polygon ? generatedGeometry.bounds.maximumX : options.worldOrigin.x + definition.course.width,
+                minimumY: polygon ? generatedGeometry.bounds.minimumY : options.worldOrigin.y,
+                maximumY: polygon ? generatedGeometry.bounds.maximumY : options.worldOrigin.y + definition.course.height,
                 width: definition.course.width,
                 height: definition.course.height,
                 baseSurface: definition.course.baseSurface,

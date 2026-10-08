@@ -344,5 +344,5 @@ export const DEFAULT_CAMERA_DEFINITION:
     // -------------------------------------------------------
 
     debugActivationBoundaryVisible:
-        true,
+        false,
 };

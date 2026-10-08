@@ -49,17 +49,37 @@ export interface LevelCourseOpeningDefinition {
     readonly end: number;
 }
 
-/**
- * LD-2/V1 intentionally supports rectangular authored courses only.
- * Wall material, thickness, colors, and out-of-bounds timing remain global.
- */
-export interface LevelCourseDefinition {
+/** Legacy rectangular course fields remain valid for LD-6 compatibility. */
+export interface RectangularLevelCourseDefinition {
+    readonly type?: "rectangle";
     readonly width: number;
     readonly height: number;
-    /** Base authored surface covering the complete rectangular course. */
     readonly baseSurface: AuthoredTerrainType;
     readonly openings: readonly LevelCourseOpeningDefinition[];
 }
+
+/** Polygon edges connect vertex i to vertex (i + 1) modulo vertex count.
+ * Opening distances are measured from the edge's starting vertex.
+ */
+export interface PolygonCourseOpeningDefinition {
+    readonly edgeIndex: number;
+    readonly start: number;
+    readonly end: number;
+}
+
+export interface PolygonLevelCourseDefinition {
+    readonly type: "polygon";
+    /** Frame extent in level-local pixels, not necessarily the playable bounds. */
+    readonly width: number;
+    readonly height: number;
+    readonly baseSurface: AuthoredTerrainType;
+    readonly vertices: readonly LevelPoint[];
+    readonly openings: readonly PolygonCourseOpeningDefinition[];
+}
+
+export type LevelCourseDefinition =
+    | RectangularLevelCourseDefinition
+    | PolygonLevelCourseDefinition;
 
 export interface BallPlacement extends LevelPoint {}
 
@@ -120,6 +140,14 @@ export interface RotatingPaddlePlacement extends BaseObjectPlacement {
     readonly direction: RotatingPaddleDirection;
 }
 
+/** Immovable authored metal obstacle; centre-based dimensions in level pixels. */
+export interface StaticMetalBoxPlacement extends BaseObjectPlacement {
+    readonly type: "staticMetalBox";
+    readonly width: number;
+    readonly height: number;
+    readonly rotation: number;
+}
+
 export interface ProximityMinePlacement extends BaseObjectPlacement {
     readonly type: "proximityMine";
 }
@@ -173,6 +201,7 @@ export type LevelObjectPlacement =
     | DirectionalBumperPlacement
     | RotatingPaddlePlacement
     | ProximityMinePlacement
+    | StaticMetalBoxPlacement
     | SmallRockPlacement
     | BoulderPlacement
     | FireRobotPlacement
@@ -184,6 +213,7 @@ export type LevelObjectPlacement =
 // -----------------------------------------------------------------------------
 
 export const LEVEL_DEFINITION_VERSIONS = [1] as const;
+export const LEVEL_COURSE_GEOMETRY_TYPES = ["rectangle", "polygon"] as const;
 export const LEVEL_COURSE_SIDES = ["left", "right", "top", "bottom"] as const;
 export const AUTHORED_TERRAIN_TYPES = ["grass", "sand"] as const;
 export const TERRAIN_PLACEMENT_TYPES = ["rectangle"] as const;
@@ -198,6 +228,7 @@ export const LEVEL_OBJECT_TYPES = [
     "directionalBumper",
     "rotatingPaddle",
     "proximityMine",
+    "staticMetalBox",
     "smallRock",
     "boulder",
     "fireRobot",

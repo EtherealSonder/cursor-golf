@@ -1,3 +1,4 @@
+import type { LevelNavigationBounds } from "../../level/LevelNavigationBounds";
 import type { CourseBoundaryDefinition } from "../../config/CourseBoundaryDefinition";
 import type { RobotInteractionEntry, RobotInteractionRegistry } from "./RobotInteractionRegistry";
 
@@ -10,6 +11,7 @@ export class RobotNavigationQuery {
         private readonly registry: RobotInteractionRegistry,
         private readonly courseBoundary: CourseBoundaryDefinition,
         private readonly excludedId?: string,
+        private readonly playableBounds?: LevelNavigationBounds,
     ) {}
 
     public findDestination(centerX: number, centerY: number, roamRadius: number, clearanceRadius: number, maximumAttempts: number): RobotDestinationResult {
@@ -64,6 +66,7 @@ export class RobotNavigationQuery {
 
     public isPositionClear(x: number, y: number, clearanceRadius: number): boolean {
         if (x - clearanceRadius < this.courseBoundary.minimumX || x + clearanceRadius > this.courseBoundary.maximumX || y - clearanceRadius < this.courseBoundary.minimumY || y + clearanceRadius > this.courseBoundary.maximumY) return false;
+        if (this.playableBounds && !this.playableBounds.containsCircle(x, y, clearanceRadius)) return false;
         for (const blocker of this.registry.getNavigationBlockers()) {
             if (blocker.id === this.excludedId) continue;
             if (this.intersects(x, y, clearanceRadius, blocker)) return false;

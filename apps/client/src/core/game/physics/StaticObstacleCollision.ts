@@ -148,7 +148,7 @@ function detectStaticCircleRectangleCollision(
             ballRadius,
             obstacle.positionX,
             obstacle.positionY,
-            0,
+            obstacle.rotationRadians ?? 0,
             obstacle.width,
             obstacle.height,
         );

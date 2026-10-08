@@ -5,6 +5,7 @@ import { InputManager } from "../input/InputManager";
 import { Renderer } from "../rendering/Renderer";
 import { AssetLoader } from "../rendering/AssetLoader";
 import { CameraController } from "./controllers/CameraController";
+import { ShotCameraFollowController } from "./camera/ShotCameraFollowController";
 import { PlayerController } from "./controllers/PlayerController";
 
 import type {
@@ -75,6 +76,8 @@ export class Game {
 
     private world:
         World | null = null;
+
+    private readonly shotCameraFollow = new ShotCameraFollowController();
 
     private cameraController:
         CameraController | null = null;
@@ -299,7 +302,9 @@ export class Game {
                     this.lifeLossAnimationTriggered = false;
                     this.world?.beginDeathCameraFocus();
                     this.playerController?.reset();
-                    this.shotController?.reset();
+                    this.shotCameraFollow.reset();
+        this.shotController?.reset();
+        this.cameraController?.setShotFollowLocked(false);
                     this.world?.setClubVisible(false);
                 }
             },
@@ -684,12 +689,10 @@ export class Game {
             return;
         }
 
-        if (this.playerController) {
-            this.playerController.reset();
-        } else {
-            this.shotController?.reset();
-        }
-
+        this.playerController?.reset();
+        this.shotCameraFollow.reset();
+        this.shotController?.reset();
+        this.cameraController?.setShotFollowLocked(false);
         this.world.resetBall();
     }
 
@@ -712,7 +715,9 @@ export class Game {
         }
 
         this.playerController?.reset();
+        this.shotCameraFollow.reset();
         this.shotController?.reset();
+        this.cameraController?.setShotFollowLocked(false);
         this.world.resetBallForRetry();
 
         return this.ballDeathController.acceptRetry(request);
@@ -930,9 +935,10 @@ export class Game {
 
         this.cameraController
             ?.setEnabled(
-                !(this.shotController
-                    ?.isPreparingShot() ?? false),
+                !(this.shotController?.isPreparingShot() ?? false) &&
+                !this.shotCameraFollow.isActive(),
             );
+        this.cameraController?.setShotFollowLocked(this.shotCameraFollow.isActive());
 
         this.cameraController
             ?.update();
@@ -948,14 +954,26 @@ export class Game {
             );
 
         this.shotController
-            ?.update(
-                deltaTime,
-            );
+            ?.update(deltaTime);
+        if (this.shotController?.consumeSuccessfulContact()) {
+            this.shotCameraFollow.begin();
+            this.cameraController?.setShotFollowLocked(true);
+        }
 
         this.world
-            ?.update(
-                deltaTime,
-            );
+            ?.update(deltaTime);
+        if (this.world) {
+            this.shotCameraFollow.update(deltaTime, this.world.getBall(), this.world.getCamera());
+            if (this.shotCameraFollow.consumeCompletion()) {
+                const mouse = this.world.getCamera().viewportToWorld(
+                    this.inputManager.getMouseX(), this.inputManager.getMouseY());
+                this.world.getClub()?.beginCursorReappearance(mouse.x, mouse.y);
+                this.cameraController?.setShotFollowLocked(false);
+            }
+            if (this.shotCameraFollow.isActive()) {
+                this.world.updateCamera(0);
+            }
+        }
         this.shotPowerBaselineValidation?.update();
 
         }

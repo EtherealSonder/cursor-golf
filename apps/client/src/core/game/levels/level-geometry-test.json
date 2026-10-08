@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "id": "level-geometry-test",
+  "name": "LD-8D Polygon Geometry Test",
+  "course": {
+    "type": "polygon",
+    "width": 1200,
+    "height": 1800,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 100,
+        "y": 100
+      },
+      {
+        "x": 850,
+        "y": 100
+      },
+      {
+        "x": 1050,
+        "y": 300
+      },
+      {
+        "x": 1050,
+        "y": 850
+      },
+      {
+        "x": 760,
+        "y": 850
+      },
+      {
+        "x": 760,
+        "y": 1250
+      },
+      {
+        "x": 1050,
+        "y": 1250
+      },
+      {
+        "x": 1050,
+        "y": 1700
+      },
+      {
+        "x": 100,
+        "y": 1700
+      },
+      {
+        "x": 100,
+        "y": 1050
+      },
+      {
+        "x": 340,
+        "y": 1050
+      },
+      {
+        "x": 340,
+        "y": 650
+      },
+      {
+        "x": 100,
+        "y": 650
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 0,
+        "start": 260,
+        "end": 420
+      },
+      {
+        "edgeIndex": 6,
+        "start": 170,
+        "end": 300
+      },
+      {
+        "edgeIndex": 8,
+        "start": 210,
+        "end": 360
+      }
+    ]
+  },
+  "ball": {
+    "x": 560,
+    "y": 1520
+  },
+  "hole": {
+    "x": 560,
+    "y": 240
+  },
+  "terrain": [],
+  "objects": [
+    {
+      "type": "fireRobot",
+      "id": "geometry-test-fire-robot",
+      "x": 560,
+      "y": 500,
+      "roamRadius": 110
+    },
+    {
+      "type": "smallRock",
+      "id": "geometry-test-rock",
+      "x": 600,
+      "y": 1010,
+      "radius": 15,
+      "seed": 2401
+    }
+  ]
+}

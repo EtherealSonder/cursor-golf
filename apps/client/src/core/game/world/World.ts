@@ -17,9 +17,11 @@ import { BallDrowningController } from "../water/BallDrowningController";
 import { BallExplosionDeathEvaluator } from "../death/BallExplosionDeathEvaluator";
 import { BallExplosionDeathValidation } from "../debug/BallExplosionDeathValidation";
 import { DEFAULT_GAMEPLAY_COURSE_DEFINITION } from "../config/GameplayCourseDefinition";
-import type { GameplayCourseSide } from "../config/GameplayCourseDefinition";
-import level00Dev from "../levels/level-00-dev.json";
+import { requireLevelById } from "../level/LevelRegistry";
+import { assertLevelGeometryRegression } from "../level/LevelGeometryRegression";
 import { loadLevelDefinition } from "../level/LevelLoader";
+import { resolveLevelTechnicalBounds } from "../level/LevelTechnicalBounds";
+import { LevelNavigationBounds } from "../level/LevelNavigationBounds";
 import { runtimeObjectsOfType, type RuntimeLevelDefinition } from "../level/LevelRuntimeDefinition";
 import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
 import { Rock } from "../entities/props/Rock";
@@ -52,7 +54,7 @@ import {
 } from "../controllers/CameraFeedbackController";
 
 import {
-    DEFAULT_COURSE_BOUNDARY_DEFINITION,
+    type CourseBoundaryDefinition,
 } from "../config/CourseBoundaryDefinition";
 
 import {
@@ -465,6 +467,7 @@ export class World {
     private courseBackground:
         TilingSprite | null = null;
 
+    private courseGrassMask: Graphics | null = null;
     private courseOutsideBackground: Graphics | null = null;
     private courseWallGraphics: Graphics | null = null;
     private readonly ballOutOfBoundsController: BallOutOfBoundsController;
@@ -831,6 +834,8 @@ export class World {
 
     /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
     private readonly runtimeLevel: RuntimeLevelDefinition;
+    private readonly technicalBounds: CourseBoundaryDefinition;
+    private readonly navigationBounds: LevelNavigationBounds | undefined;
 
     constructor(
         app:
@@ -851,7 +856,24 @@ export class World {
         this.courseVisualDefinition =
             courseVisualDefinition;
 
-        const levelLoad = loadLevelDefinition(level00Dev, {
+        if (import.meta.env.DEV) {
+            assertLevelGeometryRegression(
+                requireLevelById("level-00-dev"),
+                requireLevelById("level-geometry-test"),
+            );
+            console.info("[LD-8D] Rectangle and polygon geometry regression: PASS");
+        }
+        const requestedLevel = typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("level")
+            : null;
+        // Preserve the historical short URL aliases.
+        const selectedLevelId = requestedLevel === "geometry-test"
+            ? "level-geometry-test"
+            : requestedLevel === "figma-test"
+                ? "level-figma-test"
+                : requestedLevel || "level-00-dev";
+        const selectedLevel = requireLevelById(selectedLevelId);
+        const levelLoad = loadLevelDefinition(selectedLevel, {
             worldOrigin: {
                 x: DEFAULT_GAMEPLAY_COURSE_DEFINITION.minimumX,
                 y: DEFAULT_GAMEPLAY_COURSE_DEFINITION.minimumY,
@@ -861,9 +883,13 @@ export class World {
             const details = levelLoad.validation.errors
                 .map((issue) => `${issue.code}: ${issue.message}`)
                 .join("\n");
-            throw new Error(`World could not load level-00-dev.\n${details}`);
+            throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
+        this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
+        this.navigationBounds = this.runtimeLevel.course.generatedGeometry
+            ? new LevelNavigationBounds(this.runtimeLevel.course.generatedGeometry)
+            : undefined;
         this.ballOutOfBoundsController = new BallOutOfBoundsController({
             ...DEFAULT_GAMEPLAY_COURSE_DEFINITION,
             minimumX: this.runtimeLevel.course.minimumX,
@@ -872,7 +898,9 @@ export class World {
             maximumY: this.runtimeLevel.course.maximumY,
             openings: this.runtimeLevel.course.openings,
             ballSpawn: this.runtimeLevel.ball,
-        });
+        }, this.runtimeLevel.course.geometry?.type === "polygon"
+            ? this.runtimeLevel.course.generatedGeometry
+            : undefined);
 
 
         BallExplosionDeathValidation.validate();
@@ -905,7 +933,7 @@ export class World {
         this.camera =
             new Camera(
                 undefined,
-                DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                this.technicalBounds,
             );
 
         this.presentationVisibilityQuery =
@@ -969,10 +997,15 @@ export class World {
         this.environmentField =
             new EnvironmentField(
                 this.surfaceSystem,
+                undefined,
+                this.technicalBounds,
             );
 
         this.waterField =
-            new WaterField();
+            new WaterField(
+                undefined,
+                this.technicalBounds,
+            );
 
         this.waterObstacleField =
             new WaterObstacleField(
@@ -1139,6 +1172,28 @@ export class World {
         // navigation blockers are removed from this authored test course.
         this.staticObstacleDefinitions = [];
 
+        // Authored immovable metal boxes use the existing StaticObstacle texture,
+        // physics collider, and robot interaction registration paths.
+        for (const placement of runtimeObjectsOfType(this.runtimeLevel, "staticMetalBox")) {
+            const definition: StaticObstacleDefinition = {
+                id: placement.id,
+                shape: "rectangle",
+                positionX: placement.x,
+                positionY: placement.y,
+                width: placement.width,
+                height: placement.height,
+                rotationRadians: placement.rotation,
+                fillColor: 0x9c9699,
+                outlineColor: 0x3d303b,
+                outlineWidth: 3,
+                material: { restitution: 0.72, collisionFriction: 0.16 },
+            };
+            this.physicsWorld.registerStaticDefinition(definition);
+            this.robotInteractionRegistry.registerStaticObstacle(definition);
+            this.staticObstacleDefinitions = [...this.staticObstacleDefinitions, definition];
+            this.addEntity(new StaticObstacle(definition), WorldRenderLayer.SurfaceMechanisms);
+        }
+
         // ---------------------------------------------------
         // DB-5 Multi-bumper development layout
         // ---------------------------------------------------
@@ -1264,7 +1319,7 @@ export class World {
         this.ball =
             new Ball(
                 undefined,
-                undefined,
+                this.technicalBounds,
                 this.physicsWorld
                     .getRigidStaticDefinitions(),
                 this.staticCollisionResponders,
@@ -2037,18 +2092,6 @@ export class World {
         this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
         this.updateProximityMineTargets();
 
-        if (this.ball) {
-            const oob = this.ballOutOfBoundsController.update(
-                this.ball.getX(), this.ball.getY(), deltaTime,
-            );
-            if (oob.state === "deathRequested") {
-                this.ball.stop(false);
-            }
-            if (oob.requestDeath) {
-                this.reportBallDeath(BallDeathCauseValue.OutOfBounds);
-            }
-        }
-
         /*
          * D-7 direct Wind Robot nozzle trigger. This is deliberately evaluated
          * before entity physics so a successful suction capture resets the Ball
@@ -2211,6 +2254,27 @@ export class World {
             }
             this.dynamicStaticCollisionSystem.resolve(this.physicsWorld);
         });
+
+        /*
+         * LD-8C-2 hotfix: evaluate course exit after static collision resolution.
+         * The generated walls sit outside the playable boundary; a Ball may
+         * briefly cross that boundary during integration before the solver
+         * corrects penetration and applies its rebound. Checking OOB earlier
+         * incorrectly turns an ordinary wall impact into an OOB death.
+         * Genuine exits through authored wall openings still request death.
+         */
+        if (this.ball) {
+            const oob = this.ballOutOfBoundsController.update(
+                this.ball.getX(), this.ball.getY(), deltaTime,
+            );
+            if (oob.state === "deathRequested") {
+                this.ball.stop(false);
+            }
+            if (oob.requestDeath) {
+                this.reportBallDeath(BallDeathCauseValue.OutOfBounds);
+            }
+        }
+
 
 
 
@@ -2646,6 +2710,9 @@ export class World {
         this.courseBackground =
             null;
 
+        if (this.courseBackground) this.courseBackground.mask = null;
+        this.courseGrassMask?.destroy();
+        this.courseGrassMask = null;
         this.courseOutsideBackground?.destroy();
         this.courseOutsideBackground = null;
         this.courseWallGraphics?.destroy();
@@ -3831,8 +3898,9 @@ export class World {
         const navigationQuery =
             new RobotNavigationQuery(
                 this.robotInteractionRegistry,
-                DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                this.technicalBounds,
                 definition.id,
+                this.navigationBounds,
             );
 
         this.fireRobot =
@@ -4116,6 +4184,7 @@ export class World {
         // its authored zero rotation, so each Robot starts directly left of its
         // assigned paddle and initially faces that paddle.
         const placements = runtimeObjectsOfType(this.runtimeLevel, "waterRobot");
+        if (placements.length === 0) return;
 
         const createTestRobot = (
             placement: (typeof placements)[number],
@@ -4130,8 +4199,9 @@ export class World {
             };
             const navigationQuery = new RobotNavigationQuery(
                 this.robotInteractionRegistry,
-                DEFAULT_COURSE_BOUNDARY_DEFINITION,
+                this.technicalBounds,
                 definition.id,
+                this.navigationBounds,
             );
             const robot = new Robot(
                 definition,
@@ -4235,7 +4305,7 @@ export class World {
         if (this.windRobot) throw new Error("World Wind Robot has already been created.");
 
         const navigationQuery = new RobotNavigationQuery(
-            this.robotInteractionRegistry, DEFAULT_COURSE_BOUNDARY_DEFINITION, definition.id,
+            this.robotInteractionRegistry, this.technicalBounds, definition.id, this.navigationBounds,
         );
         this.windRobot = new Robot(
             definition, navigationQuery, this.robotInteractionRegistry,
@@ -5260,6 +5330,8 @@ export class World {
                     directionRadians: placement.rotation,
                 },
                 this.localWindSystem,
+                undefined,
+                this.technicalBounds,
             );
             this.fans.push(fan);
             this.physicsWorld.registerDynamicCollidable(`fan-${source.id}`, fan);
@@ -5696,7 +5768,7 @@ export class World {
         }
 
         const d = this.runtimeLevel.course;
-        const hard = DEFAULT_COURSE_BOUNDARY_DEFINITION;
+        const hard = this.technicalBounds;
 
         this.courseOutsideBackground = new Graphics();
         this.courseOutsideBackground.rect(
@@ -5712,62 +5784,82 @@ export class World {
             width: d.width,
             height: d.height,
         });
-        this.courseBackground.position.set(d.minimumX, d.minimumY);
+        this.courseBackground.position.set(this.runtimeLevel.worldOrigin.x, this.runtimeLevel.worldOrigin.y);
         this.courseBackground.tileScale.set(this.courseVisualDefinition.grassTileScale * 3);
         this.courseBackground.alpha = this.courseVisualDefinition.terrainAlpha;
-        this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain).addChild(this.courseBackground);
+        const terrainLayer = this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain);
+        terrainLayer.addChild(this.courseBackground);
+
+        if (d.geometry?.type === "polygon") {
+            const vertices = d.generatedGeometry?.vertices;
+            if (!vertices || vertices.length < 3) {
+                throw new Error("Polygon course requires generated world-space vertices.");
+            }
+            // Graphics and the TilingSprite share the same world-space parent.
+            // Mask coordinates are already world-space, so do not apply the level origin twice.
+            const mask = new Graphics();
+            mask.moveTo(vertices[0].x, vertices[0].y);
+            for (let i = 1; i < vertices.length; i++) {
+                mask.lineTo(vertices[i].x, vertices[i].y);
+            }
+            mask.closePath();
+            mask.fill(0xffffff);
+            terrainLayer.addChild(mask);
+            this.courseBackground.mask = mask;
+            this.courseGrassMask = mask;
+        }
 
         this.createGameplayCourseWalls();
     }
 
     private createGameplayCourseWalls(): void {
-        const d = this.runtimeLevel.course;
+        const geometry = this.runtimeLevel.course.generatedGeometry;
+        if (!geometry) {
+            throw new Error("LD-8C-2 requires generated course wall geometry.");
+        }
         this.courseWallGraphics = new Graphics();
         const graphics = this.courseWallGraphics;
+        const fill = this.courseVisualDefinition.gameplayWallColor;
+        const outline = this.courseVisualDefinition.gameplayWallOutlineColor;
 
-        const register = (id: string, x: number, y: number, width: number, height: number): void => {
+        for (const segment of geometry.wallSegments) {
             const definition: StaticObstacleDefinition = {
-                id, shape: "rectangle", positionX: x, positionY: y, width, height,
-                fillColor: this.courseVisualDefinition.gameplayWallColor,
-                outlineColor: this.courseVisualDefinition.gameplayWallOutlineColor,
+                id: segment.id,
+                shape: "rectangle",
+                positionX: segment.center.x,
+                positionY: segment.center.y,
+                width: segment.length,
+                height: segment.thickness,
+                rotationRadians: segment.angleRadians,
+                fillColor: fill,
+                outlineColor: outline,
                 outlineWidth: 3,
                 material: { restitution: 0.72, collisionFriction: 0.16 },
             };
             this.physicsWorld.registerStaticDefinition(definition);
             this.robotInteractionRegistry.registerStaticObstacle(definition);
-            graphics.rect(x - width / 2, y - height / 2, width, height);
-            graphics.fill(this.courseVisualDefinition.gameplayWallColor);
-            graphics.stroke({ width: 3, color: this.courseVisualDefinition.gameplayWallOutlineColor });
-        };
 
-        const buildSide = (side: GameplayCourseSide): void => {
-            const vertical = side === "left" || side === "right";
-            const minimum = vertical ? d.minimumY : d.minimumX;
-            const maximum = vertical ? d.maximumY : d.maximumX;
-            const openings = d.openings
-                .filter((opening) => opening.side === side)
-                .slice().sort((a, b) => a.start - b.start);
-            let cursor = minimum;
-            let index = 0;
-            const addSegment = (a: number, b: number): void => {
-                if (b - a <= 1) return;
-                const center = (a + b) / 2;
-                const length = b - a;
-                const x = side === "left" ? d.minimumX - DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 :
-                    side === "right" ? d.maximumX + DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 : center;
-                const y = side === "top" ? d.minimumY - DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 :
-                    side === "bottom" ? d.maximumY + DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness / 2 : center;
-                register(`gameplay-wall-${side}-${index++}`, x, y,
-                    vertical ? DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness : length, vertical ? length : DEFAULT_GAMEPLAY_COURSE_DEFINITION.wallThickness);
-            };
-            for (const opening of openings) {
-                addSegment(cursor, Math.max(cursor, opening.start));
-                cursor = Math.max(cursor, opening.end);
-            }
-            addSegment(cursor, maximum);
-        };
-
-        buildSide("left"); buildSide("right"); buildSide("top"); buildSide("bottom");
+            // Draw the exact oriented rectangle used by the physics solver.
+            const halfLength = segment.length / 2;
+            const halfThickness = segment.thickness / 2;
+            const c = Math.cos(segment.angleRadians);
+            const sn = Math.sin(segment.angleRadians);
+            const corner = (u: number, v: number) => ({
+                x: segment.center.x + c * u - sn * v,
+                y: segment.center.y + sn * u + c * v,
+            });
+            const a = corner(-halfLength, -halfThickness);
+            const b = corner(halfLength, -halfThickness);
+            const c2 = corner(halfLength, halfThickness);
+            const d = corner(-halfLength, halfThickness);
+            graphics.moveTo(a.x, a.y);
+            graphics.lineTo(b.x, b.y);
+            graphics.lineTo(c2.x, c2.y);
+            graphics.lineTo(d.x, d.y);
+            graphics.closePath();
+            graphics.fill(fill);
+            graphics.stroke({ width: 3, color: outline });
+        }
         this.presentationLayers.getLayer(WorldRenderLayer.SurfaceMechanisms).addChild(graphics);
     }
 

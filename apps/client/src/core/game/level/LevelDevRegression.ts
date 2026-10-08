@@ -54,11 +54,11 @@ const EXPECTED_OBJECTS = [
 ] as const;
 
 const EXPECTED_OPENINGS = [
-    ["left", 730, 900],
-    ["left", 1610, 1780],
-    ["right", 350, 530],
-    ["right", 1130, 1310],
-    ["right", 2010, 2190],
+    ["left", -520, -350],
+    ["left", 360, 530],
+    ["right", -900, -720],
+    ["right", -120, 60],
+    ["right", 760, 940],
 ] as const;
 
 function equalNumber(a: unknown, b: number): boolean {
@@ -136,6 +136,44 @@ export function runLevel00DevRegression(input: unknown): LevelDevRegressionResul
         } else if (type === "fireRobot" || type === "waterRobot" || type === "windRobot") {
             expect(`objects.${id}.roamRadius`, "roamRadius" in object ? object.roamRadius : undefined, extraA);
         }
+    }
+
+    // LD-8D: assert the actual generated world-space wall geometry, not only authored openings.
+    const geometry = level.course.generatedGeometry;
+    expect("course.geometry.type", level.course.geometry?.type, "rectangle");
+    expect("course.geometry.vertices.length", geometry?.vertices.length, 4);
+    expect("course.geometry.edges.length", geometry?.edges.length, 4);
+    expect("course.geometry.wallSegments.length", geometry?.wallSegments.length, 9);
+    if (geometry) {
+        const bounds = geometry.bounds;
+        expect("course.geometry.bounds.minimumX", bounds.minimumX, 100);
+        expect("course.geometry.bounds.maximumX", bounds.maximumX, 1100);
+        expect("course.geometry.bounds.minimumY", bounds.minimumY, -1250);
+        expect("course.geometry.bounds.maximumY", bounds.maximumY, 1250);
+        const expectedSegments = [
+            [0, 100, -1250, 1100, -1250, 600, -1264],
+            [1, 1100, -1250, 1100, -900, 1114, -1075],
+            [1, 1100, -720, 1100, -120, 1114, -420],
+            [1, 1100, 60, 1100, 760, 1114, 410],
+            [1, 1100, 940, 1100, 1250, 1114, 1095],
+            [2, 1100, 1250, 100, 1250, 600, 1264],
+            [3, 100, 1250, 100, 530, 86, 890],
+            [3, 100, 360, 100, -350, 86, 5],
+            [3, 100, -520, 100, -1250, 86, -885],
+        ] as const;
+        expectedSegments.forEach(([edgeIndex, ax, ay, bx, by, cx, cy], index) => {
+            const segment = geometry.wallSegments[index];
+            expect(`course.geometry.wallSegments[${index}].edgeIndex`, segment?.edgeIndex, edgeIndex);
+            expect(`course.geometry.wallSegments[${index}].start.x`, segment?.start.x, ax);
+            expect(`course.geometry.wallSegments[${index}].start.y`, segment?.start.y, ay);
+            expect(`course.geometry.wallSegments[${index}].end.x`, segment?.end.x, bx);
+            expect(`course.geometry.wallSegments[${index}].end.y`, segment?.end.y, by);
+            expect(`course.geometry.wallSegments[${index}].center.x`, segment?.center.x, cx);
+            expect(`course.geometry.wallSegments[${index}].center.y`, segment?.center.y, cy);
+            expect(`course.geometry.wallSegments[${index}].thickness`, segment?.thickness, 28);
+            if (segment) expect(`course.geometry.wallSegments[${index}].length`, segment.length,
+                Math.hypot(bx - ax, by - ay));
+        });
     }
 
     return { passed: issues.length === 0, issues };

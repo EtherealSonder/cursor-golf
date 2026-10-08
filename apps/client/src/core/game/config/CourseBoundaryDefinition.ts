@@ -90,3 +90,23 @@ export const DEFAULT_COURSE_BOUNDARY_DEFINITION:
     maximumY:
         2940,
 };
+/** Expand a level's world-space AABB into a technical simulation boundary.
+ * Preserve the legacy envelope when the level fits inside it, so the
+ * development course keeps its original camera and simulation limits. */
+export function deriveCourseTechnicalBoundary(
+    bounds: CourseBoundaryDefinition,
+    marginX = 1200,
+    marginY = 900,
+    legacy: CourseBoundaryDefinition = DEFAULT_COURSE_BOUNDARY_DEFINITION,
+): CourseBoundaryDefinition {
+    if (![bounds.minimumX, bounds.maximumX, bounds.minimumY, bounds.maximumY, marginX, marginY].every(Number.isFinite) ||
+        bounds.maximumX <= bounds.minimumX || bounds.maximumY <= bounds.minimumY || marginX < 0 || marginY < 0) {
+        throw new Error("Invalid level technical bounds or safety margins.");
+    }
+    return {
+        minimumX: Math.min(legacy.minimumX, bounds.minimumX - marginX),
+        maximumX: Math.max(legacy.maximumX, bounds.maximumX + marginX),
+        minimumY: Math.min(legacy.minimumY, bounds.minimumY - marginY),
+        maximumY: Math.max(legacy.maximumY, bounds.maximumY + marginY),
+    };
+}

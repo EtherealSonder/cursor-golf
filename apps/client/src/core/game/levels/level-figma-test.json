@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "id": "level-figma-test",
+  "name": "Figma SVG Test Course",
+  "course": {
+    "type": "polygon",
+    "width": 1000,
+    "height": 1800,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 231,
+        "y": 300
+      },
+      {
+        "x": 740.5,
+        "y": 300
+      },
+      {
+        "x": 740.5,
+        "y": 1461.5
+      },
+      {
+        "x": 231,
+        "y": 1461.5
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 0,
+        "start": 125,
+        "end": 385
+      },
+      {
+        "edgeIndex": 1,
+        "start": 110,
+        "end": 370
+      },
+      {
+        "edgeIndex": 1,
+        "start": 830,
+        "end": 1000
+      },
+      {
+        "edgeIndex": 3,
+        "start": 161.5,
+        "end": 331.5
+      },
+      {
+        "edgeIndex": 3,
+        "start": 791.5,
+        "end": 1051.5
+      }
+    ]
+  },
+  "ball": {
+    "x": 486,
+    "y": 1360
+  },
+  "hole": {
+    "x": 486,
+    "y": 392
+  },
+  "terrain": [],
+  "objects": [
+    {
+      "type": "rotatingPaddle",
+      "id": "figma-paddle-left",
+      "x": 368,
+      "y": 560,
+      "direction": "counterClockwise"
+    },
+    {
+      "type": "rotatingPaddle",
+      "id": "figma-paddle-right",
+      "x": 604,
+      "y": 560,
+      "direction": "clockwise"
+    },
+    {
+      "type": "staticMetalBox",
+      "id": "figma-metal-box-left",
+      "x": 368,
+      "y": 795,
+      "width": 70,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "type": "staticMetalBox",
+      "id": "figma-metal-box-right",
+      "x": 604,
+      "y": 795,
+      "width": 70,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "type": "radialBumper",
+      "id": "figma-radial-bumper",
+      "x": 486,
+      "y": 939
+    },
+    {
+      "type": "directionalBumper",
+      "id": "figma-directional-left",
+      "x": 334.6006,
+      "y": 1053.5,
+      "rotation": 0
+    },
+    {
+      "type": "directionalBumper",
+      "id": "figma-directional-right",
+      "x": 637.3994,
+      "y": 1056.5,
+      "rotation": 3.141592653589793
+    }
+  ]
+}

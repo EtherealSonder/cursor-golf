@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "id": "level-01",
+  "name": "level_01",
+  "course": {
+    "type": "polygon",
+    "width": 2500,
+    "height": 2000,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 2187.5,
+        "y": 1660.5
+      },
+      {
+        "x": 390,
+        "y": 1660.5
+      },
+      {
+        "x": 390,
+        "y": 1251.5
+      },
+      {
+        "x": 1369,
+        "y": 1251.5
+      },
+      {
+        "x": 1369,
+        "y": 733.5
+      },
+      {
+        "x": 390,
+        "y": 733.5
+      },
+      {
+        "x": 390,
+        "y": 340
+      },
+      {
+        "x": 2187.5,
+        "y": 340
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 2,
+        "start": 131.5,
+        "end": 781.5
+      },
+      {
+        "edgeIndex": 4,
+        "start": 197.5,
+        "end": 847.5
+      },
+      {
+        "edgeIndex": 7,
+        "start": 503.5,
+        "end": 763.5
+      }
+    ]
+  },
+  "ball": {
+    "x": 761.5,
+    "y": 1453.5
+  },
+  "hole": {
+    "x": 562,
+    "y": 542
+  },
+  "terrain": [],
+  "objects": [
+    {
+      "id": "fan-2",
+      "x": 927.5,
+      "y": 408,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "box-1",
+      "x": 2026,
+      "y": 1333,
+      "type": "staticMetalBox",
+      "width": 49,
+      "height": 239,
+      "rotation": 0
+    },
+    {
+      "id": "box-3",
+      "x": 1572.5,
+      "y": 1452.5,
+      "type": "staticMetalBox",
+      "width": 82,
+      "height": 80,
+      "rotation": 0
+    },
+    {
+      "id": "directional-bumper-2",
+      "x": 1365.046737213404,
+      "y": 1344.100550964187,
+      "type": "directionalBumper",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "box-2",
+      "x": 1786.5,
+      "y": 986.5,
+      "type": "staticMetalBox",
+      "width": 70,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "id": "proximity-mine-1",
+      "x": 1073.5,
+      "y": 545.5,
+      "type": "proximityMine"
+    },
+    {
+      "id": "fan-1",
+      "x": 1863.5,
+      "y": 986,
+      "type": "fan",
+      "rotation": 0
+    },
+    {
+      "id": "fire-robot-1",
+      "x": 1534,
+      "y": 996,
+      "type": "fireRobot"
+    },
+    {
+      "id": "water-robot-1",
+      "x": 1962.5,
+      "y": 1551.5,
+      "type": "waterRobot"
+    },
+    {
+      "id": "water-sprinkler-1",
+      "x": 473,
+      "y": 1457.2,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "water-sprinkler-2",
+      "x": 1708.5,
+      "y": 988.7,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "rotate-paddle-clockwise",
+      "x": 1411.5,
+      "y": 563.5,
+      "type": "rotatingPaddle",
+      "direction": "clockwise"
+    },
+    {
+      "id": "radial-bumper",
+      "x": 1779.5,
+      "y": 760.5,
+      "type": "radialBumper"
+    },
+    {
+      "id": "directional-bumper-1",
+      "x": 702.1005509641873,
+      "y": 416.9532627865961,
+      "type": "directionalBumper",
+      "rotation": 0
+    },
+    {
+      "id": "rotate-paddle-anticlockwise",
+      "x": 2051,
+      "y": 564,
+      "type": "rotatingPaddle",
+      "direction": "counterClockwise"
+    }
+  ]
+}

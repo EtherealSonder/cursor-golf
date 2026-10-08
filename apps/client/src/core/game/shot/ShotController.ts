@@ -49,6 +49,8 @@ export class ShotController {
     private contactLaunchProcessed =
         false;
 
+    private successfulContactPending = false;
+
     constructor(
         world: World,
         inputManager: InputManager,
@@ -757,6 +759,7 @@ export class ShotController {
             );
 
         if (launchSucceeded) {
+            this.successfulContactPending = true;
             this.world
                 .getCameraFeedbackController()
                 .triggerShotRelease(
@@ -1010,6 +1013,13 @@ export class ShotController {
     public getState(): ShotState {
 
         return this.state;
+    }
+
+    /** One-shot signal emitted at actual successful Ball launch. */
+    public consumeSuccessfulContact(): boolean {
+        const result = this.successfulContactPending;
+        this.successfulContactPending = false;
+        return result;
     }
 
     public isPreparingShot(): boolean {
