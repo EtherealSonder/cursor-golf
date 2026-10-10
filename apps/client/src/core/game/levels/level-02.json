@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "id": "level-02",
+  "name": "level_02",
+  "course": {
+    "type": "polygon",
+    "width": 2500,
+    "height": 2000,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 1548,
+        "y": 230
+      },
+      {
+        "x": 1167.5,
+        "y": 230
+      },
+      {
+        "x": 1167.5,
+        "y": 539.5
+      },
+      {
+        "x": 721.5,
+        "y": 539.5
+      },
+      {
+        "x": 449,
+        "y": 835
+      },
+      {
+        "x": 449,
+        "y": 1527.5
+      },
+      {
+        "x": 1574.5,
+        "y": 1527.5
+      },
+      {
+        "x": 1574.5,
+        "y": 1843
+      },
+      {
+        "x": 2277.5,
+        "y": 1843
+      },
+      {
+        "x": 2277.5,
+        "y": 1396.5
+      },
+      {
+        "x": 2094,
+        "y": 1186
+      },
+      {
+        "x": 850.5,
+        "y": 1186
+      },
+      {
+        "x": 850.5,
+        "y": 835
+      },
+      {
+        "x": 1372.5,
+        "y": 835
+      },
+      {
+        "x": 1548,
+        "y": 539.5
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 1,
+        "start": 180,
+        "end": 280
+      },
+      {
+        "edgeIndex": 2,
+        "start": 67.5,
+        "end": 187.5
+      },
+      {
+        "edgeIndex": 4,
+        "start": 152,
+        "end": 272
+      }
+    ]
+  },
+  "ball": {
+    "x": 1346,
+    "y": 300
+  },
+  "hole": {
+    "x": 1988,
+    "y": 1792
+  },
+  "terrain": [],
+  "objects": [
+    {
+      "id": "directional-bumper-1",
+      "x": 1411.9909666914677,
+      "y": 671.1022315485326,
+      "type": "directionalBumper",
+      "rotation": 2.0737304040495825
+    },
+    {
+      "id": "radial-bumper",
+      "x": 672,
+      "y": 791,
+      "type": "radialBumper"
+    },
+    {
+      "id": "fan-2",
+      "x": 797.9999999999999,
+      "y": 1041.5,
+      "type": "fan",
+      "rotation": 3.141592653589793
+    },
+    {
+      "id": "box-2",
+      "x": 1250,
+      "y": 1355,
+      "type": "staticMetalBox",
+      "width": 150,
+      "height": 150,
+      "rotation": 0
+    },
+    {
+      "id": "fire-robot-1",
+      "x": 979.5,
+      "y": 1367.5,
+      "type": "fireRobot"
+    },
+    {
+      "id": "water-sprinkler-1",
+      "x": 657,
+      "y": 1367.2,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "rotate-paddle-anticlockwise",
+      "x": 2040,
+      "y": 1380,
+      "type": "rotatingPaddle",
+      "direction": "counterClockwise"
+    },
+    {
+      "id": "box-3",
+      "x": 1790,
+      "y": 1560,
+      "type": "staticMetalBox",
+      "width": 200,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "id": "wind-robot-1",
+      "x": 1490,
+      "y": 1354.5,
+      "type": "windRobot"
+    }
+  ]
+}

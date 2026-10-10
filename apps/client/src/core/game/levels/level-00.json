@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "level-00",
+  "name": "level_00",
+  "course": {
+    "type": "polygon",
+    "width": 1800,
+    "height": 1000,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 1600,
+        "y": 200
+      },
+      {
+        "x": 200,
+        "y": 200
+      },
+      {
+        "x": 200,
+        "y": 800
+      },
+      {
+        "x": 1600,
+        "y": 800
+      }
+    ],
+    "openings": []
+  },
+  "ball": {
+    "x": 330,
+    "y": 500
+  },
+  "hole": {
+    "x": 1438,
+    "y": 500
+  },
+  "terrain": [],
+  "objects": []
+}

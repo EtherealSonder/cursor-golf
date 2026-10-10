@@ -1,0 +1,278 @@
+{
+  "version": 1,
+  "id": "level-03",
+  "name": "level_03",
+  "course": {
+    "type": "polygon",
+    "width": 3000,
+    "height": 2400,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 770.5,
+        "y": 997.5
+      },
+      {
+        "x": 590,
+        "y": 997.5
+      },
+      {
+        "x": 590,
+        "y": 817
+      },
+      {
+        "x": 672,
+        "y": 817
+      },
+      {
+        "x": 672,
+        "y": 738
+      },
+      {
+        "x": 753.5,
+        "y": 738
+      },
+      {
+        "x": 753.5,
+        "y": 540
+      },
+      {
+        "x": 1665.5,
+        "y": 540
+      },
+      {
+        "x": 1665.5,
+        "y": 1429
+      },
+      {
+        "x": 1500,
+        "y": 1512.5
+      },
+      {
+        "x": 1500,
+        "y": 1739
+      },
+      {
+        "x": 2684.5,
+        "y": 1739
+      },
+      {
+        "x": 2684.5,
+        "y": 1998
+      },
+      {
+        "x": 1170,
+        "y": 1998
+      },
+      {
+        "x": 1170,
+        "y": 1739
+      },
+      {
+        "x": 1331,
+        "y": 1739
+      },
+      {
+        "x": 1331,
+        "y": 1512.5
+      },
+      {
+        "x": 1174,
+        "y": 1429
+      },
+      {
+        "x": 1174,
+        "y": 851.5
+      },
+      {
+        "x": 1101.5,
+        "y": 851.5
+      },
+      {
+        "x": 944,
+        "y": 851.5
+      },
+      {
+        "x": 852,
+        "y": 851.5
+      },
+      {
+        "x": 852,
+        "y": 920
+      },
+      {
+        "x": 770.5,
+        "y": 920
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 15,
+        "start": 51,
+        "end": 171
+      },
+      {
+        "edgeIndex": 9,
+        "start": 55.5,
+        "end": 175.5
+      },
+      {
+        "edgeIndex": 10,
+        "start": 417.5000000000002,
+        "end": 537.5000000000002
+      },
+      {
+        "edgeIndex": 12,
+        "start": 646.9999999999999,
+        "end": 767.0000000000001
+      }
+    ]
+  },
+  "ball": {
+    "x": 630.5,
+    "y": 958
+  },
+  "hole": {
+    "x": 2594.5,
+    "y": 1876
+  },
+  "terrain": [],
+  "objects": [
+    {
+      "id": "proximity-mine-1",
+      "x": 1977.5,
+      "y": 1876,
+      "type": "proximityMine"
+    },
+    {
+      "id": "radial-bumper-2",
+      "x": 724.5,
+      "y": 949,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-3",
+      "x": 720.5,
+      "y": 785,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-4",
+      "x": 640.5,
+      "y": 867,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-5",
+      "x": 800.5,
+      "y": 589,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-6",
+      "x": 980.5,
+      "y": 807,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-7",
+      "x": 1280.5,
+      "y": 917,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-8",
+      "x": 1570.5,
+      "y": 917,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-9",
+      "x": 1424.5,
+      "y": 1107,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-10",
+      "x": 1250.5,
+      "y": 1879,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-1",
+      "x": 804.5,
+      "y": 867,
+      "type": "radialBumper"
+    },
+    {
+      "id": "fan-3",
+      "x": 1570,
+      "y": 600,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "fan-4",
+      "x": 1238.5,
+      "y": 1105.5,
+      "type": "fan",
+      "rotation": 0
+    },
+    {
+      "id": "fan-5",
+      "x": 1610.4999999999998,
+      "y": 1105.5000000000002,
+      "type": "fan",
+      "rotation": 3.141592653589793
+    },
+    {
+      "id": "fan-1",
+      "x": 1425,
+      "y": 600,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "fan-2",
+      "x": 1280,
+      "y": 600,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "directional-bumper-1",
+      "x": 1159.046737213404,
+      "y": 578.6005509641873,
+      "type": "directionalBumper",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "directional-bumper-2",
+      "x": 1265.1005509641873,
+      "y": 1374.453262786596,
+      "type": "directionalBumper",
+      "rotation": 0
+    },
+    {
+      "id": "directional-bumper-3",
+      "x": 1575.899449035813,
+      "y": 1374.5467372134037,
+      "type": "directionalBumper",
+      "rotation": -3.141592653589793
+    },
+    {
+      "id": "rotate-paddle-anticlockwise-1",
+      "x": 2252.5,
+      "y": 1876,
+      "type": "rotatingPaddle",
+      "direction": "counterClockwise"
+    },
+    {
+      "id": "rotate-paddle-clockwise-1",
+      "x": 1702.5,
+      "y": 1879,
+      "type": "rotatingPaddle",
+      "direction": "clockwise"
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import { CourseBackgroundAnimator } from "../../rendering/CourseBackgroundAnimator";
+import { createCourseWallGraphics } from "../../rendering/CourseWallRenderer";
 import { firstMinePhysicalContact, type MineContactCircle, type MineContactSegment } from "../entities/mechanisms/ProximityMineContactDetection";
 import { applyDirectionalFireToMines, applyHoseWaterToMines, isMineDetonatingWaterSource } from "../entities/mechanisms/ProximityMineElementalInteraction";
 import { ProximityMineWindMovement } from "../entities/mechanisms/ProximityMineWindMovement";
@@ -468,6 +470,7 @@ export class World {
 
     private courseGrassMask: Graphics | null = null;
     private courseOutsideBackground: Graphics | null = null;
+    private courseBackgroundAnimator: CourseBackgroundAnimator | null = null;
     private courseWallGraphics: Graphics | null = null;
     private readonly ballOutOfBoundsController: BallOutOfBoundsController;
 
@@ -1626,6 +1629,7 @@ export class World {
 
         // O3.1: Camera position is authoritative now. Refresh presentation
         // world bounds here so culling never uses the previous Camera frame.
+        this.courseBackgroundAnimator?.update(deltaTime);
         this.presentationVisibilityQuery.refresh();
 
         this.cameraShake.update(
@@ -2709,6 +2713,7 @@ export class World {
 
         this.courseGrassMask?.destroy();
         this.courseGrassMask = null;
+        this.courseBackgroundAnimator = null;
         this.courseOutsideBackground?.destroy();
         this.courseOutsideBackground = null;
         this.courseWallGraphics?.destroy();
@@ -5769,16 +5774,28 @@ export class World {
             hard.minimumX, hard.minimumY,
             hard.maximumX - hard.minimumX, hard.maximumY - hard.minimumY,
         );
-        this.courseOutsideBackground.fill(this.courseVisualDefinition.outsideBackgroundColor);
+        // White geometry is created once; only its tint changes per frame.
+        this.courseOutsideBackground.fill(0xffffff);
+        this.courseBackgroundAnimator = new CourseBackgroundAnimator(
+            this.courseOutsideBackground,
+            this.courseVisualDefinition.outsideBackgroundPalette,
+            this.courseVisualDefinition.outsideBackgroundTransitionSeconds,
+        );
         this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain)
             .addChild(this.courseOutsideBackground);
 
+        // Extend grass presentation underneath the thinner wall strokes.
+        // The authored polygon and all collision geometry remain untouched.
+        const grassUnderfill = this.courseVisualDefinition.gameplayWallGrassUnderfill;
         this.courseBackground = new TilingSprite({
             texture: AssetLoader.getTexture(this.courseVisualDefinition.grassTextureKey),
-            width: d.width,
-            height: d.height,
+            width: d.width + 2 * grassUnderfill,
+            height: d.height + 2 * grassUnderfill,
         });
-        this.courseBackground.position.set(this.runtimeLevel.worldOrigin.x, this.runtimeLevel.worldOrigin.y);
+        this.courseBackground.position.set(
+            this.runtimeLevel.worldOrigin.x - grassUnderfill,
+            this.runtimeLevel.worldOrigin.y - grassUnderfill,
+        );
         this.courseBackground.tileScale.set(this.courseVisualDefinition.grassTileScale * 3);
         this.courseBackground.alpha = this.courseVisualDefinition.terrainAlpha;
         const terrainLayer = this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain);
@@ -5798,6 +5815,14 @@ export class World {
             }
             mask.closePath();
             mask.fill(0xffffff);
+            // Expand the visual mask equally on both sides of the polygon edge.
+            // The outer half hides the narrow background seam and rounded-join
+            // corner wedges; this mask has no influence on OOB or collisions.
+            mask.stroke({
+                color: 0xffffff,
+                width: grassUnderfill * 2,
+                join: "miter",
+            });
             terrainLayer.addChild(mask);
             this.courseBackground.mask = mask;
             this.courseGrassMask = mask;
@@ -5811,11 +5836,9 @@ export class World {
         if (!geometry) {
             throw new Error("LD-8C-2 requires generated course wall geometry.");
         }
-        this.courseWallGraphics = new Graphics();
-        const graphics = this.courseWallGraphics;
         const fill = this.courseVisualDefinition.gameplayWallColor;
         const outline = this.courseVisualDefinition.gameplayWallOutlineColor;
-
+        // Physics and robot obstacle registration are unchanged.
         for (const segment of geometry.wallSegments) {
             const definition: StaticObstacleDefinition = {
                 id: segment.id,
@@ -5832,28 +5855,9 @@ export class World {
             };
             this.physicsWorld.registerStaticDefinition(definition);
             this.robotInteractionRegistry.registerStaticObstacle(definition);
-
-            // Draw the exact oriented rectangle used by the physics solver.
-            const halfLength = segment.length / 2;
-            const halfThickness = segment.thickness / 2;
-            const c = Math.cos(segment.angleRadians);
-            const sn = Math.sin(segment.angleRadians);
-            const corner = (u: number, v: number) => ({
-                x: segment.center.x + c * u - sn * v,
-                y: segment.center.y + sn * u + c * v,
-            });
-            const a = corner(-halfLength, -halfThickness);
-            const b = corner(halfLength, -halfThickness);
-            const c2 = corner(halfLength, halfThickness);
-            const d = corner(-halfLength, halfThickness);
-            graphics.moveTo(a.x, a.y);
-            graphics.lineTo(b.x, b.y);
-            graphics.lineTo(c2.x, c2.y);
-            graphics.lineTo(d.x, d.y);
-            graphics.closePath();
-            graphics.fill(fill);
-            graphics.stroke({ width: 3, color: outline });
         }
+        this.courseWallGraphics = createCourseWallGraphics(geometry, this.courseVisualDefinition);
+        const graphics = this.courseWallGraphics;
         this.presentationLayers.getLayer(WorldRenderLayer.SurfaceMechanisms).addChild(graphics);
     }
 
