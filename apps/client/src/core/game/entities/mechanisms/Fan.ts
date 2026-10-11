@@ -80,6 +80,13 @@ export class Fan extends Entity {
         Sprite | null = null;
 
     private rotationRadians = 0;
+    private voidRemoving = false;
+
+    public beginVoidRemoval(): void {
+        if (this.voidRemoving) return;
+        this.voidRemoving = true;
+        this.localWindSystem.removeSource(this.sourceDefinition.id);
+    }
 
     constructor(
         sourceDefinition:
@@ -230,6 +237,11 @@ export class Fan extends Entity {
     public synchronizeAfterCollisionResolution():
         void {
 
+        // V1: World still runs its mechanism synchronization pass after
+        // the void controller has deactivated this fan in the same frame.
+        // Its Local Wind source no longer exists, so synchronization must stop.
+        if (this.voidRemoving || this.isDestroyed()) return;
+
         this.resolveCourseBoundaryCollision();
 
         this.container.rotation =
@@ -281,6 +293,7 @@ export class Fan extends Entity {
         deltaTime: number,
     ): void {
 
+        if (this.voidRemoving) return;
         const safeDeltaTime =
             Number.isFinite(deltaTime)
                 ? Math.max(0, deltaTime)
@@ -403,6 +416,10 @@ export class Fan extends Entity {
 
     private synchronizeWindSourceTransform():
         void {
+
+        // The source is intentionally removed as soon as void removal begins.
+        // Do not try to update it during any subsequent synchronization pass.
+        if (this.voidRemoving || this.isDestroyed()) return;
 
         const directionX =
             Math.cos(

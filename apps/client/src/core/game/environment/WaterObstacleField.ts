@@ -1,3 +1,5 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
+
 import type {
     WaterField,
 } from "./WaterField";
@@ -59,12 +61,33 @@ export class WaterObstacleField {
                 this.columnCount *
                 this.rowCount,
             );
+        this.courseMask = new Uint8Array(this.blocked.length);
+    }
+
+    private readonly courseMask: Uint8Array;
+    private courseBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseBoundary = boundary;
+        this.courseMask.fill(0);
+        if (boundary) {
+            for (let y = 0; y < this.rowCount; y += 1) {
+                for (let x = 0; x < this.columnCount; x += 1) {
+                    const worldX = this.minimumWorldX + x * this.cellSize;
+                    const worldY = this.minimumWorldY + y * this.cellSize;
+                    if (!boundary.isValidCell(worldX, worldY, this.cellSize, "center")) {
+                        this.courseMask[y * this.columnCount + x] = 1;
+                    }
+                }
+            }
+        }
+        this.clear();
     }
 
     public clear():
         void {
 
-        this.blocked.fill(0);
+        this.blocked.set(this.courseMask);
     }
 
     public getBlockedCellCount():

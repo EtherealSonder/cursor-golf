@@ -1,3 +1,4 @@
+import { BallDeathPhysicsLock } from "../death/BallDeathPhysicsLock";
 import {
     Container,
     Graphics,
@@ -313,6 +314,24 @@ export class Ball extends Entity {
     private gameplayState =
         BallGameplayState.Active;
 
+    private readonly deathPhysicsLock = new BallDeathPhysicsLock();
+    public get isDeathPhysicsLocked(): boolean { return this.deathPhysicsLock.isLocked; }
+    public lockDeathPhysics(): void {
+        this.deathPhysicsLock.engage(this.getX(), this.getY());
+        this.stop(false);
+    }
+    public enforceDeathPhysicsLock(): void {
+        if (!this.isDeathPhysicsLocked) return;
+        const anchor = this.deathPhysicsLock.anchor;
+        this.setPosition(anchor.x, anchor.y);
+        this.stop(false);
+    }
+    public relocateDuringDeathTransition(x: number, y: number): void {
+        this.deathPhysicsLock.relocate(x, y);
+        this.setPosition(x, y);
+        this.stop(false);
+    }
+    public unlockDeathPhysics(): void { this.deathPhysicsLock.release(); this.stop(false); }
     private velocityX = 0;
     private velocityY = 0;
 
@@ -510,6 +529,8 @@ export class Ball extends Entity {
             number,
     ): void {
 
+        if (this.isDeathPhysicsLocked) { this.enforceDeathPhysicsLock(); return; }
+
         const safeDeltaTime =
             Math.min(
                 Math.max(
@@ -695,6 +716,12 @@ export class Ball extends Entity {
     // Ball Data
     // -------------------------------------------------------
 
+    /** Physical circle used by course-exit coverage checks; independent of visual scaling. */
+    public getCourseExitFootprint(): { kind: "circle"; x: number; y: number; radius: number } {
+        // The physics radius, not the rendered shell, determines course exit.
+        return { kind: "circle", x: this.getX(), y: this.getY(), radius: this.getRadius() };
+    }
+
     public getRadius():
         number {
 
@@ -782,6 +809,8 @@ export class Ball extends Entity {
         directionRadians:
             number,
     ): boolean {
+        if (this.isDeathPhysicsLocked) return false;
+
 
         if (
             !this.canInteractWithClub()
@@ -1041,6 +1070,7 @@ export class Ball extends Entity {
 
     /** DB-1 authoritative powered response from the moving Directional Bumper. */
     public applyDirectionalBumperVelocity(velocityX: number, velocityY: number): void {
+        if (this.isDeathPhysicsLocked) return;
         if (!Number.isFinite(velocityX) || !Number.isFinite(velocityY)) return;
         if (this.gameplayState !== BallGameplayState.Active) return;
         this.velocityX = velocityX;
@@ -1299,6 +1329,7 @@ export class Ball extends Entity {
         contactPointY:
             number,
     ): void {
+        if (this.isDeathPhysicsLocked) return;
 
         if (
             this.gameplayState !==

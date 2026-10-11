@@ -1,3 +1,4 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import type {
     AirborneWaterCollisionField,
 } from "../environment/AirborneWaterCollisionField";
@@ -34,6 +35,16 @@ export interface FireParticleCollisionHit {
  * Fire particles at their circular contact boundary.
  */
 export class FireParticleCollisionField {
+    private courseEnvironmentBoundary: CourseEnvironmentBoundary | null = null;
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseEnvironmentBoundary = boundary;
+    }
+    public exitsCourse(startX: number, startY: number, endX: number, endY: number): boolean {
+        const boundary = this.courseEnvironmentBoundary;
+        return boundary !== null && (!boundary.containsPoint(endX, endY) ||
+            boundary.crossesCourseBoundary({ x: startX, y: startY }, { x: endX, y: endY }));
+    }
+
     public constructor(
         private readonly airborneObstacleField:
             AirborneWaterCollisionField,

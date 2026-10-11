@@ -280,6 +280,9 @@ export class Game {
                     return;
                 }
 
+                this.world?.lockBallForDeath();
+                this.world?.forceAllRobotsIntoDeathCooldown();
+
                 const deathPosition =
                     this.world
                         ?.getBallWorldPosition();
@@ -872,6 +875,8 @@ export class Game {
                         .getSnapshot(),
                 );
 
+            this.world?.unlockBallAfterRetry();
+            this.ballDeathController?.beginRetryProtection();
             this.world
                 ?.setClubVisible(true);
         }

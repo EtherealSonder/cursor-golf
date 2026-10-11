@@ -118,7 +118,7 @@ export class RuntimePerformanceProfilerOverlay {
         const lines:
             string[] = [
                 "RUNTIME PROFILER",
-                `FPS ${snapshot.approximateFps.toFixed(1)}  |  frame avg ${snapshot.averageMeasuredFrameMilliseconds.toFixed(2)} ms  max ${snapshot.maximumMeasuredFrameMilliseconds.toFixed(2)} ms`,
+                `FPS ${snapshot.approximateFps.toFixed(1)}  |  frame avg ${snapshot.averageMeasuredFrameMilliseconds.toFixed(2)} ms  p95 ${snapshot.p95MeasuredFrameMilliseconds.toFixed(2)} ms  p95 ${snapshot.p95MeasuredFrameMilliseconds.toFixed(2)} ms  max ${snapshot.maximumMeasuredFrameMilliseconds.toFixed(2)} ms`,
                 `Over budget ${snapshot.overBudgetFrameCount}/${snapshot.frameCount}  (> ${this.definition.frameBudgetMilliseconds.toFixed(2)} ms)`,
                 "",
             ];

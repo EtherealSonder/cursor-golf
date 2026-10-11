@@ -1,3 +1,4 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
     Container,
     Sprite,
@@ -129,6 +130,20 @@ export class ScorchRenderer {
 
     private destroyed =
         false;
+
+    private courseEnvironmentBoundary: CourseEnvironmentBoundary | null = null;
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseEnvironmentBoundary = boundary;
+    }
+    private isPlayableBurnIndex(index: number): boolean {
+        if (!this.courseEnvironmentBoundary) return true;
+        const x = index % this.columns;
+        const y = Math.floor(index / this.columns);
+        return this.courseEnvironmentBoundary.containsPoint(
+            this.minimumWorldX + (x + 0.5) * this.cellSize,
+            this.minimumWorldY + (y + 0.5) * this.cellSize,
+        );
+    }
 
     public constructor(
         private readonly environmentField:
@@ -594,6 +609,8 @@ export class ScorchRenderer {
         index:
             number,
     ): number {
+
+        if (!this.isPlayableBurnIndex(index)) return 0;
 
         const maximumBurn =
             Math.max(

@@ -5,6 +5,10 @@ export interface BackgroundTintTarget {
 
 export class CourseBackgroundAnimator {
     private elapsedSeconds = 0;
+    private paused = false;
+    public setPaused(paused: boolean): void { this.paused = paused; }
+    private paused = false;
+    public setPaused(paused: boolean): void { this.paused = paused; }
     private readonly palette: readonly number[];
     private readonly transitionSeconds: number;
 
@@ -25,7 +29,7 @@ export class CourseBackgroundAnimator {
     }
 
     public update(deltaTimeSeconds: number): void {
-        if (!Number.isFinite(deltaTimeSeconds) || deltaTimeSeconds <= 0) return;
+        if (this.paused || !Number.isFinite(deltaTimeSeconds) || deltaTimeSeconds <= 0) return;
         const total = this.palette.length * this.transitionSeconds;
         this.elapsedSeconds = (this.elapsedSeconds + deltaTimeSeconds) % total;
         const position = this.elapsedSeconds / this.transitionSeconds;

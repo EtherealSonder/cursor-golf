@@ -1,3 +1,4 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import type {
     FireSourceDefinition,
 } from "../config/FireSourceDefinition";
@@ -44,6 +45,12 @@ export class FireSourceSystem {
     private readonly directionalObstacleDistanceBySourceId =
         new Map<string, number>();
 
+    private courseEnvironmentBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseEnvironmentBoundary = boundary;
+    }
+
     constructor(
         private readonly environmentField: EnvironmentField,
     ) { }
@@ -73,6 +80,7 @@ export class FireSourceSystem {
                     break;
 
                 case FireSourceType.Persistent:
+                    if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(source.getPositionX(), source.getPositionY())) break;
                     this.environmentField.depositHeat(
                         source.getPositionX(),
                         source.getPositionY(),
@@ -192,6 +200,13 @@ export class FireSourceSystem {
                 directionY *
                 distance;
 
+            if (this.courseEnvironmentBoundary) {
+                const start = { x: source.getPositionX(), y: source.getPositionY() };
+                const end = { x: sampleX, y: sampleY };
+                if (!this.courseEnvironmentBoundary.containsPoint(sampleX, sampleY) ||
+                    this.courseEnvironmentBoundary.intersectsWall(start, end) ||
+                    this.courseEnvironmentBoundary.crossesCourseBoundary(start, end)) break;
+            }
             this.environmentField.depositHeat(
                 sampleX,
                 sampleY,
@@ -213,6 +228,10 @@ export class FireSourceSystem {
             return;
         }
 
+        if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(source.getPositionX(), source.getPositionY())) {
+            source.markPointEmissionConsumed();
+            return;
+        }
         this.environmentField.depositHeat(
             source.getPositionX(),
             source.getPositionY(),

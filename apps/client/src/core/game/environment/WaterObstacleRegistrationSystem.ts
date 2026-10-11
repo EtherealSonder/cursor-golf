@@ -58,6 +58,9 @@ export class WaterObstacleRegistrationSystem {
     public synchronize():
         void {
 
+        // Rebuild from the authoritative PhysicsWorld registrations, including
+        // E2-A generated course-wall static definitions. Ground cache clear
+        // restores the immutable playable-area mask before shape rasterization.
         this.clearCaches();
 
         for (
@@ -202,7 +205,7 @@ export class WaterObstacleRegistrationSystem {
                     registration
                         .definition
                         .positionY,
-                    0,
+                    ("rotationRadians" in registration.definition ? registration.definition.rotationRadians ?? 0 : 0),
                 );
                 return;
 
@@ -276,7 +279,7 @@ export class WaterObstacleRegistrationSystem {
                     registration
                         .definition
                         .positionY,
-                    0,
+                    ("rotationRadians" in registration.definition ? registration.definition.rotationRadians ?? 0 : 0),
                     registration.id,
                     registration
                         .ownerSourceIds,

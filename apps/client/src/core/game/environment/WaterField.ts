@@ -1,4 +1,6 @@
 // O6 final Water optimization: preserve the O4 sparse-field solver semantics and allocation profile.
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
+
 import {
     DEFAULT_COURSE_BOUNDARY_DEFINITION,
 } from "../config/CourseBoundaryDefinition";
@@ -72,6 +74,12 @@ export class WaterField {
      * Phase 8D-2 uses this only for authoritative Water injection.
      * Flow transport exclusion is connected separately in Phase 8D-3.
      */
+    private courseEnvironmentBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseEnvironmentBoundary = boundary;
+    }
+
     private obstacleField:
         WaterObstacleField | null =
         null;
@@ -457,6 +465,7 @@ export class WaterField {
             return 0;
         }
 
+        if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(worldX, worldY)) return 0;
         const gridPosition =
             this.worldToGrid(
                 worldX,
@@ -833,6 +842,7 @@ export class WaterField {
             !Number.isFinite(transportedVelocityX) || !Number.isFinite(transportedVelocityY)
         ) return 0;
 
+        if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(destinationWorldX, destinationWorldY)) return 0;
         const gridPosition = this.worldToGrid(destinationWorldX, destinationWorldY);
         if (!gridPosition) return 0;
 

@@ -1,3 +1,4 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
     DEFAULT_COURSE_BOUNDARY_DEFINITION,
 } from "../config/CourseBoundaryDefinition";
@@ -289,6 +290,12 @@ export class FireManager {
 
         this.courseBoundaryDefinition =
             courseBoundaryDefinition;
+    }
+
+    private courseEnvironmentBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseEnvironmentBoundary = boundary;
     }
 
     // ---------------------------------------------------------------------
@@ -951,6 +958,10 @@ export class FireManager {
             ) {
                 continue;
             }
+
+            if (this.courseEnvironmentBoundary && this.courseEnvironmentBoundary.intersectsWall(
+                { x: sourceCell.getWorldCenterX(), y: sourceCell.getWorldCenterY() }, center
+            )) continue;
 
             if (
                 !this.canIgniteAt(
@@ -2255,6 +2266,9 @@ export class FireManager {
         worldX: number,
         worldY: number,
     ): boolean {
+        if (this.courseEnvironmentBoundary) {
+            return this.courseEnvironmentBoundary.containsPoint(worldX, worldY);
+        }
         return (
             worldX >=
             this.courseBoundaryDefinition.minimumX &&

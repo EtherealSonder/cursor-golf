@@ -202,7 +202,11 @@ export class Rock extends Entity implements DynamicCollidable {
         );
     }
 
+    private voidRemoving = false;
+    public beginVoidRemoval(): void { this.voidRemoving = true; }
+
     protected onUpdate(deltaTime: number): void {
+        if (this.voidRemoving) return;
         if (!this.rigidBody) {
             return;
         }

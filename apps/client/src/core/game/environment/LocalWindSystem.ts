@@ -1,3 +1,4 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import type {
     LocalWindSourceDefinition,
 } from "../config/LocalWindDefinition";
@@ -53,12 +54,39 @@ export interface LocalWindImpactAwareTarget {
 
 export class LocalWindSystem {
     private obstacleQuery: LocalWindObstacleQuery | null = null;
+    private courseBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseBoundary = boundary;
+        this.obstacleQuery?.setCourseEnvironmentBoundary(boundary);
+        this.sampleCache.clear();
+        this.obstacleQuery?.invalidateIndex();
+    }
 
     public setObstacleQuery(query: LocalWindObstacleQuery | null): void {
         this.obstacleQuery = query;
+        query?.setCourseEnvironmentBoundary(this.courseBoundary);
+        query?.invalidateIndex();
         this.sampleCache.clear();
     }
 
+    /** Read-only presentation query: never changes the authoritative Wind force field. */
+    public isVfxSegmentClear(x0: number, y0: number, x1: number, y1: number): boolean {
+        return this.obstacleQuery === null || !this.obstacleQuery.segmentBlocked(x0, y0, x1, y1);
+    }
+
+    /** Snapshot the live transform; VFX must not retain mutable source objects across frames. */
+    public getVfxSourceTransform(sourceId: string): Readonly<{
+        x: number; y: number; directionRadians: number; enabled: boolean;
+    }> | null {
+        const source = this.sources.find(candidate => candidate.id === sourceId);
+        return source ? {
+            x: source.positionX, y: source.positionY,
+            directionRadians: source.directionRadians, enabled: source.enabled,
+        } : null;
+    }
+
+    /** Shared query for presentation and gameplay; static geometry is owned by PhysicsWorld. */
     public getObstacleQuery(): LocalWindObstacleQuery | null {
         return this.obstacleQuery;
     }
@@ -161,6 +189,7 @@ export class LocalWindSystem {
                     ...source,
                 }),
             );
+        this.sampleCache.clear();
     }
 
 
@@ -270,6 +299,11 @@ export class LocalWindSystem {
                 },
                 contributingSourceIds: [],
             };
+        }
+
+        if (this.courseBoundary && !this.courseBoundary.containsPoint(worldX, worldY)) {
+            this.performanceQueryMilliseconds += performance.now() - performanceStartedAt;
+            return { acceleration: {x:0,y:0}, contributingSourceIds: [] };
         }
 
         const cacheX = Math.round(worldX / this.sampleCacheCellSize);

@@ -76,6 +76,14 @@ export class RobotAttackController {
         this.targetId = null;
     }
 
+    /** Interrupts any phase and restarts the robot's existing full cooldown. */
+    public forceCooldown(): void {
+        this.phase = "COOLDOWN";
+        this.elapsedSeconds = 0;
+        this.cooldownElapsedSeconds = 0;
+        this.targetId = null;
+    }
+
     public reset(): void {
         this.phase = "IDLE";
         this.elapsedSeconds = 0;

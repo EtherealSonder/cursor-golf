@@ -12,11 +12,11 @@ export interface RuntimePerformanceProfilerDefinition {
 export const DEFAULT_RUNTIME_PERFORMANCE_PROFILER_DEFINITION:
     RuntimePerformanceProfilerDefinition = {
     enabled: true,
-    sampleWindowFrames: 120,
+    sampleWindowFrames: 300,
     overlayRefreshSeconds: 0.25,
     slowSectionWarningMilliseconds: 4,
     frameBudgetMilliseconds: 16.67,
-    consoleReportingEnabled: true,
+    consoleReportingEnabled: false,
     consoleReportIntervalSeconds: 2,
     maximumDisplayedSections: 12,
 };

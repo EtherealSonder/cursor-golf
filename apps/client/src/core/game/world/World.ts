@@ -1,3 +1,10 @@
+import type { CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
+import { CourseBoundaryDeathDiagnostics } from "../debug/CourseBoundaryDeathDiagnostics";
+import { PerformanceInvestigationController } from "../debug/PerformanceInvestigationController";
+import { isPerformanceInvestigationEnabled } from "../debug/PerformanceInvestigationDefinition";
+import { assertCourseWindBoundaryValidation } from "../debug/CourseWindBoundaryValidation";
+import { assertCourseWindPerformanceValidation } from "../debug/CourseWindPerformanceValidation";
+import { assertCourseFireBoundaryValidation } from "../debug/CourseFireBoundaryValidation";
 import { CourseBackgroundAnimator } from "../../rendering/CourseBackgroundAnimator";
 import { createCourseWallGraphics } from "../../rendering/CourseWallRenderer";
 import { firstMinePhysicalContact, type MineContactCircle, type MineContactSegment } from "../entities/mechanisms/ProximityMineContactDetection";
@@ -24,6 +31,11 @@ import { assertLevelGeometryRegression } from "../level/LevelGeometryRegression"
 import { loadLevelDefinition } from "../level/LevelLoader";
 import { resolveLevelTechnicalBounds } from "../level/LevelTechnicalBounds";
 import { LevelNavigationBounds } from "../level/LevelNavigationBounds";
+import { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
+import { WorldObjectVoidController } from "./WorldObjectVoidController";
+import { assertCourseObjectVoidValidation } from "../debug/CourseObjectVoidValidation";
+import { assertCourseEnvironmentBoundaryValidation } from "../level/CourseEnvironmentBoundaryValidation";
+import { assertCourseWaterBoundaryValidation } from "../debug/CourseWaterBoundaryValidation";
 import { runtimeObjectsOfType, type RuntimeLevelDefinition } from "../level/LevelRuntimeDefinition";
 import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
 import { Rock } from "../entities/props/Rock";
@@ -449,10 +461,22 @@ export class World {
         PerformanceMetrics =
         new PerformanceMetrics();
 
+    private readonly p1BackgroundDisabled = isPerformanceInvestigationEnabled() && new URLSearchParams(window.location.search).get("bgdiag") === "off";
+
+    private readonly performanceInvestigation = isPerformanceInvestigationEnabled()
+        ? new PerformanceInvestigationController(new URLSearchParams(window.location.search).get("vfxdiag") ?? "all")
+        : null;
+
+    private readonly performanceInvestigation = isPerformanceInvestigationEnabled()
+        ? new PerformanceInvestigationController(new URLSearchParams(window.location.search).get("vfxdiag") ?? "all")
+        : null;
+
     private readonly waterPerformanceProfiler:
         WaterPerformanceProfiler =
         new WaterPerformanceProfiler(
-            DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
+            { ...DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
+                enabled: isPerformanceInvestigationEnabled(),
+                overlayEnabled: false, consoleReportingEnabled: false },
         );
 
     private readonly contourRefreshScheduler =
@@ -560,6 +584,9 @@ export class World {
 
     /** R-ROCK-3/4 authoritative Rock population and runtime registrations. */
     private readonly rocks: Rock[] = [];
+    private readonly robotVoidUnregister = new Map<Robot, () => void>();
+    /** Robot-perception registrations owned by movable fans; released before void shrink. */
+    private readonly fanRobotInteractionUnregister = new Map<Fan, () => void>();
     private readonly rockInteractionSystem = new RockInteractionSystem();
     private readonly boulderFractureSystem = new BoulderFractureSystem();
     private readonly rockRobotInteractionUnregister = new Map<Rock, () => void>();
@@ -838,6 +865,8 @@ export class World {
     private readonly runtimeLevel: RuntimeLevelDefinition;
     private readonly technicalBounds: CourseBoundaryDefinition;
     private readonly navigationBounds: LevelNavigationBounds | undefined;
+    private readonly courseEnvironmentBoundary: CourseEnvironmentBoundary;
+    private readonly objectVoidController: WorldObjectVoidController;
 
     constructor(
         app:
@@ -889,6 +918,20 @@ export class World {
         }
         this.runtimeLevel = levelLoad.level;
         this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
+        if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
+        this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
+        this.objectVoidController = new WorldObjectVoidController(this.courseEnvironmentBoundary);
+        if (import.meta.env.DEV) assertCourseObjectVoidValidation();
+        if (import.meta.env.DEV) {
+            assertCourseEnvironmentBoundaryValidation();
+            assertCourseWindBoundaryValidation();
+            assertCourseWindPerformanceValidation();
+            console.info("[P2] Course wind performance validation: PASS");
+            console.info("[E2-C] Course wind boundary validation: PASS");
+            assertCourseFireBoundaryValidation();
+            console.info("[E2-B] Course fire boundary validation: PASS");
+            console.info("[E1] Course environment boundary validation: PASS");
+        }
         this.navigationBounds = this.runtimeLevel.course.generatedGeometry
             ? new LevelNavigationBounds(this.runtimeLevel.course.generatedGeometry)
             : undefined;
@@ -980,6 +1023,8 @@ export class World {
                 ).sources,
             );
 
+        this.localWindSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
+
         this.localWindDynamicForceSystem =
             new LocalWindDynamicForceSystem(
                 this.localWindSystem,
@@ -1013,6 +1058,13 @@ export class World {
             new WaterObstacleField(
                 this.waterField,
             );
+
+        if (import.meta.env.DEV) {
+            assertCourseWaterBoundaryValidation();
+            console.info("[E2-A] Course water boundary validation: PASS");
+        }
+        this.waterObstacleField.setCourseBoundary(this.courseEnvironmentBoundary);
+        this.waterField.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
 
         this.waterField
             .setObstacleField(
@@ -1057,6 +1109,7 @@ export class World {
                 this.airborneWaterCollisionField,
                 this.airborneWaterCollisionResponse,
             );
+        this.airborneWaterSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
         this.fireSourceSystem =
             new FireSourceSystem(
                 this.environmentField,
@@ -1068,6 +1121,9 @@ export class World {
                 this.environmentField,
                 this.localWindSystem,
             );
+
+        this.fireSourceSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
+        this.fireManager.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
 
         this.ballFireExposure =
             new BallFireExposure(
@@ -1121,6 +1177,7 @@ export class World {
         );
 
         this.createPerformanceSummaryText();
+        if (this.performanceInvestigation) this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         this.createCourse();
 
 
@@ -1190,7 +1247,9 @@ export class World {
                 outlineWidth: 3,
                 material: { restitution: 0.72, collisionFriction: 0.16 },
             };
-            this.physicsWorld.registerStaticDefinition(definition);
+            this.physicsWorld.registerStaticDefinition(definition, {
+                participation: { groundWater: true, airborneWater: true },
+            });
             this.robotInteractionRegistry.registerStaticObstacle(definition);
             this.staticObstacleDefinitions = [...this.staticObstacleDefinitions, definition];
             this.addEntity(new StaticObstacle(definition), WorldRenderLayer.SurfaceMechanisms);
@@ -1629,7 +1688,9 @@ export class World {
 
         // O3.1: Camera position is authoritative now. Refresh presentation
         // world bounds here so culling never uses the previous Camera frame.
-        this.courseBackgroundAnimator?.update(deltaTime);
+        if (this.courseBackgroundAnimator && !this.p1BackgroundDisabled) {
+            this.courseBackgroundAnimator.update(deltaTime);
+        }
         this.presentationVisibilityQuery.refresh();
 
         this.cameraShake.update(
@@ -2102,6 +2163,7 @@ export class World {
          */
         if (
             this.ball &&
+            !this.ball.isDeathPhysicsLocked &&
             this.windRobot
                 ?.isBallInsideWindSuctionCaptureRegion(
                     this.ball.getX(),
@@ -2128,6 +2190,17 @@ export class World {
                 });
             }
         }
+
+        this.objectVoidController.update(deltaTime,
+            [...this.fans, ...this.sprinklers, ...this.rocks.filter(rock => rock.isSmallRock()),
+                ...[this.fireRobot, this.waterRobot, this.secondFireRobot, this.secondWaterRobot, this.windRobot, this.secondWindRobot].filter((robot): robot is Robot => robot !== null)],
+            entity => {
+                CourseBoundaryDeathDiagnostics.report(this.courseEnvironmentBoundary, this.getVoidFootprint(entity), "object-removal", entity.constructor.name);
+                this.beginObjectVoidRemoval(entity);
+            },
+            entity => this.removeEntity(entity),
+            entity => this.getVoidFootprint(entity),
+        );
 
         this.updateMinePhysicalContacts();
         applyDirectionalFireToMines(this.proximityMines, this.fireSourceSystem);
@@ -2266,14 +2339,15 @@ export class World {
          * incorrectly turns an ordinary wall impact into an OOB death.
          * Genuine exits through authored wall openings still request death.
          */
-        if (this.ball) {
+        if (this.ball && !this.ball.isDeathPhysicsLocked) {
             const oob = this.ballOutOfBoundsController.update(
-                this.ball.getX(), this.ball.getY(), deltaTime,
+                this.ball.getX(), this.ball.getY(), deltaTime, this.ball.getRadius(),
             );
-            if (oob.state === "deathRequested") {
-                this.ball.stop(false);
-            }
             if (oob.requestDeath) {
+                const crossing = this.ballOutOfBoundsController.getLastCrossing();
+                // Freeze at the resolved collision pose. Do not teleport to an
+                // intermediate swept sample (which can be visibly on grass).
+                CourseBoundaryDeathDiagnostics.report(this.courseEnvironmentBoundary, this.ball.getCourseExitFootprint(), "ball-death", undefined, crossing);
                 this.reportBallDeath(BallDeathCauseValue.OutOfBounds);
             }
         }
@@ -2434,12 +2508,32 @@ export class World {
             .endFrame(
                 deltaTime,
             );
+        if (this.performanceInvestigation) {
+            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.getSnapshot(), {
+                waterPackets: this.airborneWaterSystem.getActivePacketCount(),
+                windParticles: this.windVfxSystem?.getActiveParticleCount() ?? 0,
+                fireParticles: this.fireVfxSystem?.getActiveParticleCount() ?? 0,
+                backgroundEnabled: !this.p1BackgroundDisabled,
+            });
+        }
+
+        if (this.performanceInvestigation) {
+            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.getSnapshot(), {
+                waterPackets: this.airborneWaterSystem.getActivePacketCount(),
+                windParticles: this.windVfxSystem?.getActiveParticleCount() ?? 0,
+                fireParticles: this.fireVfxSystem?.getActiveParticleCount() ?? 0,
+                backgroundEnabled: new URLSearchParams(window.location.search).get("bgdiag") !== "off",
+            });
+        }
+
 
 
     }
 
     public destroy():
         void {
+        this.performanceInvestigation?.destroy();
+        this.performanceInvestigation?.destroy();
         this.sprinklerWaterVfx
             ?.destroy();
 
@@ -2536,6 +2630,7 @@ export class World {
             0;
 
         this.robotInteractionRegistry.clear();
+        this.fanRobotInteractionUnregister.clear();
         this.sprinklerRobotInteractionUnregister.clear();
 
         for (const system of this.radialBumperCollisionSystems) system.reset();
@@ -2781,8 +2876,26 @@ export class World {
      * system calls this in D-2.
      */
     public reportBallDeath(cause: BallDeathCause): void {
+        if (this.ball?.isDeathPhysicsLocked) return;
         this.ballDeathReporter?.(cause);
     }
+
+    /** Force every surviving robot into its existing attack cooldown once per death. */
+    public forceAllRobotsIntoDeathCooldown(): void {
+        const robots = [
+            this.fireRobot, this.secondFireRobot,
+            this.waterRobot, this.secondWaterRobot,
+            this.windRobot, this.secondWindRobot,
+        ];
+        for (const robot of robots) {
+            if (robot && this.entities.includes(robot)) {
+                robot.forceCooldownForBallDeath();
+            }
+        }
+    }
+
+    public lockBallForDeath(): void { this.ball?.lockDeathPhysics(); }
+    public unlockBallAfterRetry(): void { this.ball?.unlockDeathPhysics(); }
 
     // -------------------------------------------------------
     // Reset
@@ -3912,13 +4025,13 @@ export class World {
                 this.localWindSystem,
             );
 
-        this.robotInteractionRegistry.register({
+        this.robotVoidUnregister.set(this.fireRobot, this.robotInteractionRegistry.register({
             id: definition.id, label: "Fire Robot",
             capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
             shape: { kind: "circle", radius: definition.navigationRadius },
-            getX: (): number => this.fireRobot?.getX() ?? -100000,
-            getY: (): number => this.fireRobot?.getY() ?? -100000,
-        });
+            getX: (): number => this.fireRobot && !this.fireRobot.isDestroyed() ? this.fireRobot.getX() : -100000,
+            getY: (): number => this.fireRobot && !this.fireRobot.isDestroyed() ? this.fireRobot.getY() : -100000,
+        }));
 
         this.addEntity(
             this.fireRobot,
@@ -4211,7 +4324,7 @@ export class World {
                 this.localWindSystem,
             );
 
-            this.robotInteractionRegistry.register({
+            this.robotVoidUnregister.set(robot, this.robotInteractionRegistry.register({
                 id: definition.id,
                 label: isSecond ? "Water Robot 2" : "Water Robot 1",
                 capabilities: {
@@ -4220,9 +4333,9 @@ export class World {
                     visionOccluder: true,
                 },
                 shape: { kind: "circle", radius: definition.navigationRadius },
-                getX: () => robot.getX(),
-                getY: () => robot.getY(),
-            });
+                getX: () => robot.isDestroyed() ? -100000 : robot.getX(),
+                getY: () => robot.isDestroyed() ? -100000 : robot.getY(),
+            }));
 
             this.addEntity(robot, WorldRenderLayer.GameplayActors);
             this.physicsWorld.registerDynamicCollidable(
@@ -4234,8 +4347,8 @@ export class World {
             this.airborneWaterSystem.registerImpactAwareTarget({
                 id: definition.id,
                 radius: definition.navigationRadius,
-                getX: () => robot.getX(),
-                getY: () => robot.getY(),
+                getX: () => robot.isDestroyed() ? -100000 : robot.getX(),
+                getY: () => robot.isDestroyed() ? -100000 : robot.getY(),
                 notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
                     sourceKind: "water",
                     sourceId,
@@ -4247,8 +4360,8 @@ export class World {
             this.localWindSystem.registerImpactAwareTarget({
                 id: definition.id,
                 radius: definition.navigationRadius,
-                getX: () => robot.getX(),
-                getY: () => robot.getY(),
+                getX: () => robot.isDestroyed() ? -100000 : robot.getX(),
+                getY: () => robot.isDestroyed() ? -100000 : robot.getY(),
                 notifyImpact: (x, y, sourceId) => robot.notifyExternalImpact({
                     sourceKind: "wind",
                     sourceId,
@@ -4312,13 +4425,13 @@ export class World {
         );
         const robot = this.windRobot;
 
-        this.robotInteractionRegistry.register({
+        this.robotVoidUnregister.set(robot, this.robotInteractionRegistry.register({
             id: definition.id, label: "Wind Robot",
             capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
             shape: { kind: "circle", radius: definition.navigationRadius },
-            getX: () => robot?.getX() ?? -100000,
-            getY: () => robot?.getY() ?? -100000,
-        });
+            getX: () => robot && !robot.isDestroyed() ? robot.getX() : -100000,
+            getY: () => robot && !robot.isDestroyed() ? robot.getY() : -100000,
+        }));
 
         this.addEntity(robot, WorldRenderLayer.GameplayActors);
         this.physicsWorld.registerDynamicCollidable(
@@ -4326,16 +4439,16 @@ export class World {
         );
         this.airborneWaterSystem.registerImpactAwareTarget({
             id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot?.getX() ?? -100000,
-            getY: () => robot?.getY() ?? -100000,
+            getX: () => robot && !robot.isDestroyed() ? robot.getX() : -100000,
+            getY: () => robot && !robot.isDestroyed() ? robot.getY() : -100000,
             notifyImpact: (x, y, sourceId) => robot?.notifyExternalImpact({
                 sourceKind: "water", sourceId, positionX: x, positionY: y,
             }),
         });
         this.localWindSystem.registerImpactAwareTarget({
             id: definition.id, radius: definition.navigationRadius,
-            getX: () => robot?.getX() ?? -100000,
-            getY: () => robot?.getY() ?? -100000,
+            getX: () => robot && !robot.isDestroyed() ? robot.getX() : -100000,
+            getY: () => robot && !robot.isDestroyed() ? robot.getY() : -100000,
             notifyImpact: (x, y, sourceId) => robot?.notifyExternalImpact({
                 sourceKind: "wind", sourceId, positionX: x, positionY: y,
             }),
@@ -4347,12 +4460,14 @@ export class World {
         for (let index = 0; index < this.fans.length; index += 1) {
             const fan = this.fans[index];
             if (!fan) continue;
-            this.robotInteractionRegistry.register({
+            const unregister = this.robotInteractionRegistry.register({
                 id: `fan-${index}`, label: "Fan",
                 capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
                 shape: { kind: "circle", radius: 42 },
-                getX: (): number => fan.getX(), getY: (): number => fan.getY(),
+                getX: (): number => fan.isDestroyed() ? -100000 : fan.getX(),
+                getY: (): number => fan.isDestroyed() ? -100000 : fan.getY(),
             });
+            this.fanRobotInteractionUnregister.set(fan, unregister);
         }
         for (let index = 0; index < this.sprinklers.length; index += 1) {
             const sprinkler = this.sprinklers[index];
@@ -4361,7 +4476,8 @@ export class World {
                 id: `sprinkler-${index}`, label: "Sprinkler",
                 capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
                 shape: { kind: "circle", radius: 30 },
-                getX: (): number => sprinkler.getX(), getY: (): number => sprinkler.getY(),
+                getX: (): number => sprinkler.isDestroyed() ? -100000 : sprinkler.getX(),
+                getY: (): number => sprinkler.isDestroyed() ? -100000 : sprinkler.getY(),
             });
             this.sprinklerRobotInteractionUnregister.set(sprinkler, unregister);
         }
@@ -4483,6 +4599,54 @@ export class World {
         this.secondWindRobot?.invalidateCurrentTarget();
     }
 
+    private getVoidFootprint(entity: Entity): CourseFootprint {
+        const x = entity.getX(), y = entity.getY();
+        if (entity instanceof Rock) return { kind: "circle", x, y, radius: entity.getRadius() };
+        if (entity instanceof Fan || entity instanceof Sprinkler || entity instanceof Robot) {
+            const shape = entity.getDefinition();
+            if (shape.shape === "rectangle") return {
+                kind: "rectangle", x, y, width: shape.width, height: shape.height,
+                rotationRadians: entity.getRotationRadians(),
+            };
+            if (shape.shape === "circle") return { kind: "circle", x, y, radius: shape.radius };
+        }
+        return { kind: "circle", x, y, radius: 8 };
+    }
+
+    private beginObjectVoidRemoval(entity: Entity): void {
+        if (entity instanceof Fan) {
+            entity.beginVoidRemoval();
+            this.fanRobotInteractionUnregister.get(entity)?.();
+            this.fanRobotInteractionUnregister.delete(entity);
+            this.invalidateRobotTargets();
+            this.physicsWorld.unregisterDynamicBody(entity);
+        } else if (entity instanceof Sprinkler) {
+            entity.beginVoidRemoval();
+            this.waterSourceSystem.removeSource(entity.getSourceId());
+            this.physicsWorld.unregisterDynamicBody(entity);
+            this.windSuctionCaptureSystem.unregisterTarget(entity.getSourceId());
+            this.sprinklerRobotInteractionUnregister.get(entity)?.();
+            this.sprinklerRobotInteractionUnregister.delete(entity);
+            this.invalidateRobotTargets();
+        } else if (entity instanceof Rock) {
+            entity.beginVoidRemoval();
+            this.physicsWorld.unregisterDynamicBody(entity);
+            this.windSuctionCaptureSystem.unregisterTarget(`small-rock-${entity.id}`);
+            this.rockRobotInteractionUnregister.get(entity)?.();
+            this.rockRobotInteractionUnregister.delete(entity);
+            this.invalidateRobotTargets();
+        } else if (entity instanceof Robot) {
+            entity.beginVoidRemoval();
+            const id = entity.getDefinition().id.replace(/-collider$/, "");
+            this.physicsWorld.unregister(`${id}-physics`);
+            this.airborneWaterSystem.unregisterImpactAwareTarget(id);
+            this.localWindSystem.unregisterImpactAwareTarget(id);
+            this.robotVoidUnregister.get(entity)?.();
+            this.robotVoidUnregister.delete(entity);
+            this.invalidateRobotTargets();
+        }
+    }
+
     public removeEntity(
         entity:
             Entity,
@@ -4499,6 +4663,12 @@ export class World {
             -1
         ) {
             return;
+        }
+
+        if (entity instanceof Fan) {
+            this.fanRobotInteractionUnregister.get(entity)?.();
+            this.fanRobotInteractionUnregister.delete(entity);
+            this.invalidateRobotTargets();
         }
 
         // World-owned registrations must be released before destroy() nulls
@@ -4540,6 +4710,28 @@ export class World {
             if (sprinklerIndex !== -1) this.sprinklers.splice(sprinklerIndex, 1);
         }
 
+        if (entity instanceof Robot) {
+            // Also covers non-void removal paths; teardown must be idempotent.
+            const robotId = entity.getDefinition().id.replace(/-collider$/, "");
+            this.robotVoidUnregister.get(entity)?.();
+            this.robotVoidUnregister.delete(entity);
+            this.physicsWorld.unregister(`${robotId}-physics`);
+            this.airborneWaterSystem.unregisterImpactAwareTarget(robotId);
+            this.localWindSystem.unregisterImpactAwareTarget(robotId);
+            if (this.fireRobot === entity) this.fireRobot = null;
+            if (this.waterRobot === entity) {
+                this.waterRobot = null;
+                this.waterRobotJetBallForceSystem = null;
+                this.waterRobotHoseVfx?.destroy();
+                this.waterRobotHoseVfx = null;
+            }
+            if (this.secondFireRobot === entity) this.secondFireRobot = null;
+            if (this.secondWaterRobot === entity) this.secondWaterRobot = null;
+            if (this.windRobot === entity) this.windRobot = null;
+            if (this.secondWindRobot === entity) this.secondWindRobot = null;
+            this.invalidateRobotTargets();
+        }
+        this.objectVoidController.forget(entity);
         entity.destroy();
 
         this.entities.splice(
@@ -4581,6 +4773,7 @@ export class World {
         if (
             entity instanceof Fan
         ) {
+            this.localWindSystem.removeSource(entity.getSourceDefinition().id);
             const fanIndex =
                 this.fans.indexOf(
                     entity,
@@ -5037,7 +5230,7 @@ export class World {
         this.ballDeathRelocationCameraStartX = cameraX;
         this.ballDeathRelocationCameraStartY = cameraY;
 
-        this.ball.setPosition(deathX, deathY);
+        this.ball.relocateDuringDeathTransition(deathX, deathY);
         this.camera.setPosition(cameraX, cameraY);
         this.applyCameraTransform();
     }
@@ -5055,7 +5248,7 @@ export class World {
         const targetCameraY =
             spawn.y - this.camera.getVisibleWorldHeight() / 2;
 
-        this.ball.setPosition(
+        this.ball.relocateDuringDeathTransition(
             this.ballDeathRelocationStartX +
                 (spawn.x - this.ballDeathRelocationStartX) * eased,
             this.ballDeathRelocationStartY +
@@ -5205,6 +5398,8 @@ export class World {
                 this.waterObstacleRegistrationSystem
                     .getAirborneCollisionField(),
             );
+
+        this.fireVfxSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
 
         /*
          * FIRE-VFX-5 normal runtime Fire presentation path.
@@ -5520,6 +5715,7 @@ export class World {
                 this.localWindSystem,
                 this.camera,
             );
+        this.windVfxSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
 
         this.presentationLayers
             .getLayer(

@@ -848,6 +848,12 @@ export class FireVfxParticle {
                 ))
                 : null;
 
+        if (!collisionHit && this.collisionField &&
+            this.collisionField.exitsCourse(previousX, previousY, proposedX, proposedY)) {
+            this.deactivate();
+            return false;
+        }
+
         if (
             collisionHit &&
             this.collisionResponse

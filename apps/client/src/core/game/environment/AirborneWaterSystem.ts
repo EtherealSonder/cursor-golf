@@ -1,3 +1,5 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
+
 import {
     DEFAULT_AIRBORNE_WATER_DEFINITION,
     validateAirborneWaterDefinition,
@@ -182,6 +184,12 @@ export class AirborneWaterSystem {
     private totalStaticCollisionCount = 0;
 
     private totalRequestedWaterAmount = 0;
+    private courseEnvironmentBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseEnvironmentBoundary = boundary;
+    }
+
     private totalDepositedWaterAmount = 0;
     private totalRejectedWaterAmount = 0;
 
@@ -579,6 +587,22 @@ export class AirborneWaterSystem {
                 this.totalStaticCollisionCount +=
                     1;
 
+                continue;
+            }
+
+            // Open polygon edges are void exits, not physical impacts.
+            // Solid-wall sweeps above take precedence over any boundary crossing.
+            const boundary = this.courseEnvironmentBoundary;
+            if (boundary && (
+                !boundary.containsPoint(proposedPositionX, proposedPositionY) ||
+                (boundary.containsPoint(previousPositionX, previousPositionY) &&
+                 boundary.getBoundaryCrossings(
+                     { x: previousPositionX, y: previousPositionY },
+                     { x: proposedPositionX, y: proposedPositionY },
+                 ).length > 0)
+            )) {
+                this.activePackets.splice(index, 1);
+                this.totalRejectedWaterAmount += packet.getWaterAmount();
                 continue;
             }
 

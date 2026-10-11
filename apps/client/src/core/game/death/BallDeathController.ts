@@ -5,6 +5,7 @@ import type { BallDeathDefinition } from "../config/BallDeathDefinition";
 import type { BallDeathEvent } from "./BallDeathEvent";
 import type { BallDeathCause } from "./BallDeathCause";
 import { BallLifeState } from "./BallLifeState";
+import { BallRetryProtectionController } from "./BallRetryProtectionController";
 import {
     BallRetryResult,
 } from "./BallRetryRequest";
@@ -32,6 +33,7 @@ export class BallDeathController {
     private readonly definition: BallDeathDefinition;
     private readonly listeners = new Set<BallDeathStateListener>();
 
+    private readonly retryProtection = new BallRetryProtectionController();
     private state = BallLifeState.Alive;
     private currentLives: number;
     private nextDeathId = 1;
@@ -58,7 +60,7 @@ export class BallDeathController {
     }
 
     public requestDeath(cause: BallDeathCause): BallDeathEvent | null {
-        if (this.state !== BallLifeState.Alive) {
+        if (this.state !== BallLifeState.Alive || this.retryProtection.isActive) {
             return null;
         }
 
@@ -80,7 +82,13 @@ export class BallDeathController {
         return event;
     }
 
+    /** Starts immunity only after the retry transition is fully open. */
+    public beginRetryProtection(): void { this.retryProtection.start(); }
+    public isRetryProtected(): boolean { return this.retryProtection.isActive; }
+    public getRetryProtectionRemainingSeconds(): number { return this.retryProtection.remaining; }
+
     public update(deltaTimeSeconds: number): void {
+        this.retryProtection.update(deltaTimeSeconds);
         if (this.state !== BallLifeState.Dying) {
             return;
         }
@@ -150,6 +158,7 @@ export class BallDeathController {
     }
 
     public destroy(): void {
+        this.retryProtection.reset();
         this.listeners.clear();
     }
 }

@@ -19,6 +19,8 @@ export interface WaterFlowStepResult {
  * reusable numeric scratch buffers. It receives a sparse list of active and
  * boundary-candidate cells and never scans the complete world grid.
  */
+/** E2-A: WaterObstacleField.canFlowBetween combines physical walls and the
+ * playable-area mask; all four transport directions use this same gate. */
 export class WaterFlowSolver {
     private readonly depthDelta: Float32Array;
     private readonly momentumXDelta: Float32Array;

@@ -189,6 +189,10 @@ export class Sprinkler extends Entity {
         return this.enabled;
     }
 
+    public beginVoidRemoval(): void {
+        this.beginSuctionCapture();
+    }
+
     public setEnabled(enabled: boolean): void {
         this.enabled = enabled;
     }

@@ -256,6 +256,30 @@ export class Robot extends Entity {
         }
     }
 
+    /** Called once when an authoritative Ball death is accepted. */
+    public forceCooldownForBallDeath(): void {
+        if (this.voidRemoving) return;
+        this.attackController.forceCooldown();
+        this.targetingController.clear();
+        this.elementAttackController.cancelWarning();
+        this.detectedTargetId = null;
+        this.detectedTargetLabel = null;
+        this.visionCandidates = [];
+        this.lastCommittedTargetX = null;
+        this.lastCommittedTargetY = null;
+        this.destination = null;
+        this.headingErrorDegrees = 0;
+        this.impactReactionController.clear();
+        this.stuckRecoveryController.reset();
+        this.resetAvoidanceState();
+        this.locomotion?.reset();
+        this.beginWaiting(0);
+        // The attack phase is already COOLDOWN, so every elemental source
+        // receives attacking=false immediately rather than next frame.
+        this.synchronizeElementAttack();
+        this.updateLedDisplay(0);
+    }
+
     public getDebugSnapshot(): RobotDebugSnapshot {
         const distanceToDestination = this.destination
             ? Math.hypot(this.destination.x - this.getX(), this.destination.y - this.getY()) : null;
@@ -287,121 +311,30 @@ export class Robot extends Entity {
     }
 
     /**
-     * D-7 lethal Wind suction trigger tied directly to the Robot's authored
-     * nozzle geometry and attack state, not to generic LocalWind source space.
-     *
-     * The trigger is a forward capsule extending beyond the visible nozzle.
-     * Ball radius expands the capsule so entry is detected before solid Robot
-     * collision response can occur.
+     * D1.1: Lethal suction requires the ball CENTER to enter the physical
+     * nozzle opening, not merely overlap the long forward suction corridor.
+     * The visual nozzle's authored tip and heading are evaluated live.
      */
     public isBallInsideWindSuctionCaptureRegion(
         ballX: number,
         ballY: number,
         ballRadius: number,
     ): boolean {
-        if (
-            this.definition.element !==
-                "wind" ||
-            this.state !==
-                "ATTACKING" ||
-            !(this.elementAttackController instanceof
-                RobotWindAttackController)
-        ) {
-            return false;
-        }
+        if (this.definition.element !== "wind" || this.state !== "ATTACKING" ||
+            !(this.elementAttackController instanceof RobotWindAttackController) ||
+            !Number.isFinite(ballX) || !Number.isFinite(ballY)) return false;
 
-        const nozzle =
-            this.getMineNozzleContactSegment();
-
-        const forwardX =
-            this.getForwardX();
-
-        const forwardY =
-            this.getForwardY();
-
-        /*
-         * Start at the authored nozzle segment and extend 34 px beyond its
-         * physical tip. This is intentionally outside the Robot collider.
-         */
-        const startX =
-            nozzle.startX;
-
-        const startY =
-            nozzle.startY;
-
-        const endX =
-            nozzle.endX +
-            forwardX * 34;
-
-        const endY =
-            nozzle.endY +
-            forwardY * 34;
-
-        const segmentX =
-            endX - startX;
-
-        const segmentY =
-            endY - startY;
-
-        const segmentLengthSquared =
-            segmentX * segmentX +
-            segmentY * segmentY;
-
-        let t = 0;
-
-        if (
-            segmentLengthSquared >
-            0.000001
-        ) {
-            t =
-                (
-                    (ballX - startX) *
-                        segmentX +
-                    (ballY - startY) *
-                        segmentY
-                ) /
-                segmentLengthSquared;
-
-            t =
-                Math.max(
-                    0,
-                    Math.min(
-                        1,
-                        t,
-                    ),
-                );
-        }
-
-        const closestX =
-            startX +
-            segmentX * t;
-
-        const closestY =
-            startY +
-            segmentY * t;
-
-        const dx =
-            ballX -
-            closestX;
-
-        const dy =
-            ballY -
-            closestY;
-
-        const captureRadius =
-            nozzle.radius +
-            Math.max(
-                0,
-                ballRadius,
-            ) +
-            5;
-
-        return (
-            dx * dx +
-            dy * dy <=
-            captureRadius *
-                captureRadius
-        );
+        const nozzle = this.getMineNozzleContactSegment();
+        const fx = this.getForwardX(), fy = this.getForwardY();
+        // Capture at the nozzle tip, never ahead of it. Require the center
+        // to enter the small mouth region rather than merely touch its rim.
+        const dx = ballX - nozzle.endX;
+        const dy = ballY - nozzle.endY;
+        const along = dx * fx + dy * fy;
+        const lateral = Math.abs(-dx * fy + dy * fx);
+        const mouthHalfWidth = Math.max(2, nozzle.radius * 0.65);
+        const inwardDepth = Math.max(3, Math.min(8, Math.max(0, ballRadius)));
+        return along <= 0 && along >= -inwardDepth && lateral <= mouthHalfWidth;
     }
 
     /** World-space nozzle capsule used only for precise mine physical contact. */
@@ -453,7 +386,16 @@ export class Robot extends Entity {
         this.elementAttackController.initialize(this.getX(), this.getY(), this.visualRoot.rotation);
     }
 
+    private voidRemoving = false;
+    public beginVoidRemoval(): void {
+        if (this.voidRemoving) return;
+        this.voidRemoving = true;
+        this.invalidateCurrentTarget();
+        this.elementAttackController.destroy();
+    }
+
     protected onUpdate(deltaTime: number): void {
+        if (this.voidRemoving) return;
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
         const externalMotion = this.externalRigidBody.integrate(deltaTime);
         if (externalMotion.positionDeltaX !== 0 || externalMotion.positionDeltaY !== 0) {
@@ -593,7 +535,7 @@ export class Robot extends Entity {
     }
 
     protected onDestroy(): void {
-        this.elementAttackController.destroy();
+        if (!this.voidRemoving) this.elementAttackController.destroy();
         this.ledDisplay.destroy();
         this.locomotion = null; this.bodySprite = null; this.leg1Sprite = null; this.leg2Sprite = null;
         this.container.destroy({ children: true });

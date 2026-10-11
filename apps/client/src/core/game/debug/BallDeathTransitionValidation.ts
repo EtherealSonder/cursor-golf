@@ -1,7 +1,14 @@
+import { findFirstOutsideThresholdCrossing } from "../level/CourseBoundaryFootprintQuery";
 import { BallDeathTransitionController } from "../death/BallDeathTransitionController";
 
 export class BallDeathTransitionValidation {
     public static validate(): void {
+        // Straight boundary x=0, course x>=0. 80% outside must not trigger at 50%.
+        const inside = (x: number, _y: number) => x >= 0;
+        if (findFirstOutsideThresholdCrossing(inside, {x: 5, y: 0}, {x: 0, y: 0}, 10))
+            throw new Error("[D1] Halfway-out Ball died prematurely");
+        if (!findFirstOutsideThresholdCrossing(inside, {x: 5, y: 0}, {x: -10, y: 0}, 10))
+            throw new Error("[D1] Swept 80% boundary crossing missed");
         const controller = new BallDeathTransitionController({
             cameraFocusDurationSeconds: 1.0,
             slowMotionDurationSeconds: 1.0,

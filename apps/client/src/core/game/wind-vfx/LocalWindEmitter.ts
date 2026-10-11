@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as P2 } from "../debug/PerformanceInvestigationCounters";
 import type {
     Texture,
 } from "pixi.js";
@@ -81,15 +82,13 @@ export class LocalWindEmitter {
                 )
                 : 0;
 
-        const sources =
-            this.localWindSystem
-                .getSources()
-                .filter(
-                    (source): boolean =>
-                        !source.id.startsWith(
-                            "fire-validation-field-",
-                        ),
-                );
+        const sources = this.localWindSystem.getSources().filter(source =>
+            !source.id.startsWith("fire-validation-field-") &&
+            source.enabled &&
+            Number.isFinite(source.positionX) && Number.isFinite(source.positionY) &&
+            Number.isFinite(source.directionRadians) &&
+            Number.isFinite(source.range) && source.range > 0,
+        );
 
         const liveIds =
             new Set(
@@ -241,295 +240,93 @@ export class LocalWindEmitter {
         const perpendicularY =
             directionX;
 
-        for (
-            const particle
-            of particles
-        ) {
-            particle.age +=
-                deltaTime;
+        const forwardOffset = this.definition.local.frontOffset;
+        const flowSign = pullFlow ? -1 : 1;
+        const travelX = directionX * flowSign;
+        const travelY = directionY * flowSign;
+        const isClear = (x0: number, y0: number, x1: number, y1: number): boolean =>
+            this.localWindSystem.isVfxSegmentClear(x0, y0, x1, y1);
+        const outletX = source.positionX + directionX * forwardOffset;
+        const outletY = source.positionY + directionY * forwardOffset;
 
-            particle.distance +=
-                (pullFlow ? -1 : 1) *
-                particle.speed *
-                deltaTime;
-
-            const maximumCenterDistance =
-                this.getMaximumCenterDistance(
-                    particle,
-                    source,
-                );
-
-            const minimumTravelDistance = this.getMinimumCenterDistance(
-                particle,
-                pullFlow,
+        for (const particle of particles) {
+            // Fan motion or rotation must not leave a particle detached from its source.
+            const moved = Math.hypot(
+                particle.sourcePositionX - source.positionX,
+                particle.sourcePositionY - source.positionY,
             );
-            if (
-                (!pullFlow && particle.distance > maximumCenterDistance) ||
-                (pullFlow && particle.distance < minimumTravelDistance)
-            ) {
+            const angleDelta = Math.atan2(
+                Math.sin(particle.sourceDirectionRadians - source.directionRadians),
+                Math.cos(particle.sourceDirectionRadians - source.directionRadians),
+            );
+            if (particle.terminated || moved > 3 || Math.abs(angleDelta) > 0.045) {
                 this.recycle(particle, source, false);
             }
 
-            const progress =
-                source.range > 0
-                    ? Math.max(
-                        0,
-                        Math.min(
-                            1,
-                            particle.distance /
-                            source.range,
-                        ),
-                    )
-                    : 0;
-
-            /*
-             * The Local Wind simulation currently uses equal start/end
-             * half-widths, producing a rectangular tube. Keep this interpolation
-             * so presentation remains compatible if the simulation definition
-             * is intentionally changed later.
-             */
-            const halfWidth =
-                this.lerp(
-                    source.startHalfWidth,
-                    source.endHalfWidth,
-                    progress,
-                );
-
-            const baseLateral =
-                particle.lateralRatio *
-                halfWidth *
-                this.definition.local
-                    .lateralFillRatio;
-
-            const sineOffset =
-                Math.sin(
-                    particle.sinePhase +
-                    particle.age *
-                    particle.sineFrequency *
-                    Math.PI *
-                    2,
-                ) *
-                particle.sineAmplitude;
-
-            /*
-             * Keep the visual wave inside the authoritative rectangular Wind
-             * tube. This changes Sprite placement only, never Wind physics.
-             */
-            const lateralLimit =
-                halfWidth *
-                0.94;
-
-            const lateral =
-                Math.max(
-                    -lateralLimit,
-                    Math.min(
-                        lateralLimit,
-                        baseLateral +
-                        sineOffset,
-                    ),
-                );
-
-            const forward =
-                this.definition.local
-                    .frontOffset +
-                particle.distance;
-
-            const proposedX =
-                source.positionX + directionX * forward + perpendicularX * lateral;
-            const proposedY =
-                source.positionY + directionY * forward + perpendicularY * lateral;
-            const obstacleQuery = this.localWindSystem.getObstacleQuery();
-
-            /*
-             * The authoritative Wind query treats particles as points, while
-             * the rendered masks are long centre-anchored streaks. A particle
-             * centre can therefore still be clear while its visible leading
-             * edge overlaps a blocker. First reject centres that have crossed
-             * the hard cutoff, then clip the rendered streak against the same
-             * obstacle boundary.
-             */
-            if (obstacleQuery?.segmentBlocked(
-                source.positionX,
-                source.positionY,
-                proposedX,
-                proposedY,
-            )) {
+            const previousX = particle.positionX;
+            const previousY = particle.positionY;
+            particle.previousPositionX = previousX;
+            particle.previousPositionY = previousY;
+            particle.age += deltaTime;
+            particle.distance += flowSign * particle.speed * deltaTime;
+            const minimum = this.getMinimumCenterDistance(particle, pullFlow);
+            const maximum = this.getMaximumCenterDistance(particle, source);
+            if (particle.distance < minimum || particle.distance > maximum) {
                 this.recycle(particle, source, false);
+            }
+
+            const progress = Math.max(0, Math.min(1, particle.distance / source.range));
+            const halfWidth = this.lerp(source.startHalfWidth, source.endHalfWidth, progress);
+            const baseLateral = particle.lateralRatio * halfWidth * this.definition.local.lateralFillRatio;
+            const wave = Math.sin(particle.sinePhase + particle.age * particle.sineFrequency * Math.PI * 2)
+                * particle.sineAmplitude;
+            const lateral = Math.max(-halfWidth * 0.94, Math.min(halfWidth * 0.94, baseLateral + wave));
+            const proposedX = outletX + directionX * particle.distance + perpendicularX * lateral;
+            const proposedY = outletY + directionY * particle.distance + perpendicularY * lateral;
+            const halfLength = particle.length * this.definition.local.spriteLengthMultiplier * 0.5;
+            const rearX = proposedX - travelX * halfLength;
+            const rearY = proposedY - travelY * halfLength;
+            const tipX = proposedX + travelX * halfLength;
+            const tipY = proposedY + travelY * halfLength;
+
+            // One complete visual segment, not separate centre and clipped-tip sprites.
+            // Swept movement prevents high-speed wisps from teleporting through a wall.
+            P2.add("windParticleCenterTests");
+            const obstructed =
+                !isClear(outletX, outletY, proposedX, proposedY) ||
+                !isClear(rearX, rearY, tipX, tipY) ||
+                (!particle.terminated && particle.sprite.visible &&
+                    !isClear(previousX, previousY, proposedX, proposedY));
+            P2.add("windStreakTests");
+            if (obstructed) {
+                // Do not immediately respawn at the same wall contact: hold the
+                // record hidden until the next update, then retry at the inlet.
+                particle.terminate();
                 continue;
             }
 
-            const travelDirectionX =
-                pullFlow
-                    ? -directionX
-                    : directionX;
-
-            const travelDirectionY =
-                pullFlow
-                    ? -directionY
-                    : directionY;
-
-            const renderedLength =
-                particle.length *
-                this.definition.local
-                    .spriteLengthMultiplier;
-
-            const halfRenderedLength =
-                renderedLength *
-                0.5;
-
-            const clearForwardLength =
-                obstacleQuery
-                    ? this.getClearForwardLength(
-                        obstacleQuery,
-                        proposedX,
-                        proposedY,
-                        travelDirectionX,
-                        travelDirectionY,
-                        halfRenderedLength,
-                    )
-                    : halfRenderedLength;
-
-            /*
-             * Leave a tiny visual clearance so antialiased mask pixels do not
-             * bleed over the static collider edge.
-             */
-            const collisionClearance =
-                1.5;
-
-            const clippedForwardLength =
-                Math.max(
-                    0,
-                    clearForwardLength -
-                    collisionClearance,
-                );
-
-            const visibleRenderedLength =
-                Math.min(
-                    renderedLength,
-                    halfRenderedLength +
-                    clippedForwardLength,
-                );
-
-            if (
-                visibleRenderedLength <=
-                1
-            ) {
-                this.recycle(
-                    particle,
-                    source,
-                    false,
-                );
-                continue;
-            }
-
-            /*
-             * Sprite width scales around its centre. Shift the clipped Sprite
-             * backwards by half of the removed leading length so its rear edge
-             * stays fixed and its leading edge terminates at the blocker.
-             */
-            const removedLeadingLength =
-                renderedLength -
-                visibleRenderedLength;
-
-            particle.positionX =
-                proposedX -
-                travelDirectionX *
-                removedLeadingLength *
-                0.5;
-
-            particle.positionY =
-                proposedY -
-                travelDirectionY *
-                removedLeadingLength *
-                0.5;
-
-            particle.sprite.position.set(
-                particle.positionX,
-                particle.positionY,
-            );
-
-            particle.sprite.rotation =
-                source.directionRadians + (pullFlow ? Math.PI : 0);
-
+            particle.positionX = proposedX;
+            particle.positionY = proposedY;
+            particle.previousPositionX = proposedX;
+            particle.previousPositionY = proposedY;
+            particle.sourcePositionX = source.positionX;
+            particle.sourcePositionY = source.positionY;
+            particle.sourceDirectionRadians = source.directionRadians;
+            particle.terminated = false;
+            particle.sprite.visible = true;
+            particle.sprite.position.set(proposedX, proposedY);
+            particle.sprite.rotation = source.directionRadians + (pullFlow ? Math.PI : 0);
             particle.setRenderedSize(
-                this.definition.local
-                    .spriteLengthMultiplier,
-                this.definition.local
-                    .spriteWidthMultiplier,
-                renderedLength > 0
-                    ? visibleRenderedLength /
-                        renderedLength
-                    : 0,
+                this.definition.local.spriteLengthMultiplier,
+                this.definition.local.spriteWidthMultiplier,
             );
-
-            const endFadeStart =
-                this.definition.local
-                    .endFadeStart;
-
-            const endFade =
-                progress <=
-                    endFadeStart
-                    ? 1
-                    : Math.max(
-                        0,
-                        1 -
-                        (
-                            progress -
-                            endFadeStart
-                        ) /
-                        Math.max(
-                            0.001,
-                            1 -
-                            endFadeStart,
-                        ),
-                    );
-
-            /*
-             * Fade in over a short fixed distance instead of a fraction of the
-             * complete source range. This keeps the stream visibly connected to
-             * the Fan outlet without creating a hard pop.
-             */
-            const inletFadeDistance =
-                Math.max(
-                    18,
-                    particle.length *
-                    0.24,
-                );
-
-            const minimumCenterDistance =
-                this.getMinimumCenterDistance(
-                    particle,
-                    pullFlow,
-                );
-
-            const inletFade =
-                Math.min(
-                    1,
-                    Math.max(
-                        0,
-                        (
-                            particle.distance -
-                            minimumCenterDistance
-                        ) /
-                        inletFadeDistance,
-                    ),
-                );
-
-            /*
-             * Retain a non-zero initial visibility so the first wisps visually
-             * connect to the Fan mouth while still fading in smoothly.
-             */
-            const inletVisibility = pullFlow
-                ? 1
-                : 0.38 +
-                    0.62 *
-                    inletFade;
-
-            particle.sprite.alpha =
-                particle.opacity *
-                particle.softnessMultiplier *
-                inletVisibility *
-                endFade;
+            const endFadeStart = this.definition.local.endFadeStart;
+            const endFade = progress <= endFadeStart ? 1 : Math.max(0,
+                1 - (progress - endFadeStart) / Math.max(0.001, 1 - endFadeStart));
+            const inletFade = Math.max(0, Math.min(1,
+                (particle.distance - minimum) / Math.max(18, particle.length * 0.24)));
+            particle.sprite.alpha = particle.opacity * particle.softnessMultiplier *
+                (pullFlow ? 1 : inletFade) * endFade;
         }
     }
 
@@ -546,6 +343,13 @@ export class LocalWindEmitter {
 
         particle.sourceId =
             source.id;
+        particle.terminated = false;
+        particle.boundaryCulled = false;
+        particle.sourcePositionX = source.positionX;
+        particle.sourcePositionY = source.positionY;
+        particle.sourceDirectionRadians = source.directionRadians;
+        particle.sprite.visible = false;
+        particle.sprite.alpha = 0;
 
         const pullFlow =
             source.flowMode === "pull";
@@ -687,8 +491,13 @@ export class LocalWindEmitter {
                 .spriteWidthMultiplier,
         );
 
-        particle.sprite.visible =
-            true;
+        // Only show a particle after its complete segment passes obstruction checks.
+        particle.positionX = source.positionX +
+            Math.cos(source.directionRadians) * (this.definition.local.frontOffset + particle.distance);
+        particle.positionY = source.positionY +
+            Math.sin(source.directionRadians) * (this.definition.local.frontOffset + particle.distance);
+        particle.previousPositionX = particle.positionX;
+        particle.previousPositionY = particle.positionY;
     }
 
     /**
@@ -749,106 +558,6 @@ export class LocalWindEmitter {
             this.definition.local
                 .frontOffset,
         );
-    }
-
-    /**
-     * Return the clear distance from a particle centre toward its visible
-     * leading edge. Binary search is used only when the full leading half is
-     * obstructed, keeping the common unobstructed path inexpensive.
-     */
-    private getClearForwardLength(
-        obstacleQuery:
-            NonNullable<ReturnType<LocalWindSystem["getObstacleQuery"]>>,
-
-        centerX:
-            number,
-
-        centerY:
-            number,
-
-        directionX:
-            number,
-
-        directionY:
-            number,
-
-        maximumLength:
-            number,
-    ): number {
-
-        if (
-            maximumLength <=
-            0
-        ) {
-            return 0;
-        }
-
-        const endX =
-            centerX +
-            directionX *
-            maximumLength;
-
-        const endY =
-            centerY +
-            directionY *
-            maximumLength;
-
-        if (!obstacleQuery.segmentBlocked(
-            centerX,
-            centerY,
-            endX,
-            endY,
-        )) {
-            return maximumLength;
-        }
-
-        let clearLength =
-            0;
-
-        let blockedLength =
-            maximumLength;
-
-        /*
-         * Eight iterations resolve a typical 40-100 px Wind mask to well
-         * below one pixel without adding per-frame collider allocations.
-         */
-        for (
-            let iteration = 0;
-            iteration < 8;
-            iteration += 1
-        ) {
-            const candidateLength =
-                (
-                    clearLength +
-                    blockedLength
-                ) *
-                0.5;
-
-            const candidateX =
-                centerX +
-                directionX *
-                candidateLength;
-
-            const candidateY =
-                centerY +
-                directionY *
-                candidateLength;
-
-            if (obstacleQuery.segmentBlocked(
-                centerX,
-                centerY,
-                candidateX,
-                candidateY,
-            )) {
-                blockedLength =
-                    candidateLength;
-            } else {
-                clearLength =
-                    candidateLength;
-            }
-        }
-
-        return clearLength;
     }
 
     private lerp(

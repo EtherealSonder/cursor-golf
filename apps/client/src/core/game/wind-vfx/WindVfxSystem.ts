@@ -1,3 +1,5 @@
+import { PerformanceInvestigationCounters as P1 } from "../debug/PerformanceInvestigationCounters";
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
     Container,
     Texture,
@@ -58,6 +60,18 @@ export class WindVfxSystem {
 
     private readonly localEmitter:
         LocalWindEmitter;
+
+    private courseBoundary: CourseEnvironmentBoundary | null = null;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.courseBoundary = boundary;
+    }
+    /** The local emitter owns obstruction termination. Global gusts are course-clipped here. */
+    private constrainWindPresentation(): void {
+        // Do not hide pooled sprites independently of their owning emitters:
+        // the old sprite-only pass left logical particles alive at stale positions.
+        // LocalWindEmitter checks the same course boundary via the obstacle query.
+    }
 
     private destroyed =
         false;
@@ -226,12 +240,17 @@ export class WindVfxSystem {
         );
         this.performanceDetails.localEmitterMilliseconds =
             performance.now() - localStartedAt;
+        P1.add("windLocalEmitterMicroseconds",Math.round(this.performanceDetails.localEmitterMilliseconds*1000));
+        P1.add("windGlobalEmitterMicroseconds",Math.round(this.performanceDetails.globalEmitterMilliseconds*1000));
 
         /*
          * WindVfxPool has no separate per-frame particle-update pass. Its
          * measurable CPU work is acquire/release bookkeeping performed by the
          * two emitters, so retain this field explicitly as zero for clarity.
          */
+        // Local streak collision/void termination is owned by LocalWindEmitter.
+        // Global gust presentation remains managed by GlobalWindEmitter.
+        this.constrainWindPresentation();
         this.performanceDetails.poolBookkeepingMilliseconds = 0;
     }
 

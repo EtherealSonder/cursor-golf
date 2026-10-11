@@ -53,8 +53,12 @@ export class BallDeathTransitionRenderer {
     }
 
     public setCurrentWorldPoint(x: number, y: number): void {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
         this.currentWorldPoint = { x, y };
     }
+
+    /** Immutable closing anchor, independent of retry relocation. */
+    public getDeathWorldPoint(): BallDeathTransitionWorldPoint { return {...this.deathWorldPoint}; }
 
     public render(snapshot: BallDeathTransitionSnapshot): void {
         if (

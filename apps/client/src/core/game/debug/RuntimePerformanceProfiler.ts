@@ -17,6 +17,8 @@ export interface RuntimePerformanceSnapshot {
     readonly frameCount: number;
     readonly averageMeasuredFrameMilliseconds: number;
     readonly maximumMeasuredFrameMilliseconds: number;
+    readonly p95MeasuredFrameMilliseconds: number;
+    readonly p95MeasuredFrameMilliseconds: number;
     readonly approximateFps: number;
     readonly overBudgetFrameCount: number;
     readonly sections: readonly RuntimePerformanceSectionSnapshot[];
@@ -52,6 +54,10 @@ export class RuntimePerformanceProfiler {
     private frameStartMilliseconds =
         0;
 
+    private readonly frameSamples: number[] = [];
+
+    private readonly frameSamples: number[] = [];
+
     private frameCount =
         0;
 
@@ -69,6 +75,8 @@ export class RuntimePerformanceProfiler {
             frameCount: 0,
             averageMeasuredFrameMilliseconds: 0,
             maximumMeasuredFrameMilliseconds: 0,
+            p95MeasuredFrameMilliseconds: 0,
+            p95MeasuredFrameMilliseconds: 0,
             approximateFps: 0,
             overBudgetFrameCount: 0,
             sections: [],
@@ -242,6 +250,8 @@ export class RuntimePerformanceProfiler {
                 this.frameStartMilliseconds,
             );
 
+        this.frameSamples.push(elapsed);
+        this.frameSamples.push(elapsed);
         this.totalFrameMilliseconds +=
             elapsed;
 
@@ -332,6 +342,8 @@ export class RuntimePerformanceProfiler {
 
             maximumMeasuredFrameMilliseconds:
                 this.maximumFrameMilliseconds,
+            p95MeasuredFrameMilliseconds: [...this.frameSamples].sort((a,b)=>a-b)[Math.min(this.frameSamples.length-1,Math.floor(this.frameSamples.length*0.95))] ?? 0,
+            p95MeasuredFrameMilliseconds: [...this.frameSamples].sort((a,b)=>a-b)[Math.min(this.frameSamples.length-1,Math.floor(this.frameSamples.length*0.95))] ?? 0,
 
             approximateFps:
                 this.totalFrameMilliseconds > 0
@@ -353,6 +365,8 @@ export class RuntimePerformanceProfiler {
         void {
         this.sections.clear();
         this.sectionStarts.clear();
+        this.frameSamples.length = 0;
+        this.frameSamples.length = 0;
 
         this.frameCount =
             0;

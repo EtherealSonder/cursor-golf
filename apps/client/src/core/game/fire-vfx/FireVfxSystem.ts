@@ -1,3 +1,4 @@
+import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
     Container,
     Texture,
@@ -148,6 +149,12 @@ export class FireVfxSystem {
 
     private readonly scorchRenderer:
         ScorchRenderer;
+    private readonly fireParticleCollisionField: FireParticleCollisionField;
+
+    public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.fireParticleCollisionField.setCourseEnvironmentBoundary(boundary);
+        this.scorchRenderer.setCourseEnvironmentBoundary(boundary);
+    }
 
     private performanceDetails = {
         groundEmitterMilliseconds: 0,
@@ -192,6 +199,7 @@ export class FireVfxSystem {
                 airborneObstacleField,
             );
 
+        this.fireParticleCollisionField = fireParticleCollisionField;
         this.pool =
             new FireVfxPool(
                 this.textures.main.body,

@@ -10,6 +10,30 @@ import {
  */
 export class WindVfxParticle {
 
+    /** Previous visible world position for swept obstruction checks. */
+    public previousPositionX = 0;
+    public previousPositionY = 0;
+    /** Last authoritative local source transform; moving fans invalidate old streaks. */
+    public sourcePositionX = 0;
+    public sourcePositionY = 0;
+    public sourceDirectionRadians = 0;
+    /** A terminated record stays in the pool but cannot be rendered until respawn. */
+    public terminated = false;
+    public boundaryCulled = false;
+
+    public terminateAtBoundary(): void {
+        this.boundaryCulled = true;
+        this.terminated = true;
+        this.sprite.visible = false;
+        this.sprite.alpha = 0;
+    }
+
+    public terminate(): void {
+        this.terminated = true;
+        this.sprite.visible = false;
+        this.sprite.alpha = 0;
+    }
+
     public readonly sprite:
         Sprite;
 
@@ -138,6 +162,13 @@ export class WindVfxParticle {
     public reset(): void {
         this.active =
             false;
+        this.terminated = false;
+        this.boundaryCulled = false;
+        this.previousPositionX = 0;
+        this.previousPositionY = 0;
+        this.sourcePositionX = 0;
+        this.sourcePositionY = 0;
+        this.sourceDirectionRadians = 0;
 
         this.positionX =
             0;
