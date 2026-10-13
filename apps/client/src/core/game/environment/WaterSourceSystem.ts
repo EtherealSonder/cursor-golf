@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type {
     WaterSourceDefinition,
     WaterSourceType,
@@ -157,6 +158,7 @@ export class WaterSourceSystem {
     public update(
         deltaTime: number,
     ): void {
+        PassBCounters.passB("waterSourceUpdates");
         if (
             !Number.isFinite(deltaTime) ||
             deltaTime <= 0

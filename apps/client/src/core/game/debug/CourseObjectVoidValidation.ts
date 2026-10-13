@@ -12,7 +12,7 @@ export function assertCourseObjectVoidValidation(): void {
         getContainer: () => ({ scale: inside.scale }), isDestroyed: () => destroyed,
     } as unknown as Entity;
     const boundary = { containsPoint: (x: number, y: number) => x >= 0 && y >= 0 && x <= 20 && y <= 20,
-        isFootprintMostlyOutside: (footprint: {x:number;y:number}) => footprint.x < 0 || footprint.x > 20 || footprint.y < 0 || footprint.y > 20 } as CourseEnvironmentBoundary;
+        isFootprintMostlyOutside: (footprint: {x:number;y:number}) => footprint.x < 0 || footprint.x > 20 || footprint.y < 0 || footprint.y > 20 } as unknown as CourseEnvironmentBoundary;
     const controller = new WorldObjectVoidController(boundary, 0.25);
     const deactivate = () => { deactivated++; };
     const remove = () => { removed++; destroyed = true; };

@@ -1,5 +1,6 @@
 import type { WorldPosition } from "./LevelCoordinateTransform";
 import type { GeneratedCourseGeometry, RuntimeCourseBounds } from "./LevelRuntimeDefinition";
+import type { CourseGeometrySpatialIndex } from "./CourseGeometrySpatialIndex";
 import { pointInPolygon } from "./CourseGeometryValidation";
 
 const EPS = 1e-8;
@@ -28,22 +29,26 @@ export function intersectCourseSegments(a: WorldPosition, b: WorldPosition, c: W
     return { point: { x: a.x + r.x * fraction, y: a.y + r.y * fraction }, fraction };
 }
 
-export function getCourseBoundaryIntersections(geometry: GeneratedCourseGeometry, start: WorldPosition, end: WorldPosition): CourseSegmentIntersection[] {
-    return geometry.edges.flatMap(edge => {
+export function getCourseBoundaryIntersections(geometry: GeneratedCourseGeometry, start: WorldPosition, end: WorldPosition, index?: CourseGeometrySpatialIndex): CourseSegmentIntersection[] {
+    const candidates = index ? index.boundaryCandidates(start,end).map(i=>geometry.edges[i]) : geometry.edges;
+    return candidates.flatMap(edge => {
         const hit = intersectCourseSegments(start, end, edge.start, edge.end);
         return hit ? [{ ...hit, edgeIndex: edge.index }] : [];
     }).sort((a, b) => a.fraction - b.fraction || a.edgeIndex - b.edgeIndex);
 }
 
 /** Wall tests use authored edge segments, not the outward-offset collider centreline. */
-export function getCourseWallIntersections(geometry: GeneratedCourseGeometry, start: WorldPosition, end: WorldPosition): CourseSegmentIntersection[] {
-    return geometry.wallSegments.flatMap(wall => {
+export function getCourseWallIntersections(geometry: GeneratedCourseGeometry, start: WorldPosition, end: WorldPosition, index?: CourseGeometrySpatialIndex): CourseSegmentIntersection[] {
+    const candidates = index ? index.wallCandidates(start,end).map(i=>geometry.wallSegments[i]) : geometry.wallSegments;
+    return candidates.flatMap(wall => {
         const hit = intersectCourseSegments(start, end, wall.start, wall.end);
         return hit ? [{ ...hit, edgeIndex: wall.edgeIndex, wallId: wall.id }] : [];
     }).sort((a, b) => a.fraction - b.fraction || a.edgeIndex - b.edgeIndex);
 }
 
 export function containsCoursePoint(geometry: GeneratedCourseGeometry, point: WorldPosition): boolean {
+    if (point.x < geometry.bounds.minimumX || point.x > geometry.bounds.maximumX ||
+        point.y < geometry.bounds.minimumY || point.y > geometry.bounds.maximumY) return false;
     return pointInPolygon(point, geometry.vertices);
 }
 export function getCourseBounds(geometry: GeneratedCourseGeometry): RuntimeCourseBounds { return geometry.bounds; }

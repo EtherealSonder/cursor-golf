@@ -146,6 +146,8 @@ export class WaterVfxSystem {
             definition.enabled;
     }
 
+    private diagnosticPresentationEnabled=true;
+    public setDiagnosticPresentationEnabled(enabled:boolean):void{this.diagnosticPresentationEnabled=enabled;this.groundContainer.visible=enabled&&this.definition.enabled;this.airborneContainer.visible=enabled&&this.definition.enabled;}
     public getGroundContainer(): Container {
         return this.groundContainer;
     }
@@ -167,7 +169,7 @@ export class WaterVfxSystem {
     }
 
     public updateSprinklerImpacts(dt: number, sprinklers: readonly Sprinkler[], airborne: AirborneWaterSystem): void {
-        if (this.destroyed || !this.definition.enabled) return;
+        if (this.destroyed || !this.definition.enabled || !this.diagnosticPresentationEnabled) return;
         this.sprinklerImpactVfx.update(dt, sprinklers, airborne, this.impactVfxSystem);
     }
 
@@ -180,7 +182,7 @@ export class WaterVfxSystem {
     ): void {
         if (
             this.destroyed ||
-            !this.definition.enabled
+            !this.definition.enabled || !this.diagnosticPresentationEnabled
         ) {
             return;
         }
@@ -198,7 +200,7 @@ export class WaterVfxSystem {
     ): void {
         if (
             this.destroyed ||
-            !this.definition.enabled
+            !this.definition.enabled || !this.diagnosticPresentationEnabled
         ) {
             return;
         }
@@ -209,7 +211,7 @@ export class WaterVfxSystem {
     public updateBallTraversal(ball: Ball): void {
         if (
             this.destroyed ||
-            !this.definition.enabled
+            !this.definition.enabled || !this.diagnosticPresentationEnabled
         ) {
             return;
         }
@@ -268,6 +270,7 @@ export class WaterVfxSystem {
         if (
             this.destroyed ||
             !this.definition.enabled ||
+            !this.diagnosticPresentationEnabled ||
             !Number.isFinite(deltaTime) ||
             deltaTime <= 0
         ) {
@@ -346,7 +349,7 @@ export class WaterVfxSystem {
     ): boolean {
         if (
             this.destroyed ||
-            !this.definition.enabled
+            !this.definition.enabled || !this.diagnosticPresentationEnabled
         ) {
             return false;
         }

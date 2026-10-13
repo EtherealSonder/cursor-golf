@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 // O6 final Water optimization: preserve O5 staggered maintenance and authoritative ground-interaction semantics.
 import {
     DEFAULT_WATER_GROUND_INTERACTION_DEFINITION,
@@ -247,9 +248,15 @@ export class WaterGroundInteractionSystem {
         this.validateFieldCompatibility();
     }
 
+    /** Reuses the authoritative WaterField course boundary for aligned static cell centers. */
+    public isCourseWaterCellValid(x:number,y:number,size:number):boolean {
+        return this.waterField.isCourseCellCenterValid(x,y,size); // static geometry only; dynamic moisture is never cached
+    }
+
     public update(
         deltaTime: number,
     ): void {
+        PassBCounters.passB("waterGroundUpdates");
         this.lastProcessedWaterCellCount =
             0;
 

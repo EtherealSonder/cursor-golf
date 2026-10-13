@@ -1,3 +1,5 @@
+import { CourseGeometryAccelerationProfiler as Geo } from "../debug/CourseGeometryAccelerationProfiler";
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 // O6 final Water optimization: preserve the O4 sparse-field solver semantics and allocation profile.
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 
@@ -78,6 +80,10 @@ export class WaterField {
 
     public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
         this.courseEnvironmentBoundary = boundary;
+    }
+    /** Shared static-cell query for Water and ground interaction consumers. */
+    public isCourseCellCenterValid(x:number,y:number,size:number):boolean {
+        return !this.courseEnvironmentBoundary || this.courseEnvironmentBoundary.isValidCell(x,y,size,"center");
     }
 
     private obstacleField:
@@ -284,6 +290,7 @@ export class WaterField {
     public update(
         deltaTime: number,
     ): void {
+        PassBCounters.passB("waterFieldUpdates");
 
         this.lastProcessedCellCount =
             0;
@@ -465,6 +472,7 @@ export class WaterField {
             return 0;
         }
 
+        if (this.courseEnvironmentBoundary) Geo.add("cellCacheBypasses");
         if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(worldX, worldY)) return 0;
         const gridPosition =
             this.worldToGrid(
@@ -842,6 +850,7 @@ export class WaterField {
             !Number.isFinite(transportedVelocityX) || !Number.isFinite(transportedVelocityY)
         ) return 0;
 
+        if (this.courseEnvironmentBoundary) Geo.add("cellCacheBypasses");
         if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(destinationWorldX, destinationWorldY)) return 0;
         const gridPosition = this.worldToGrid(destinationWorldX, destinationWorldY);
         if (!gridPosition) return 0;

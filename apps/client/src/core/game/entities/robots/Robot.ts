@@ -49,6 +49,7 @@ export interface RobotDebugSnapshot {
     readonly warningRemainingSeconds: number; readonly warningDurationSeconds: number;
 }
 
+/** Pass B observes this system without changing authoritative behavior. */
 export class Robot extends Entity {
     private readonly spawnX: number;
     private readonly spawnY: number;

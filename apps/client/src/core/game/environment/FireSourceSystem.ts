@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import type {
     FireSourceDefinition,
@@ -57,6 +58,7 @@ export class FireSourceSystem {
 
     public update(deltaTime: number): void {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) {
+        PassBCounters.passB("fireSourceUpdates");
             return;
         }
 

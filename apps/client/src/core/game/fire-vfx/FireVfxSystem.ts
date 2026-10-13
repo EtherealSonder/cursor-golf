@@ -340,6 +340,8 @@ export class FireVfxSystem {
         );
     }
 
+    /** Diagnostic-only marker; World owns the update gate. */
+    public isDiagnosticPresentationAvailable():boolean{return true;}
     public update(
         deltaTime:
             number,

@@ -65,10 +65,8 @@ export class WaterObstacleField {
     }
 
     private readonly courseMask: Uint8Array;
-    private courseBoundary: CourseEnvironmentBoundary | null = null;
 
     public setCourseBoundary(boundary: CourseEnvironmentBoundary | null): void {
-        this.courseBoundary = boundary;
         this.courseMask.fill(0);
         if (boundary) {
             for (let y = 0; y < this.rowCount; y += 1) {

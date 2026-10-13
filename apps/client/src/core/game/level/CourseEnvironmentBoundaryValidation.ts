@@ -1,3 +1,4 @@
+import { assertCourseGeometryAccelerationValidation } from "../debug/CourseGeometryAccelerationValidation";
 import { buildCourseGeometry } from "./CourseGeometryBuilder";
 import { CourseEnvironmentBoundary } from "./CourseEnvironmentBoundary";
 import type { LevelCourseDefinition } from "./LevelDefinition";
@@ -24,6 +25,7 @@ const convex: LevelCourseDefinition = {
 
 /** Pure assertions, safe to call during development without constructing a Pixi world. */
 export function assertCourseEnvironmentBoundaryValidation(): void {
+    assertCourseGeometryAccelerationValidation();
     const origin = { x: 350, y: -120 };
     const rect = new CourseEnvironmentBoundary(buildCourseGeometry(rectangle, origin));
     check(rect.containsPoint(450, -60), "rectangle origin / inside");

@@ -64,3 +64,10 @@ export function pointInPolygon(p: LevelPoint, vertices: readonly LevelPoint[]): 
     }
     return inside;
 }
+
+/** Boundary-inclusive reference cases for accelerated-query regression coverage. */
+export function assertCoursePolygonReferenceCases():void {
+    const diamond=[{x:100,y:0},{x:200,y:100},{x:100,y:200},{x:0,y:100}];
+    if(!pointInPolygon({x:100,y:0},diamond) || !pointInPolygon({x:100,y:100},diamond) || pointInPolygon({x:0,y:0},diamond))
+        throw new Error("[P1] polygon reference case mismatch");
+}

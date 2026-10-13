@@ -42,6 +42,7 @@ import type {
 
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
+import { isPerformanceInvestigationEnabled } from "./debug/PerformanceInvestigationDefinition";
 import { BallLivesHud } from "./ui/BallLivesHud";
 import { ResetBallButton } from "./ui/ResetBallButton";
 import { BallDeathController } from "./death/BallDeathController";
@@ -219,6 +220,7 @@ export class Game {
             );
 
         this.world.initialize();
+        if (isPerformanceInvestigationEnabled()) console.info("[PERF] Pass A diagnostic dashboard enabled; rendering timing is CPU-side only.");
         if (new URLSearchParams(window.location.search).get("shotPowerValidation") === "1") {
             const ball = this.world.getBall();
             const spawn = this.world.getBallWorldPosition();

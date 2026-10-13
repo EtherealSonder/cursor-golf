@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 // O6 final Water optimization: direct Water/Fire interaction behavior is frozen; avoid speculative semantic changes.
 import {
     DEFAULT_WATER_FIRE_INTERACTION_DEFINITION,
@@ -271,6 +272,7 @@ export class WaterFireInteraction {
         waterField: WaterField,
         fireManager: FireManager,
     ): StandingWaterGroundFireResult {
+        PassBCounters.passB("waterFireGroundCalls");
         /*
          * Pass 5 sparse interaction path.
          *

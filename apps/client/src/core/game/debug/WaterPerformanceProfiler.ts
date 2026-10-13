@@ -354,6 +354,8 @@ export class WaterPerformanceProfiler {
     }
 
     public getSnapshot():WaterPerformanceSnapshot{return this.latestSnapshot;}
+    /** Refresh the published snapshot without resetting gameplay. */
+    public publishDiagnosticSnapshot(): WaterPerformanceSnapshot { this.publishSnapshot(); return this.latestSnapshot; }
     private addDetail(a:DetailAccumulator,v:number):void{a.total+=v;a.samples+=1;a.peak=Math.max(a.peak??0,v);}
     private detailAverage(a:DetailAccumulator):number{return this.worldFrameSamples>0?a.total/this.worldFrameSamples:0;}
     private average(name:ProfileTimingName):number{const v=this.timings.get(name);return v&&this.worldFrameSamples>0?v.total/this.worldFrameSamples:0;}

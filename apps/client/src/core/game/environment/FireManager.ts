@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
     DEFAULT_COURSE_BOUNDARY_DEFINITION,
@@ -304,6 +305,7 @@ export class FireManager {
 
     public update(deltaTime: number): void {
         if (!Number.isFinite(deltaTime)) {
+        PassBCounters.passB("fireManagerUpdates");
             return;
         }
 
@@ -951,10 +953,7 @@ export class FireManager {
                 );
 
             if (
-                !this.isWorldPointInsideCourse(
-                    center.x,
-                    center.y,
-                )
+                !this.isCourseFireCellValid(center.x - this.definition.cellSize / 2, center.y - this.definition.cellSize / 2, this.definition.cellSize)
             ) {
                 continue;
             }
@@ -2260,6 +2259,11 @@ export class FireManager {
         gridY: number,
     ): string {
         return `${gridX}:${gridY}`;
+    }
+
+    /** Static-grid center validity for Fire cell consumers; no dynamic Fire state cached. */
+    public isCourseFireCellValid(x:number,y:number,size:number):boolean {
+        return !this.courseEnvironmentBoundary || this.courseEnvironmentBoundary.isValidCell(x,y,size,"center");
     }
 
     private isWorldPointInsideCourse(

@@ -7,8 +7,6 @@ export class CourseBackgroundAnimator {
     private elapsedSeconds = 0;
     private paused = false;
     public setPaused(paused: boolean): void { this.paused = paused; }
-    private paused = false;
-    public setPaused(paused: boolean): void { this.paused = paused; }
     private readonly palette: readonly number[];
     private readonly transitionSeconds: number;
 

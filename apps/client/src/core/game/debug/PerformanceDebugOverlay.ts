@@ -10,7 +10,7 @@ import type {
 } from "./PerformanceMetrics";
 
 const PERFORMANCE_DEBUG_ENABLED =
-    true;
+    new URLSearchParams(window.location.search).get("perfdiag") !== "1";
 
 const PERFORMANCE_DISPLAY_REFRESH_SECONDS =
     0.25;
@@ -376,3 +376,5 @@ export class PerformanceDebugOverlay {
         );
     }
 }
+
+// The detailed Pass A dashboard is opt-in and takes precedence over legacy overlay presentation.

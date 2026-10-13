@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 
 import {
@@ -340,6 +341,7 @@ export class AirborneWaterSystem {
     public update(
         deltaTime: number,
     ): void {
+        PassBCounters.passB("airborneWaterUpdates");
         this.lastSubstepCount = 0;
         this.lastMovementSweeps.length = 0;
 

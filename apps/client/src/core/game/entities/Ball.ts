@@ -193,7 +193,10 @@ interface BoundaryCollisionResult {
     readonly collidedBottom: boolean;
 }
 
+/** Pass B observes this system without changing authoritative behavior. */
 export class Ball extends Entity {
+    private static readonly verboseCollisionDiagnostics = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ballDebug") === "1";
+
 
     private shotPowerBaselineValidationMode = false;
 
@@ -3039,6 +3042,7 @@ export class Ball extends Entity {
         speedAfterCollision:
             number,
     ): void {
+        if (!Ball.verboseCollisionDiagnostics) return;
 
         console.log(
             "===== STATIC OBSTACLE COLLISION =====",
@@ -3152,6 +3156,7 @@ export class Ball extends Entity {
         frictionImpulseMagnitude:
             number,
     ): void {
+        if (!Ball.verboseCollisionDiagnostics) return;
 
         console.log(
             "==== DYNAMIC OBSTACLE COLLISION ====",
@@ -3318,6 +3323,7 @@ export class Ball extends Entity {
         speedAfterCollision:
             number,
     ): void {
+        if (!Ball.verboseCollisionDiagnostics) return;
 
         const collidedEdges:
             string[] = [];

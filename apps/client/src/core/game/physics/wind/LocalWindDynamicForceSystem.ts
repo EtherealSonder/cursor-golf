@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../../debug/PerformanceInvestigationCounters";
 import {
     DEFAULT_LOCAL_WIND_DYNAMIC_FORCE_DEFINITION,
     type LocalWindDynamicForceDefinition,
@@ -53,6 +54,7 @@ export class LocalWindDynamicForceSystem {
 
     public update(deltaTime: number): void {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) {
+        PassBCounters.passB("windForceUpdates");
             return;
         }
 

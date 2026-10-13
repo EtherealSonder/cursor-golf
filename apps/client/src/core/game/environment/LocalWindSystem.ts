@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import type {
     LocalWindSourceDefinition,
@@ -112,6 +113,7 @@ export class LocalWindSystem {
     /** Edge-triggered authoritative Wind contact for AI awareness. */
     public updateImpactAwareTargets(): void {
         for (const target of this.impactAwareTargets.values()) {
+        PassBCounters.passB("windTargetUpdates");
             const sample = this.sampleAt(target.getX(), target.getY());
             const current = new Set(sample.contributingSourceIds);
             const previous = this.activeImpactSourcesByTarget.get(target.id) ?? new Set<string>();

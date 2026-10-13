@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
 import { CourseBoundaryDeathDiagnostics } from "../debug/CourseBoundaryDeathDiagnostics";
 import { PerformanceInvestigationController } from "../debug/PerformanceInvestigationController";
@@ -32,6 +33,7 @@ import { loadLevelDefinition } from "../level/LevelLoader";
 import { resolveLevelTechnicalBounds } from "../level/LevelTechnicalBounds";
 import { LevelNavigationBounds } from "../level/LevelNavigationBounds";
 import { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
+import { CourseGeometryAccelerationProfiler } from "../debug/CourseGeometryAccelerationProfiler";
 import { WorldObjectVoidController } from "./WorldObjectVoidController";
 import { assertCourseObjectVoidValidation } from "../debug/CourseObjectVoidValidation";
 import { assertCourseEnvironmentBoundaryValidation } from "../level/CourseEnvironmentBoundaryValidation";
@@ -467,9 +469,7 @@ export class World {
         ? new PerformanceInvestigationController(new URLSearchParams(window.location.search).get("vfxdiag") ?? "all")
         : null;
 
-    private readonly performanceInvestigation = isPerformanceInvestigationEnabled()
-        ? new PerformanceInvestigationController(new URLSearchParams(window.location.search).get("vfxdiag") ?? "all")
-        : null;
+    private diagnosticVfx = { fire:true, water:true, wind:true };
 
     private readonly waterPerformanceProfiler:
         WaterPerformanceProfiler =
@@ -863,6 +863,8 @@ export class World {
 
     /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
     private readonly runtimeLevel: RuntimeLevelDefinition;
+    /** Resolved level identifier, retained for benchmark identity reporting. */
+    private readonly performanceLevelId: string;
     private readonly technicalBounds: CourseBoundaryDefinition;
     private readonly navigationBounds: LevelNavigationBounds | undefined;
     private readonly courseEnvironmentBoundary: CourseEnvironmentBoundary;
@@ -903,6 +905,7 @@ export class World {
             : requestedLevel === "figma-test"
                 ? "level-figma-test"
                 : requestedLevel || "level-00-dev";
+        this.performanceLevelId = selectedLevelId;
         const selectedLevel = requireLevelById(selectedLevelId);
         const levelLoad = loadLevelDefinition(selectedLevel, {
             worldOrigin: {
@@ -1176,8 +1179,29 @@ export class World {
             this.screenOverlayContainer,
         );
 
+        // Geometry profiling is OFF in normal gameplay and P0 by default.
+        // Opt in explicitly: ?geometryprofile=counters or ?geometryprofile=sampled.
+        // Sampled mode measures only 1 in 256 point queries.
+        const geometryProfileParam = new URLSearchParams(window.location.search).get("geometryprofile");
+        CourseGeometryAccelerationProfiler.configure(
+            geometryProfileParam === "sampled" ? "sampled" :
+            geometryProfileParam === "counters" ? "counters" : "off",
+        );
+
         this.createPerformanceSummaryText();
-        if (this.performanceInvestigation) this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
+        if (this.performanceInvestigation) {
+            this.performanceInvestigation.bindP0Identity(() => ({
+                levelId: this.performanceLevelId,
+                spawnX: this.runtimeLevel.ball.x,
+                spawnY: this.runtimeLevel.ball.y,
+                fixtureRevision: "live-scene-unverified",
+                resetVerified: false,
+                note: "Live gameplay state; fresh-world reconstruction not implemented",
+            }));
+            this.performanceInvestigation.bindChange(config => { this.diagnosticVfx = {...config}; });
+            this.performanceInvestigation.layout(this.app.screen.width);
+            this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
+        }
         this.createCourse();
 
 
@@ -1668,6 +1692,7 @@ export class World {
             );
 
         this.applyCameraTransform();
+        this.performanceInvestigation?.layout(viewportWidth);
 
         if (
             this.cameraActivationDebugGraphics
@@ -1735,7 +1760,7 @@ export class World {
          * airborne flight -> ground impact -> standing-Water simulation.
          */
         this.waterPerformanceProfiler.measure("waterSources", (): void => {
-            this.waterSourceSystem.update(deltaTime);
+            if(this.performanceInvestigation?.passBIsolation.isEnabled("waterTransport")!==false)this.waterSourceSystem.update(deltaTime);
             this.airborneWaterSystem.consumeEmissionRequests(
                 this.waterSourceSystem.drainEmissionRequests(),
             );
@@ -1745,7 +1770,7 @@ export class World {
             .measure(
                 "airborneWater",
                 (): void => {
-                    this.airborneWaterSystem
+                    if(this.performanceInvestigation?.passBIsolation.isEnabled("waterTransport")!==false)this.airborneWaterSystem
                         .update(
                             deltaTime,
                         );
@@ -1849,7 +1874,7 @@ export class World {
             .measure(
                 "waterSimulation",
                 (): void => {
-                    this.waterField
+                    if(this.performanceInvestigation?.passBIsolation.isEnabled("waterEvolution")!==false)this.waterField
                         .update(
                             deltaTime,
                         );
@@ -1861,7 +1886,7 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "waterGroundInteraction",
             (): void => {
-                this.waterGroundInteractionSystem.update(deltaTime);
+                if(this.performanceInvestigation?.passBIsolation.isEnabled("waterEvolution")!==false)this.waterGroundInteractionSystem.update(deltaTime);
             },
         );
 
@@ -1974,9 +1999,9 @@ export class World {
         let fireSourceSystemMilliseconds = 0;
         this.waterPerformanceProfiler.measure("fireSimulation", (): void => {
             const fireSourceStartedAt = performance.now();
-            this.fireSourceSystem.update(deltaTime);
+            if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSources")!==false)this.fireSourceSystem.update(deltaTime);
             fireSourceSystemMilliseconds = performance.now() - fireSourceStartedAt;
-            this.fireManager.update(deltaTime);
+            if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSpread")!==false)this.fireManager.update(deltaTime);
 
             if (this.ball) {
                 const exposure =
@@ -2013,7 +2038,7 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "fireVfxUpdate",
             (): void => {
-                if (this.fireVfxEnabled) {
+                if (this.fireVfxEnabled && this.diagnosticVfx.fire) {
                     this.fireVfxSystem?.update(deltaTime);
                 }
             },
@@ -2182,7 +2207,7 @@ export class World {
 
             if (entity instanceof Robot) {
                 this.waterPerformanceProfiler.measure("robotAI", (): void => {
-                    entity.update(deltaTime);
+                    if(this.performanceInvestigation?.passBIsolation.isEnabled("robotUpdates")!==false)entity.update(deltaTime);
                 });
             } else {
                 this.waterPerformanceProfiler.measure("entities", (): void => {
@@ -2217,7 +2242,7 @@ export class World {
          * mass response comes from DynamicCollidable inverse mass.
          */
         this.waterPerformanceProfiler.measure("localWindForces", (): void => {
-            this.localWindDynamicForceSystem.update(deltaTime);
+            if(this.performanceInvestigation?.passBIsolation.isEnabled("windForces")!==false)this.localWindDynamicForceSystem.update(deltaTime);
         });
         this.waterPerformanceProfiler.measure("windSuction", (): void => {
             this.windSuctionCaptureSystem.update(deltaTime);
@@ -2294,7 +2319,7 @@ export class World {
          * Registration is centralized; collision mathematics is unchanged.
          */
         this.waterPerformanceProfiler.measure("dynamicCollisions", (): void => {
-            this.dynamicCollisionSystem.resolve(
+            if(this.performanceInvestigation?.passBIsolation.isEnabled("dynamicCollisions")!==false)this.dynamicCollisionSystem.resolve(
                 this.physicsWorld.getRigidDynamicCollidables(),
             );
             for (let bumperIndex = 0; bumperIndex < this.radialBumpers.length; bumperIndex += 1) {
@@ -2509,7 +2534,8 @@ export class World {
                 deltaTime,
             );
         if (this.performanceInvestigation) {
-            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.getSnapshot(), {
+            PassBCounters.passB("worldFrames");
+            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.publishDiagnosticSnapshot(), {
                 waterPackets: this.airborneWaterSystem.getActivePacketCount(),
                 windParticles: this.windVfxSystem?.getActiveParticleCount() ?? 0,
                 fireParticles: this.fireVfxSystem?.getActiveParticleCount() ?? 0,
@@ -2517,22 +2543,12 @@ export class World {
             });
         }
 
-        if (this.performanceInvestigation) {
-            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.getSnapshot(), {
-                waterPackets: this.airborneWaterSystem.getActivePacketCount(),
-                windParticles: this.windVfxSystem?.getActiveParticleCount() ?? 0,
-                fireParticles: this.fireVfxSystem?.getActiveParticleCount() ?? 0,
-                backgroundEnabled: new URLSearchParams(window.location.search).get("bgdiag") !== "off",
-            });
-        }
-
-
 
     }
 
     public destroy():
         void {
-        this.performanceInvestigation?.destroy();
+        this.courseEnvironmentBoundary.clearAccelerationCaches();
         this.performanceInvestigation?.destroy();
         this.sprinklerWaterVfx
             ?.destroy();
@@ -3153,41 +3169,18 @@ export class World {
     }
 
     private getPresentationDiagnosticMode(): string {
-        const mode =
-            new URLSearchParams(
-                window.location.search,
-            ).get(
-                "vfxdiag",
-            ) ??
-            "all";
-
-        switch (mode) {
-            case "fire-off":
-            case "wind-off":
-            case "water-off":
-            case "all-off":
-                return mode;
-
-            default:
-                return "all";
-        }
+        const {fire, water, wind} = this.diagnosticVfx;
+        if (!fire && !water && !wind) return "all-off";
+        if (!fire && water && wind) return "fire-off";
+        if (fire && !water && wind) return "water-off";
+        if (fire && water && !wind) return "wind-off";
+        return fire && water && wind ? "all" : "custom";
     }
 
     private applyPresentationDiagnosticMode(): void {
-        const mode =
-            this.getPresentationDiagnosticMode();
-
-        const hideFire =
-            mode === "fire-off" ||
-            mode === "all-off";
-
-        const hideWind =
-            mode === "wind-off" ||
-            mode === "all-off";
-
-        const hideWater =
-            mode === "water-off" ||
-            mode === "all-off";
+        const hideFire = !this.diagnosticVfx.fire;
+        const hideWind = !this.diagnosticVfx.wind;
+        const hideWater = !this.diagnosticVfx.water;
 
         if (this.fireVfxSystem) {
             const fireVisible =
@@ -3219,6 +3212,7 @@ export class World {
         }
 
         if (this.waterVfxSystem) {
+            this.waterVfxSystem.setDiagnosticPresentationEnabled(!hideWater);
             this.waterVfxSystem
                 .getGroundContainer()
                 .visible =
@@ -3236,19 +3230,9 @@ export class World {
                 !hideWater;
         }
 
-        if (this.standingWaterRenderer) {
-            this.standingWaterRenderer
-                .getDisplayObject()
-                .visible =
-                !hideWater;
-        }
 
-        if (this.wetGroundRenderer) {
-            this.wetGroundRenderer
-                .getDisplayObject()
-                .visible =
-                !hideWater;
-        }
+
+
     }
 
     private setFireVfxEnabled(

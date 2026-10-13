@@ -1,3 +1,4 @@
+import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type {
     DynamicCollidable,
 } from "./DynamicCollidable";
@@ -69,6 +70,7 @@ export class DynamicCollisionSystem {
         collidables:
             readonly DynamicCollidable[],
     ): number {
+        PassBCounters.passB("dynamicCollisionPasses");
 
         if (
             collidables.length <

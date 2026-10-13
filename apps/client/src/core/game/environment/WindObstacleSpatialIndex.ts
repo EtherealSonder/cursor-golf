@@ -7,7 +7,7 @@ export class WindObstacleSpatialIndex {
     private readonly queryMarks: number[] = [];
     private stamp = 0;
     private readonly cellSize = 128;
-    public constructor(private readonly obstacles: readonly StaticObstacleDefinition[], private readonly padding: number) {
+    public constructor(private readonly obstacles: readonly StaticObstacleDefinition[], padding: number) {
         obstacles.forEach((obstacle, index) => {
             let radiusX: number;
             let radiusY: number;

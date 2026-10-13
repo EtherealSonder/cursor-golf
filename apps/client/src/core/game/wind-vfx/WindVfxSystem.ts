@@ -61,10 +61,9 @@ export class WindVfxSystem {
     private readonly localEmitter:
         LocalWindEmitter;
 
-    private courseBoundary: CourseEnvironmentBoundary | null = null;
 
     public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
-        this.courseBoundary = boundary;
+        void boundary;
     }
     /** The local emitter owns obstruction termination. Global gusts are course-clipped here. */
     private constrainWindPresentation(): void {
@@ -150,6 +149,8 @@ export class WindVfxSystem {
         return this.container;
     }
 
+    /** Diagnostic presentation toggle: gameplay wind forces are independent. */
+    public setDiagnosticPresentationEnabled(enabled:boolean):void{this.setEnabled(enabled);}
     public setEnabled(
         enabled:
             boolean,

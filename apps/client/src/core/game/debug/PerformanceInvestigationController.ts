@@ -1,78 +1,79 @@
-import { Container, Graphics, Text } from "pixi.js";
+import { PerformanceDiagnosticRunCoordinator } from "./PerformanceDiagnosticRunCoordinator";
+import { CourseGeometryAccelerationProfiler as Geo } from "./CourseGeometryAccelerationProfiler";
+import {PerformanceBenchmarkController} from "./PerformanceBenchmarkController";
+import type {BenchmarkScenarioId,BenchmarkWorldIdentity} from "./PerformanceBenchmarkScenario";
+import { PASS_B_PRESETS } from "./PerformanceSimulationDiagnosticConfiguration";
+import { PerformanceSimulationIsolationController } from "./PerformanceSimulationIsolationController";
+import { Container } from "pixi.js";
 import { PerformanceInvestigationCounters } from "./PerformanceInvestigationCounters";
-import { PERFORMANCE_INVESTIGATION } from "./PerformanceInvestigationDefinition";
+import { PerformanceDiagnosticDashboard } from "./PerformanceDiagnosticDashboard";
+import { PerformanceDiagnosticSession } from "./PerformanceDiagnosticSession";
+import { PerformanceDiagnosticFrameSampler } from "./PerformanceDiagnosticFrameSampler";
+import { PerformanceDiagnosticSummary } from "./PerformanceDiagnosticSummary";
+import { buildDiagnosticReport } from "./PerformanceDiagnosticReport";
+import type { DiagnosticWorkload } from "./PerformanceDiagnosticReport";
+import { DEFAULT_DIAGNOSTIC_CONFIGURATION, DIAGNOSTIC_PRESETS, diagnosticLabel } from "./PerformanceDiagnosticConfiguration";
+import type { PerformanceDiagnosticConfiguration } from "./PerformanceDiagnosticConfiguration";
 import type { WaterPerformanceSnapshot } from "./WaterPerformanceProfiler";
-
-/** Lightweight presentation-side diagnostic. Uses the existing authoritative world profiler. */
 export class PerformanceInvestigationController {
-    private readonly root = new Container();
-    private readonly background = new Graphics();
-    private readonly label = new Text({ text: "P1 collecting...", style: { fontFamily: "monospace", fontSize: 11, fill: 0xffffff, lineHeight: 15 } });
-    private readonly frames: number[] = [];
-    private elapsed = 0;
-    private refreshElapsed = 0;
-    private samples = 0;
-    private lastReport = "";
-    constructor(private readonly mode: string) {
-        this.root.eventMode = "none";
-        this.root.zIndex = 20000;
-        this.root.position.set(12, 40);
-        this.label.position.set(9, 8);
-        this.root.addChild(this.background, this.label);
-    }
-    public getContainer(): Container { return this.root; }
-    public update(deltaSeconds: number, snapshot: WaterPerformanceSnapshot, extra: { waterPackets: number; windParticles: number; fireParticles: number; backgroundEnabled: boolean }): void {
-        if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
-        const ms = deltaSeconds * 1000;
-        this.frames.push(ms);
-        if (this.frames.length > PERFORMANCE_INVESTIGATION.maximumFrameSamples) this.frames.shift();
-        this.elapsed += deltaSeconds;
-        this.refreshElapsed += deltaSeconds;
-        this.samples++;
-        if (this.refreshElapsed >= PERFORMANCE_INVESTIGATION.overlayRefreshSeconds) {
-            this.refreshElapsed = 0;
-            const sorted = [...this.frames].sort((a, b) => a - b);
-            const avg = this.frames.reduce((a, b) => a + b, 0) / Math.max(1, this.frames.length);
-            const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0;
-            const lines = [
-                `P3 WIND QUERY PERFORMANCE INVESTIGATION  ${this.mode}`,
-                `FPS ${(1000 / Math.max(0.01, avg)).toFixed(1)} | frame ${avg.toFixed(2)} ms | p95 ${p95.toFixed(2)} ms`,
-                `World ${snapshot.worldUpdateAverageMilliseconds.toFixed(2)} ms | Pixi render ${snapshot.pixiRenderAverageMilliseconds.toFixed(2)} ms`,
-                `Water packets ${extra.waterPackets} | Wind sprites ${extra.windParticles} | Fire particles ${extra.fireParticles}`,
-                `Water airborne ${snapshot.airborneWaterAverageMilliseconds.toFixed(2)} | flow ${snapshot.waterSimulationAverageMilliseconds.toFixed(2)} | ground ${snapshot.waterGroundInteractionAverageMilliseconds.toFixed(2)} ms`,
-                `Water VFX ${ (snapshot.sprinklerWaterVfxAverageMilliseconds + snapshot.hoseWaterVfxAverageMilliseconds + snapshot.waterVfxCoreAverageMilliseconds).toFixed(2)} ms`,
-                `Fire sim ${snapshot.fireSimulationAverageMilliseconds.toFixed(2)} | Wind VFX ${snapshot.windPresentationAverageMilliseconds.toFixed(2)} ms`,
-                `Background ${extra.backgroundEnabled ? "ON" : "OFF"} | report every ${PERFORMANCE_INVESTIGATION.sampleSeconds}s`,
-            ];
-            this.label.text = lines.join("\n");
-            this.background.clear().roundRect(0, 0, this.label.width + 18, this.label.height + 16, 6).fill({ color: 0x111722, alpha: 0.9 });
-        }
-        if (this.elapsed >= PERFORMANCE_INVESTIGATION.sampleSeconds) {
-            const sorted = [...this.frames].sort((a, b) => a - b);
-            const avg = this.frames.reduce((a, b) => a + b, 0) / Math.max(1, this.frames.length);
-            const report = {
-                phase: "P3", optimization: "wind-spatial-index", mode: this.mode, seconds: Number(this.elapsed.toFixed(1)),
-                fps: Number((1000 / Math.max(0.01, avg)).toFixed(1)),
-                frameAvgMs: Number(avg.toFixed(2)),
-                frameP95Ms: Number((sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0).toFixed(2)),
-                frameMaxMs: Number((sorted[sorted.length - 1] ?? 0).toFixed(2)),
-                worldUpdateMs: snapshot.worldUpdateAverageMilliseconds,
-                pixiRenderMs: snapshot.pixiRenderAverageMilliseconds,
-                waterAirborneMs: snapshot.airborneWaterAverageMilliseconds,
-                waterFlowMs: snapshot.waterSimulationAverageMilliseconds,
-                waterGroundMs: snapshot.waterGroundInteractionAverageMilliseconds,
-                fireSimulationMs: snapshot.fireSimulationAverageMilliseconds,
-                windPresentationMs: snapshot.windPresentationAverageMilliseconds,
-                ...extra,
-                boundaryWorkload: PerformanceInvestigationCounters.drain(),
-            };
-            this.lastReport = JSON.stringify(report);
-            console.info("[P1 PERF REPORT]", this.lastReport);
-            this.elapsed = 0;
-            this.frames.length = 0;
-            this.samples = 0;
-        }
-    }
-    public getLastReport(): string { return this.lastReport; }
-    public destroy(): void { this.root.destroy({ children: true }); }
+ private readonly runCoordinator=new PerformanceDiagnosticRunCoordinator();
+ private readonly root=new Container();private readonly session=new PerformanceDiagnosticSession();
+ private readonly sampler=new PerformanceDiagnosticFrameSampler();private readonly summary=new PerformanceDiagnosticSummary();
+ private readonly dashboard:PerformanceDiagnosticDashboard;
+ public readonly p0Benchmark=new PerformanceBenchmarkController();
+ private p0Identity:BenchmarkWorldIdentity={levelId:"unknown",spawnX:0,spawnY:0,fixtureRevision:"unverified",resetVerified:false};
+ public bindP0Identity(fn:()=>BenchmarkWorldIdentity):void{this.p0IdentityProvider=fn;}
+ private p0IdentityProvider:(()=>BenchmarkWorldIdentity)|null=null;
+ private config:PerformanceDiagnosticConfiguration={...DEFAULT_DIAGNOSTIC_CONFIGURATION};
+ private onChange:((c:PerformanceDiagnosticConfiguration)=>void)|null=null;
+ public readonly passBIsolation=new PerformanceSimulationIsolationController();
+ private passBSequence=-1;
+ private sequence=-1;private lastReport='';private samplingStarted=false;
+ constructor(_mode:string){this.root.zIndex=20000;this.dashboard=new PerformanceDiagnosticDashboard(c=>this.change(c),()=>this.runAll(),()=>this.runPassB(),()=>this.runP0(),(id:BenchmarkScenarioId)=>this.p0Benchmark.setScenario(id));this.root.addChild(this.dashboard.getContainer());}
+ public bindChange(fn:(c:PerformanceDiagnosticConfiguration)=>void):void{this.onChange=fn;fn(this.config);}
+ public getConfiguration():PerformanceDiagnosticConfiguration{return this.config;}
+ public layout(width:number):void{this.dashboard.layout(width);}
+ public getContainer():Container{return this.root;}
+ private change(c:PerformanceDiagnosticConfiguration,automated=false):void{
+  if(!automated){this.runCoordinator.clear();this.p0Benchmark.stop();this.sequence=-1;this.passBSequence=-1;this.passBIsolation.restore();}
+  this.config={...c};this.onChange?.(this.config);this.session.reset();this.sampler.reset();this.samplingStarted=false;
+  PerformanceInvestigationCounters.reset();
+  if(!automated)console.clear();
+  if (!automated) console.info(`[PERF] ${diagnosticLabel(c)} | 5s warm-up then five 5s reports`);
+ }
+ private runP0():void{
+  this.runCoordinator.claim("P0");
+  try {
+   this.sequence=-1;this.passBSequence=-1;this.passBIsolation.restore();
+   this.change(DEFAULT_DIAGNOSTIC_CONFIGURATION,true);
+   this.p0Identity=this.p0IdentityProvider?.()??this.p0Identity;
+   this.p0Benchmark.start(this.p0Identity);this.sampler.reset();
+  } catch(error) {
+   this.p0Benchmark.stop();this.runCoordinator.clear();
+   console.error("[PERF-P0] Failed to start benchmark",error);
+  }
+ }
+ private runPassB():void{this.runCoordinator.claim("PASS-B");this.p0Benchmark.stop();this.sequence=-1;this.passBSequence=0;this.change(DEFAULT_DIAGNOSTIC_CONFIGURATION,true);this.summary.reset();this.passBIsolation.setPreset(PASS_B_PRESETS[0]);this.session.reset();this.sampler.reset();this.samplingStarted=false;PerformanceInvestigationCounters.reset();console.clear();console.info("[PERF-B] RUN ALL TESTS: 10 presets, 5 reports each");console.info(`[PERF-B] ${PASS_B_PRESETS[0].label}: ${PASS_B_PRESETS[0].warning}`);}
+ private runAll():void{this.runCoordinator.claim("PASS-A");this.p0Benchmark.stop();this.passBSequence=-1;this.passBIsolation.restore();this.sequence=0;this.summary.reset();console.clear();console.info('[PERF] RUN ALL TESTS: 8 presets, 5 reports each');this.change(DIAGNOSTIC_PRESETS[0].value,true);}
+ public update(_deltaSeconds:number,snapshot:WaterPerformanceSnapshot,extra:DiagnosticWorkload):void{
+  this.dashboard.update(this.config,`${this.p0Benchmark.isActive()?this.p0Benchmark.getProgress()+" | ":""}${this.passBSequence>=0?PASS_B_PRESETS[this.passBSequence].label+" | ":""}${this.session.getProgress()}`);const now=performance.now();
+  if(this.runCoordinator.is("P0")){if(this.p0Benchmark.isActive())this.p0Benchmark.update(now,this.sampler,snapshot,extra,{});return;}
+  if(!this.runCoordinator.current)return;
+  if(!this.session.isSampling(now))return;
+  if(!this.samplingStarted){this.sampler.reset();this.samplingStarted=true;PerformanceInvestigationCounters.reset();Geo.reset();}
+  this.sampler.record(now);
+  const index=this.session.nextReport(now);if(index===null)return;
+  const stats=this.sampler.drain();
+  const counters={...PerformanceInvestigationCounters.drain(),...Object.fromEntries(Object.entries(Geo.drain()).map(([k,v])=>[`geometry.${k}`,v]))};
+  if(!PerformanceDiagnosticFrameSampler.isValidWindow(stats)){console.warn(`[PERF] INVALID WINDOW ${index}/5: ${stats.frames} frames; discarded`);return;}
+  const report=buildDiagnosticReport(diagnosticLabel(this.config),index,stats,snapshot,extra,counters);
+  if(this.passBSequence>=0){(report as Record<string,unknown>).tag="PASS-B";(report as Record<string,unknown>).configuration=PASS_B_PRESETS[this.passBSequence].label;(report as Record<string,unknown>).isolationWarning=PASS_B_PRESETS[this.passBSequence].warning;(report as Record<string,unknown>).disabledGates=PASS_B_PRESETS[this.passBSequence].disabled;}
+  this.lastReport=JSON.stringify(report);console.info(`[${this.passBSequence>=0?"PERF-B":"PERF"} ${index}/5]`,this.lastReport);
+  this.summary.add(report as Record<string,unknown>);
+  if(index===5){if(this.passBSequence>=0){console.info(`[PERF-B] COMPLETE: ${PASS_B_PRESETS[this.passBSequence].label}`);this.passBSequence++;if(this.passBSequence<PASS_B_PRESETS.length){this.passBIsolation.setPreset(PASS_B_PRESETS[this.passBSequence]);this.session.reset();this.sampler.reset();this.samplingStarted=false;PerformanceInvestigationCounters.reset();console.info(`[PERF-B] ${PASS_B_PRESETS[this.passBSequence].label}: ${PASS_B_PRESETS[this.passBSequence].warning}`);}else{this.passBSequence=-1;this.passBIsolation.restore();this.summary.completePassB();}return;}console.info(`[PERF] COMPLETE: ${diagnosticLabel(this.config)}`);
+   if(this.sequence>=0){this.sequence++;if(this.sequence<DIAGNOSTIC_PRESETS.length)this.change(DIAGNOSTIC_PRESETS[this.sequence].value,true);else{this.sequence=-1;this.summary.complete();}}
+  }
+ }
+ public getLastReport():string{return this.lastReport;}
+ public destroy():void{this.runCoordinator.clear();this.p0Benchmark.stop();this.passBIsolation.restore();this.dashboard.destroy();this.root.destroy({children:false});}
 }

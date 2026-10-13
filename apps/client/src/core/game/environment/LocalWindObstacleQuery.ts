@@ -3,7 +3,6 @@ import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBounda
 import type { LocalWindObstacleDefinition } from "../config/LocalWindDefinition";
 import type { StaticObstacleDefinition } from "../config/ObstacleDefinition";
 import type { PhysicsWorld } from "../physics/PhysicsWorld";
-import type { FixedCollisionShape } from "../physics/DynamicCollidableCollision";
 import { WindObstacleSpatialIndex } from "./WindObstacleSpatialIndex";
 
 export interface LocalWindObstacleResolution {
@@ -29,7 +28,6 @@ export class LocalWindObstacleQuery {
     private staticIndex: WindObstacleSpatialIndex | null = null;
     private staticSnapshot: readonly StaticObstacleDefinition[] | null = null;
     private staticSignature = "";
-    private readonly indexedCandidates: StaticObstacleDefinition[] = [];
     public invalidateIndex(): void { this.staticIndex = null; this.staticSnapshot = null; this.staticSignature = ""; }
     private getIndexedCandidates(x0: number, y0: number, x1: number, y1: number): readonly StaticObstacleDefinition[] {
         const definitions = this.physicsWorld.getRigidStaticDefinitions();
@@ -38,7 +36,7 @@ export class LocalWindObstacleQuery {
             ? `${o.positionX},${o.positionY},${o.radius}`
             : o.shape === "rectangle"
                 ? `${o.positionX},${o.positionY},${o.rotationRadians ?? 0},${o.width},${o.height}`
-                : `${o.positionX},${o.positionY},${o.rotationRadians ?? 0},${o.points.map(p => `${p.x},${p.y}`).join(",")}`).join("|");
+                : `${o.positionX},${o.positionY},${o.points.map(p => `${p.x},${p.y}`).join(",")}`).join("|");
         if (!this.staticIndex || definitions !== this.staticSnapshot || signature !== this.staticSignature) {
             this.staticIndex = new WindObstacleSpatialIndex(definitions, this.definition.collisionTolerance);
             this.staticSnapshot = definitions;
@@ -165,28 +163,10 @@ export class LocalWindObstacleQuery {
         return false;
     }
 
-    private containsFixed(shape: FixedCollisionShape, x: number, y: number, padding: number): boolean {
-        if (shape.shape === "circle") {
-            const dx = x - shape.positionX;
-            const dy = y - shape.positionY;
-            const radius = shape.radius + padding;
-            return dx * dx + dy * dy <= radius * radius;
-        }
-
-        const cos = Math.cos(-shape.rotationRadians);
-        const sin = Math.sin(-shape.rotationRadians);
-        const dx = x - shape.positionX;
-        const dy = y - shape.positionY;
-        const localX = dx * cos - dy * sin;
-        const localY = dx * sin + dy * cos;
-        return Math.abs(localX) <= shape.width * 0.5 + padding
-            && Math.abs(localY) <= shape.height * 0.5 + padding;
-    }
-
     private contains(obstacle: StaticObstacleDefinition, x: number, y: number, padding: number): boolean {
         const dx = x - obstacle.positionX;
         const dy = y - obstacle.positionY;
-        const angle = -(obstacle.rotationRadians ?? 0);
+        const angle = obstacle.shape === "rectangle" ? -(obstacle.rotationRadians ?? 0) : 0;
         const cos = Math.cos(angle), sin = Math.sin(angle);
         const lx = dx * cos - dy * sin;
         const ly = dx * sin + dy * cos;
