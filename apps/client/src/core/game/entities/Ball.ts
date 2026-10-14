@@ -195,7 +195,7 @@ interface BoundaryCollisionResult {
 
 /** Pass B observes this system without changing authoritative behavior. */
 export class Ball extends Entity {
-    private static readonly verboseCollisionDiagnostics = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ballDebug") === "1";
+    private static readonly verboseCollisionDiagnostics = false; // URL diagnostic disabled.
 
 
     private shotPowerBaselineValidationMode = false;
@@ -3044,16 +3044,16 @@ export class Ball extends Entity {
     ): void {
         if (!Ball.verboseCollisionDiagnostics) return;
 
-        console.log(
+        if (false) console.log(
             "===== STATIC OBSTACLE COLLISION =====",
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle:",
             manifold.obstacleId,
         );
 
-        console.log(
+        if (false) console.log(
             "Collision Normal:",
             {
                 x:
@@ -3070,7 +3070,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Penetration Depth:",
             manifold
                 .penetrationDepth
@@ -3080,7 +3080,7 @@ export class Ball extends Entity {
             "px",
         );
 
-        console.log(
+        if (false) console.log(
             "Speed Before Collision:",
             speedBeforeCollision
                 .toFixed(
@@ -3089,7 +3089,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Speed After Collision:",
             speedAfterCollision
                 .toFixed(
@@ -3098,7 +3098,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Restitution:",
             manifold.restitution
                 .toFixed(
@@ -3106,7 +3106,7 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Collision Friction:",
             manifold
                 .collisionFriction
@@ -3115,12 +3115,12 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Collision Count:",
             this.obstacleCollisionCount,
         );
 
-        console.log(
+        if (false) console.log(
             "=====================================",
         );
     }
@@ -3158,23 +3158,23 @@ export class Ball extends Entity {
     ): void {
         if (!Ball.verboseCollisionDiagnostics) return;
 
-        console.log(
+        if (false) console.log(
             "==== DYNAMIC OBSTACLE COLLISION ====",
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle:",
             manifold.obstacleId,
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Shape:",
             obstacle
                 .getDefinition()
                 .shape,
         );
 
-        console.log(
+        if (false) console.log(
             "Collision Normal:",
             {
                 x:
@@ -3191,7 +3191,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Contact Point:",
             {
                 x:
@@ -3208,7 +3208,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Penetration Depth:",
             manifold.penetrationDepth
                 .toFixed(
@@ -3217,7 +3217,7 @@ export class Ball extends Entity {
             "px",
         );
 
-        console.log(
+        if (false) console.log(
             "Ball Speed Before:",
             ballSpeedBeforeCollision
                 .toFixed(
@@ -3226,7 +3226,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Ball Speed After:",
             ballSpeedAfterCollision
                 .toFixed(
@@ -3235,7 +3235,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Speed Before:",
             obstacleSpeedBeforeCollision
                 .toFixed(
@@ -3244,7 +3244,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Speed After:",
             obstacleSpeedAfterCollision
                 .toFixed(
@@ -3253,7 +3253,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Angular Speed Before:",
             obstacleAngularSpeedBeforeCollision
                 .toFixed(
@@ -3262,7 +3262,7 @@ export class Ball extends Entity {
             "rad/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Angular Speed After:",
             obstacleAngularSpeedAfterCollision
                 .toFixed(
@@ -3271,7 +3271,7 @@ export class Ball extends Entity {
             "rad/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Combined Restitution:",
             manifold.restitution
                 .toFixed(
@@ -3279,7 +3279,7 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Combined Friction:",
             manifold.friction
                 .toFixed(
@@ -3287,7 +3287,7 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Normal Impulse:",
             normalImpulseMagnitude
                 .toFixed(
@@ -3295,7 +3295,7 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Friction Impulse:",
             frictionImpulseMagnitude
                 .toFixed(
@@ -3303,12 +3303,12 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Collision Count:",
             this.obstacleCollisionCount,
         );
 
-        console.log(
+        if (false) console.log(
             "====================================",
         );
     }
@@ -3360,18 +3360,18 @@ export class Ball extends Entity {
             );
         }
 
-        console.log(
+        if (false) console.log(
             "======= BOUNDARY COLLISION =======",
         );
 
-        console.log(
+        if (false) console.log(
             "Edge:",
             collidedEdges.join(
                 " + ",
             ),
         );
 
-        console.log(
+        if (false) console.log(
             "Corrected Position:",
             {
                 x:
@@ -3388,7 +3388,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Speed Before Collision:",
             speedBeforeCollision
                 .toFixed(
@@ -3397,7 +3397,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Speed After Collision:",
             speedAfterCollision
                 .toFixed(
@@ -3406,7 +3406,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Velocity After Collision:",
             {
                 x:
@@ -3423,7 +3423,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Restitution:",
             this.physicsDefinition
                 .boundaryRestitution
@@ -3432,12 +3432,12 @@ export class Ball extends Entity {
                 ),
         );
 
-        console.log(
+        if (false) console.log(
             "Collision Count:",
             this.boundaryCollisionCount,
         );
 
-        console.log(
+        if (false) console.log(
             "==================================",
         );
     }
@@ -3466,11 +3466,11 @@ export class Ball extends Entity {
                     this.getY(),
                 );
 
-        console.log(
+        if (false) console.log(
             "========== BALL STOPPED ==========",
         );
 
-        console.log(
+        if (false) console.log(
             "Launch Position:",
             {
                 x:
@@ -3487,7 +3487,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Stop Position:",
             {
                 x:
@@ -3504,7 +3504,7 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Initial Speed:",
             this.mostRecentLaunchSpeed
                 .toFixed(
@@ -3513,7 +3513,7 @@ export class Ball extends Entity {
             "px/s",
         );
 
-        console.log(
+        if (false) console.log(
             "Base Rolling Deceleration:",
             this.physicsDefinition
                 .rollingDeceleration
@@ -3523,17 +3523,17 @@ export class Ball extends Entity {
             "px/s²",
         );
 
-        console.log(
+        if (false) console.log(
             "Stop Surface:",
             surface.surfaceType,
         );
 
-        console.log(
+        if (false) console.log(
             "Stop Surface State:",
             surface.surfaceState,
         );
 
-        console.log(
+        if (false) console.log(
             "Stop Surface Rolling Multiplier:",
             surface
                 .rollingResistanceMultiplier
@@ -3545,18 +3545,18 @@ export class Ball extends Entity {
         const waterState = this.lastWaterInteractionState;
         const waterDebug = this.lastStandingWaterDebugSnapshot;
 
-        console.log("Standing Water Exposure:", (waterState?.smoothedExposure ?? 0).toFixed(3));
-        console.log("Standing Water Additional Resistance:", (waterState?.additionalResistance ?? 0).toFixed(3));
-        console.log("Peak Water Average Depth:", (waterDebug?.peakAverageDepth ?? 0).toFixed(4));
-        console.log("Peak Water Maximum Depth:", (waterDebug?.peakMaximumDepth ?? 0).toFixed(4));
-        console.log("Peak Water Representative Depth:", (waterDebug?.peakRepresentativeWetDepth ?? 0).toFixed(4));
-        console.log("Peak Water Coverage:", `${((waterDebug?.peakCoveredFraction ?? 0) * 100).toFixed(1)}%`);
-        console.log("Peak Water Target Exposure:", (waterDebug?.peakTargetExposure ?? 0).toFixed(3));
-        console.log("Peak Water Smoothed Exposure:", (waterDebug?.peakSmoothedExposure ?? 0).toFixed(3));
-        console.log("Peak Water Additional Resistance:", (waterDebug?.peakAdditionalResistance ?? 0).toFixed(3));
-        console.log("Standing Water Contact Time:", (waterDebug?.contactTime ?? 0).toFixed(3), "seconds");
+        if (false) console.log("Standing Water Exposure:", (waterState?.smoothedExposure ?? 0).toFixed(3));
+        if (false) console.log("Standing Water Additional Resistance:", (waterState?.additionalResistance ?? 0).toFixed(3));
+        if (false) console.log("Peak Water Average Depth:", (waterDebug?.peakAverageDepth ?? 0).toFixed(4));
+        if (false) console.log("Peak Water Maximum Depth:", (waterDebug?.peakMaximumDepth ?? 0).toFixed(4));
+        if (false) console.log("Peak Water Representative Depth:", (waterDebug?.peakRepresentativeWetDepth ?? 0).toFixed(4));
+        if (false) console.log("Peak Water Coverage:", `${((waterDebug?.peakCoveredFraction ?? 0) * 100).toFixed(1)}%`);
+        if (false) console.log("Peak Water Target Exposure:", (waterDebug?.peakTargetExposure ?? 0).toFixed(3));
+        if (false) console.log("Peak Water Smoothed Exposure:", (waterDebug?.peakSmoothedExposure ?? 0).toFixed(3));
+        if (false) console.log("Peak Water Additional Resistance:", (waterDebug?.peakAdditionalResistance ?? 0).toFixed(3));
+        if (false) console.log("Standing Water Contact Time:", (waterDebug?.contactTime ?? 0).toFixed(3), "seconds");
 
-        console.log(
+        if (false) console.log(
             "Movement Time:",
             this.movementElapsedTime
                 .toFixed(
@@ -3565,7 +3565,7 @@ export class Ball extends Entity {
             "seconds",
         );
 
-        console.log(
+        if (false) console.log(
             "Integrated Travel Distance:",
             this.movementDistanceTravelled
                 .toFixed(
@@ -3574,7 +3574,7 @@ export class Ball extends Entity {
             "px",
         );
 
-        console.log(
+        if (false) console.log(
             "Straight-Line Displacement:",
             straightLineDisplacement
                 .toFixed(
@@ -3583,17 +3583,17 @@ export class Ball extends Entity {
             "px",
         );
 
-        console.log(
+        if (false) console.log(
             "Boundary Collisions:",
             this.boundaryCollisionCount,
         );
 
-        console.log(
+        if (false) console.log(
             "Obstacle Collisions:",
             this.obstacleCollisionCount,
         );
 
-        console.log(
+        if (false) console.log(
             "Final Velocity:",
             {
                 x:
@@ -3610,12 +3610,12 @@ export class Ball extends Entity {
             },
         );
 
-        console.log(
+        if (false) console.log(
             "Motion State:",
             "Stationary",
         );
 
-        console.log(
+        if (false) console.log(
             "==================================",
         );
     }

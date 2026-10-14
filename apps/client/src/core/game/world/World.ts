@@ -894,7 +894,7 @@ export class World {
                 requireLevelById("level-00-dev"),
                 requireLevelById("level-geometry-test"),
             );
-            console.info("[LD-8D] Rectangle and polygon geometry regression: PASS");
+            if (false) console.info("[LD-8D] Rectangle and polygon geometry regression: PASS");
         }
         const requestedLevel = typeof window !== "undefined"
             ? new URLSearchParams(window.location.search).get("level")
@@ -929,11 +929,11 @@ export class World {
             assertCourseEnvironmentBoundaryValidation();
             assertCourseWindBoundaryValidation();
             assertCourseWindPerformanceValidation();
-            console.info("[P2] Course wind performance validation: PASS");
-            console.info("[E2-C] Course wind boundary validation: PASS");
+            if (false) console.info("[P2] Course wind performance validation: PASS");
+            if (false) console.info("[E2-C] Course wind boundary validation: PASS");
             assertCourseFireBoundaryValidation();
-            console.info("[E2-B] Course fire boundary validation: PASS");
-            console.info("[E1] Course environment boundary validation: PASS");
+            if (false) console.info("[E2-B] Course fire boundary validation: PASS");
+            if (false) console.info("[E1] Course environment boundary validation: PASS");
         }
         this.navigationBounds = this.runtimeLevel.course.generatedGeometry
             ? new LevelNavigationBounds(this.runtimeLevel.course.generatedGeometry)
@@ -1064,7 +1064,7 @@ export class World {
 
         if (import.meta.env.DEV) {
             assertCourseWaterBoundaryValidation();
-            console.info("[E2-A] Course water boundary validation: PASS");
+            if (false) console.info("[E2-A] Course water boundary validation: PASS");
         }
         this.waterObstacleField.setCourseBoundary(this.courseEnvironmentBoundary);
         this.waterField.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
@@ -3376,7 +3376,7 @@ export class World {
                     sampledWind.y,
                 );
 
-            console.log(
+            if (false) console.log(
                 "Fire directional validation started.",
                 {
                     ignitionX:
@@ -3636,7 +3636,7 @@ export class World {
             DEFAULT_WATER_DEBUG_DEFINITION
                 .interactiveDepositEnabled
         ) {
-            console.info(
+            if (false) console.info(
                 "[8C-8A] Interactive Water deposit enabled. Hold LEFT MOUSE over the game world to deposit Water. Normal left-mouse golf input is temporarily reserved by this debug tool.",
             );
         }

@@ -208,6 +208,7 @@ export class PhysicsWorld {
 
             this.legacyBallStaticDefinitionsByFixedId.set(id, definition);
             this.rigidStaticDefinitions.push(definition);
+            this.rigidStaticRevision++;
         }
     }
 
@@ -302,6 +303,7 @@ export class PhysicsWorld {
                 this.rigidStaticDefinitions.indexOf(legacyBallStatic);
             if (staticIndex >= 0) {
                 this.rigidStaticDefinitions.splice(staticIndex, 1);
+            this.rigidStaticRevision++;
             }
             this.legacyBallStaticDefinitionsByFixedId.delete(id);
         }
@@ -347,6 +349,7 @@ export class PhysicsWorld {
         this.rigidStaticDefinitions
             .length =
             0;
+            this.rigidStaticRevision++;
 
         this.legacyBallStaticDefinitionsByFixedId.clear();
     }
@@ -400,6 +403,13 @@ export class PhysicsWorld {
             .filter((registration): registration is DynamicPhysicsColliderRegistration =>
                 registration.kind === "dynamic" && registration.participation.impactAwareness)
             .map((registration) => registration.body);
+    }
+
+    /** Changes whenever the static obstacle registry is modified. */
+    private rigidStaticRevision = 0;
+
+    public getRigidStaticRevision(): number {
+        return this.rigidStaticRevision;
     }
 
     public getRigidStaticDefinitions():
@@ -589,6 +599,7 @@ export class PhysicsWorld {
                     registration
                         .definition,
                 );
+            this.rigidStaticRevision++;
         }
     }
 
@@ -633,6 +644,7 @@ export class PhysicsWorld {
                         index,
                         1,
                     );
+            this.rigidStaticRevision++;
             }
         }
     }

@@ -73,6 +73,10 @@ export class FireVfxPool {
     private readonly particles:
         FireVfxParticle[] = [];
 
+    // Inactive particles are recycled in O(1) rather than scanning the pool per emission.
+    private readonly availableParticles: FireVfxParticle[] = [];
+    private activeGroundCount = 0;
+
     private readonly initialCapacity:
         number;
 
@@ -142,46 +146,20 @@ export class FireVfxPool {
         if (
             activation.presentationOrigin ===
                 "ground" &&
-            this.getActiveGroundCount() >=
+            this.activeGroundCount >=
                 this.maximumActiveGroundParticles
         ) {
             return null;
         }
 
-        let particle:
-            FireVfxParticle | null =
-            null;
-
-        for (
-            let index = 0;
-            index <
-            this.particles.length;
-            index += 1
-        ) {
-            const candidate =
-                this.particles[index];
-
-            if (
-                !candidate.isActive()
-            ) {
-                particle =
-                    candidate;
-                this.performanceReusedParticles += 1;
-
-                break;
-            }
-        }
-
-        if (
-            !particle &&
-            this.particles.length <
-            this.maximumCapacity
-        ) {
+        let particle = this.availableParticles.pop() ?? null;
+        if (particle) {
+            this.performanceReusedParticles += 1;
+        } else if (this.particles.length < this.maximumCapacity) {
             this.performanceCreatedParticles += 1;
-            particle =
-                this.createParticle(
-                    texture,
-                );
+            particle = this.createParticle(texture);
+            // Newly created particles are inactive until activate().
+            this.availableParticles.pop();
         }
 
         if (!particle) {
@@ -189,6 +167,9 @@ export class FireVfxPool {
         }
 
         this.performanceAcquireSuccesses += 1;
+        if (activation.presentationOrigin === "ground") {
+            this.activeGroundCount += 1;
+        }
 
         particle.activate(
             texture,
@@ -254,6 +235,8 @@ export class FireVfxPool {
                 )
             ) {
                 particle.deactivate();
+                this.activeGroundCount -= 1;
+                this.availableParticles.push(particle);
 
                 suppressedCount +=
                     1;
@@ -288,15 +271,24 @@ export class FireVfxPool {
             if (
                 particle.isActive()
             ) {
+                const wasGround = particle.getPresentationOrigin() === "ground";
                 particle.update(
                     deltaTime,
                 );
+                if (!particle.isActive()) {
+                    if (wasGround) {
+                        this.activeGroundCount -= 1;
+                    }
+                    this.availableParticles.push(particle);
+                }
             }
         }
     }
 
     public reset():
         void {
+        this.availableParticles.length = 0;
+        this.activeGroundCount = 0;
 
         for (
             let index = 0;
@@ -306,6 +298,7 @@ export class FireVfxPool {
         ) {
             this.particles[index]
                 .deactivate();
+            this.availableParticles.push(this.particles[index]);
         }
     }
 
@@ -339,35 +332,6 @@ export class FireVfxPool {
         return this.particles.length;
     }
 
-    private getActiveGroundCount():
-        number {
-
-        let activeGroundCount =
-            0;
-
-        for (
-            let index = 0;
-            index <
-            this.particles.length;
-            index += 1
-        ) {
-            const particle =
-                this.particles[index];
-
-            if (
-                particle.isActive() &&
-                particle.getPresentationOrigin() ===
-                    "ground"
-            ) {
-                activeGroundCount +=
-                    1;
-            }
-        }
-
-        return activeGroundCount;
-    }
-
-
     public destroy():
         void {
 
@@ -383,6 +347,8 @@ export class FireVfxPool {
 
         this.particles.length =
             0;
+        this.availableParticles.length = 0;
+        this.activeGroundCount = 0;
 
         this.container.destroy({
             children: false,
@@ -401,6 +367,7 @@ export class FireVfxPool {
         this.particles.push(
             particle,
         );
+        this.availableParticles.push(particle);
 
         this.container.addChild(
             particle.getSprite(),

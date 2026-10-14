@@ -5,6 +5,7 @@ import { WaterImpactVfxParticle, type WaterImpactParticleActivation } from "./Wa
 export class WaterImpactVfxPool {
     private readonly container = new Container();
     private readonly particles: WaterImpactVfxParticle[] = [];
+    private activeParticleCount = 0;
 
     public constructor(
         fallbackTexture: Texture,
@@ -24,19 +25,27 @@ export class WaterImpactVfxPool {
         }
         if (!particle) return null;
         particle.activate(a);
+        this.activeParticleCount += 1;
         return particle;
     }
 
     public update(dt: number): void {
         if (!Number.isFinite(dt) || dt <= 0) return;
-        for (const particle of this.particles) if (particle.isActive()) particle.update(dt);
+        for (const particle of this.particles) {
+            if (!particle.isActive()) continue;
+            particle.update(dt);
+            if (!particle.isActive()) this.activeParticleCount -= 1;
+        }
     }
 
-    public reset(): void { for (const particle of this.particles) particle.deactivate(); }
-    public getActiveCount(): number { return this.particles.reduce((n, p) => n + (p.isActive() ? 1 : 0), 0); }
+    public reset(): void {
+        for (const particle of this.particles) particle.deactivate();
+        this.activeParticleCount = 0;
+    }
+    public getActiveCount(): number { return this.activeParticleCount; }
     public getCapacity(): number { return this.particles.length; }
     public getMaximumCapacity(): number { return this.maximumCapacity; }
-    public getInactiveCount(): number { return this.particles.reduce((n,p)=>n+(!p.isActive()?1:0),0); }
+    public getInactiveCount(): number { return this.particles.length - this.activeParticleCount; }
     public getAvailableCapacity(): number {
         return this.getInactiveCount()+Math.max(0,this.maximumCapacity-this.particles.length);
     }
@@ -47,6 +56,7 @@ export class WaterImpactVfxPool {
     public destroy(): void {
         for (const particle of this.particles) particle.destroy();
         this.particles.length = 0;
+        this.activeParticleCount = 0;
         this.container.destroy({ children: false });
     }
 

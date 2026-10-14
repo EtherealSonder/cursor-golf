@@ -327,6 +327,8 @@ export class FireManager {
 
         pendingIgnitions.clear();
         expiredCells.clear();
+        // PERF-F1: invariant for all active cells in this update.
+        const fieldInfluenceRadius = this.definition.fieldInfluenceRadius;
 
         for (
             let activeCellIndex = 0;
@@ -345,8 +347,7 @@ export class FireManager {
                     .getAverageFuelInRadius(
                         cell.getWorldCenterX(),
                         cell.getWorldCenterY(),
-                        this.definition
-                            .fieldInfluenceRadius,
+                        fieldInfluenceRadius,
                     );
 
             cell.setFuelLevel(
@@ -373,8 +374,7 @@ export class FireManager {
                     .getAverageMoistureInRadius(
                         cell.getWorldCenterX(),
                         cell.getWorldCenterY(),
-                        this.definition
-                            .fieldInfluenceRadius,
+                        fieldInfluenceRadius,
                     );
 
             this.updateCellIntensity(

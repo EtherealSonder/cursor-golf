@@ -11,5 +11,5 @@ export const PERFORMANCE_INVESTIGATION = {
 } as const;
 
 export function isPerformanceInvestigationEnabled(): boolean {
-    return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("perfdiag") === "1";
+    return false; // Retained for future investigations; URL activation disabled.
 }

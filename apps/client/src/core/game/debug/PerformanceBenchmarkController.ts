@@ -20,7 +20,7 @@ export class PerformanceBenchmarkController {
  public getProgress():string{return this.active?`P0 ${this.scenario} ${this.scheduler.state} accepted ${this.scheduler.acceptedWindows}/${S.windowsPerRun} attempts ${this.scheduler.attemptedWindows}`:`P0 ${this.scenario} idle`;}
  public start(identity:BenchmarkWorldIdentity):void{
   this.identity=identity;this.active=true;this.started=performance.now();this.scheduler.start(this.started);this.run=1;this.reports.length=0;PerformanceInvestigationCounters.reset();Geo.reset();
-  console.info("[PERF-P0] START",JSON.stringify({scenario:this.scenario,settings:S,identity,warning:"Only a verified reconstructed fixture supports causal before/after comparisons. Scenarios are labels until separately authored."}));
+  if (false) console.info("[PERF-P0] START",JSON.stringify({scenario:this.scenario,settings:S,identity,warning:"Only a verified reconstructed fixture supports causal before/after comparisons. Scenarios are labels until separately authored."}));
  }
  public stop():void{this.active=false;}
  public update(now:number,sampler:PerformanceDiagnosticFrameSampler,snapshot:WaterPerformanceSnapshot,workload:DiagnosticWorkload,extra:Readonly<Record<string,number>>):void{
@@ -53,7 +53,7 @@ export class PerformanceBenchmarkController {
   report.measurementValid=assessment.accepted;report.valid=assessment.accepted&&reasons.length===0;report.invalidReasons=reasons;
   report.workloadStart=this.baselineWorkload;report.workloadEnd=this.numericWorkload(workload,extra);
   this.reports.push(report);
-  console.info(`[PERF-P0 ${report.windowStatus} ${this.scheduler.acceptedWindows+1}/${S.windowsPerRun}]`,JSON.stringify(report));
+  if (false) console.info(`[PERF-P0 ${report.windowStatus} ${this.scheduler.acceptedWindows+1}/${S.windowsPerRun}]`,JSON.stringify(report));
   this.scheduler.completeWindow(assessment.accepted,now);
   this.finishIfComplete();
  }
@@ -62,7 +62,7 @@ export class PerformanceBenchmarkController {
   if(this.scheduler.state!=="complete")return;
   this.active=false;
   const accepted=this.scheduler.acceptedWindows,attempted=this.scheduler.attemptedWindows,rejected=this.scheduler.rejectedWindows;
-  console.info("[PERF-P0] COMPLETE",JSON.stringify({scenario:this.scenario,acceptedWindows:accepted,attemptedWindows:attempted,rejectedWindows:rejected,requestedWindows:S.windowsPerRun,requestedRepetitions:S.repetitions,completedRepetitions:1,complete:accepted===S.windowsPerRun,reason:accepted===S.windowsPerRun?"Measurement windows complete; no verified fresh-world reconstruction":"Retry limit reached; incomplete measurement",identity:this.identity,reports:this.reports}));
+  if (false) console.info("[PERF-P0] COMPLETE",JSON.stringify({scenario:this.scenario,acceptedWindows:accepted,attemptedWindows:attempted,rejectedWindows:rejected,requestedWindows:S.windowsPerRun,requestedRepetitions:S.repetitions,completedRepetitions:1,complete:accepted===S.windowsPerRun,reason:accepted===S.windowsPerRun?"Measurement windows complete; no verified fresh-world reconstruction":"Retry limit reached; incomplete measurement",identity:this.identity,reports:this.reports}));
  }
  private numericWorkload(w:DiagnosticWorkload,c:Readonly<Record<string,number>>):Record<string,number>{return {waterPackets:w.waterPackets,windParticles:w.windParticles,fireParticles:w.fireParticles,backgroundEnabled:w.backgroundEnabled?1:0,...Object.fromEntries(Object.entries(c).filter(([k])=>k.startsWith("p0.fixture.")))};}
 }

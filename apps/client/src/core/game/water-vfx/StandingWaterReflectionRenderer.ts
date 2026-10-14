@@ -120,16 +120,22 @@ export class StandingWaterReflectionRenderer {
              * the current Water contour. This is the key temporal-coherence
              * rule for 8I-8C.1.
              */
-            state.marks =
-                state.marks.filter((mark) => {
-                    if (this.isMarkValid(mark, contour.points, definition)) {
-                        mark.invalidRefreshes = 0;
-                        return true;
-                    }
+            // Compact in place instead of allocating a new marks array each refresh.
+            let retainedMarkCount = 0;
+            for (let markIndex = 0; markIndex < state.marks.length; markIndex += 1) {
+                const mark = state.marks[markIndex];
+                if (this.isMarkValid(mark, contour.points, definition)) {
+                    mark.invalidRefreshes = 0;
+                } else {
                     mark.invalidRefreshes += 1;
-                    return mark.invalidRefreshes <=
-                        definition.reflectionMarkInvalidRetentionRefreshes;
-                });
+                    if (mark.invalidRefreshes > definition.reflectionMarkInvalidRetentionRefreshes) {
+                        continue;
+                    }
+                }
+                state.marks[retainedMarkCount] = mark;
+                retainedMarkCount += 1;
+            }
+            state.marks.length = retainedMarkCount;
 
             const requiredCount =
                 this.getRequiredMarkCountWithHysteresis(

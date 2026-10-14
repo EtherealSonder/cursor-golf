@@ -63,6 +63,9 @@ export class StandingWaterRenderer {
     private readonly visibleBodyCellIndices =
         new Set<number>();
 
+    /** Reused on contour refresh; avoids a Map allocation per redraw. */
+    private readonly visibleDepthScratch = new Map<number, number>();
+
     private readonly cellSize:
         number;
 
@@ -308,8 +311,8 @@ export class StandingWaterRenderer {
             0;
         let contourSignature =
             2166136261;
-        const visibleDepthByIndex =
-            new Map<number, number>();
+        const visibleDepthByIndex = this.visibleDepthScratch;
+        visibleDepthByIndex.clear();
 
         const scanStartedAt = performance.now();
 

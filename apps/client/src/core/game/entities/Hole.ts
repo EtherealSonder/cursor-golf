@@ -340,7 +340,7 @@ export class Hole extends Entity {
                 this.entryState ===
                 HoleEntryState.OverlappingTooFast
             ) {
-                console.log(
+                if (false) console.log(
                     "Hole entry rejected because the Ball exceeded the centre-weighted capture speed.",
                     this.getDebugState(),
                 );
@@ -519,7 +519,7 @@ export class Hole extends Entity {
 
         this.drawHole();
 
-        console.log(
+        if (false) console.log(
             "Valid Hole entry detected. Ball capture started.",
             this.getDebugState(),
         );
@@ -597,7 +597,7 @@ export class Hole extends Entity {
 
         this.drawHole();
 
-        console.log(
+        if (false) console.log(
             "Ball holed.",
             this.getDebugState(),
         );

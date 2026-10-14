@@ -221,7 +221,7 @@ export class Game {
 
         this.world.initialize();
         if (isPerformanceInvestigationEnabled()) console.info("[PERF] Pass A diagnostic dashboard enabled; rendering timing is CPU-side only.");
-        if (new URLSearchParams(window.location.search).get("shotPowerValidation") === "1") {
+        if (false) { // Obsolete shot-power URL validation disabled.
             const ball = this.world.getBall();
             const spawn = this.world.getBallWorldPosition();
             if (ball && spawn) this.shotPowerBaselineValidation = new ShotPowerBaselineValidation(ball, spawn.x, spawn.y);

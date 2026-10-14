@@ -21,6 +21,8 @@ import type {
 export class WaterVfxPool {
     private readonly container = new Container();
     private readonly particles: WaterVfxParticle[] = [];
+    /** Maintained on emission, expiry and reset; avoids repeated full-pool counts. */
+    private activeParticleCount = 0;
 
     private readonly initialCapacity: number;
     private readonly maximumCapacity: number;
@@ -75,6 +77,7 @@ export class WaterVfxPool {
         }
 
         particle.activate(texture, activation);
+        this.activeParticleCount += 1;
         return particle;
     }
 
@@ -88,26 +91,20 @@ export class WaterVfxPool {
 
             if (particle.isActive()) {
                 particle.update(deltaTime);
+                if (!particle.isActive()) this.activeParticleCount -= 1;
             }
         }
     }
 
     public reset(): void {
+        this.activeParticleCount = 0;
         for (let index = 0; index < this.particles.length; index += 1) {
             this.particles[index].deactivate();
         }
     }
 
     public getActiveCount(): number {
-        let count = 0;
-
-        for (let index = 0; index < this.particles.length; index += 1) {
-            if (this.particles[index].isActive()) {
-                count += 1;
-            }
-        }
-
-        return count;
+        return this.activeParticleCount;
     }
 
     public getCapacity(): number {
@@ -120,6 +117,7 @@ export class WaterVfxPool {
         }
 
         this.particles.length = 0;
+        this.activeParticleCount = 0;
 
         this.container.destroy({
             children: false,

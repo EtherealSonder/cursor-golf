@@ -26,21 +26,19 @@ export class LocalWindObstacleQuery {
 
     private courseBoundary: CourseEnvironmentBoundary | null = null;
     private staticIndex: WindObstacleSpatialIndex | null = null;
-    private staticSnapshot: readonly StaticObstacleDefinition[] | null = null;
-    private staticSignature = "";
-    public invalidateIndex(): void { this.staticIndex = null; this.staticSnapshot = null; this.staticSignature = ""; }
+    private staticRevision = -1;
+    public invalidateIndex(): void {
+        this.staticIndex = null;
+        this.staticRevision = -1;
+    }
     private getIndexedCandidates(x0: number, y0: number, x1: number, y1: number): readonly StaticObstacleDefinition[] {
-        const definitions = this.physicsWorld.getRigidStaticDefinitions();
-        // Include transforms and dimensions: mutable static definitions can be edited in place.
-        const signature = definitions.map(o => o.shape === "circle"
-            ? `${o.positionX},${o.positionY},${o.radius}`
-            : o.shape === "rectangle"
-                ? `${o.positionX},${o.positionY},${o.rotationRadians ?? 0},${o.width},${o.height}`
-                : `${o.positionX},${o.positionY},${o.points.map(p => `${p.x},${p.y}`).join(",")}`).join("|");
-        if (!this.staticIndex || definitions !== this.staticSnapshot || signature !== this.staticSignature) {
+        const revision = this.physicsWorld.getRigidStaticRevision();
+        // Static registration changes invalidate the index. The stable array reference
+        // alone is insufficient because PhysicsWorld mutates it in place.
+        if (!this.staticIndex || revision !== this.staticRevision) {
+            const definitions = this.physicsWorld.getRigidStaticDefinitions();
             this.staticIndex = new WindObstacleSpatialIndex(definitions, this.definition.collisionTolerance);
-            this.staticSnapshot = definitions;
-            this.staticSignature = signature;
+            this.staticRevision = revision;
             P1.add("windIndexRebuilds");
         }
         return this.staticIndex.candidates(x0, y0, x1, y1);
@@ -65,9 +63,9 @@ export class LocalWindObstacleQuery {
         fallbackDirectionX: number,
         fallbackDirectionY: number,
     ): LocalWindObstacleResolution {
-        if (!this.isPlayable(sourceX, sourceY) || !this.isPlayable(targetX, targetY) ||
-            this.courseBoundary?.crossesCourseBoundary({x:sourceX,y:sourceY},{x:targetX,y:targetY}) ||
-            this.courseBoundary?.intersectsWall({x:sourceX,y:sourceY},{x:targetX,y:targetY})) {
+        // segmentBlocked() already performs the authoritative course-boundary
+        // and wall checks. Avoid doing them again here for every Wind sample.
+        if (this.courseBoundary?.blocksSegment(sourceX, sourceY, targetX, targetY)) {
             return {blocked:true,multiplier:0,directionX:fallbackDirectionX,directionY:fallbackDirectionY};
         }
         if (!this.segmentBlocked(sourceX, sourceY, targetX, targetY)) {

@@ -17,6 +17,7 @@ export function assertCourseWindPerformanceValidation(): void {
     assert(boundary.blocksSegment(40, 40, -20, 40), "solid wall");
     assert(boundary.blocksSegment(100, 20, 100, -20), "opening exits into void");
     const physics = {
+        getRigidStaticRevision: () => 0,
         getRigidStaticDefinitions: () => [{
             id: "test-rotated-wall", shape: "rectangle", positionX: 100, positionY: 60,
             width: 80, height: 8, rotationRadians: Math.PI / 4,

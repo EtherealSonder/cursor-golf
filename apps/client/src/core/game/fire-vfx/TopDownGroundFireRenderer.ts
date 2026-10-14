@@ -29,6 +29,10 @@ interface Element {
 export class TopDownGroundFireRenderer {
     private readonly container = new Container();
     private readonly elements: Element[] = [];
+    // PERF-F1: reuse frame-local working collections.
+    private readonly eligibleCellsScratch: FireCell[] = [];
+    private readonly eligibleOwnerKeysScratch = new Set<string>();
+    private readonly activeGridKeysScratch = new Set<string>();
 
     public constructor(
         private readonly fireManager: FireManager,
@@ -51,9 +55,12 @@ export class TopDownGroundFireRenderer {
             return;
         }
 
-        const eligibleCells: FireCell[] = [];
-        const eligibleOwnerKeys = new Set<string>();
-        const activeGridKeys = new Set<string>();
+        const eligibleCells = this.eligibleCellsScratch;
+        const eligibleOwnerKeys = this.eligibleOwnerKeysScratch;
+        const activeGridKeys = this.activeGridKeysScratch;
+        eligibleCells.length = 0;
+        eligibleOwnerKeys.clear();
+        activeGridKeys.clear();
 
         for (const cell of this.fireManager.getActiveCells()) {
             if (this.directionalRegion.ownsFireCell(cell)) {

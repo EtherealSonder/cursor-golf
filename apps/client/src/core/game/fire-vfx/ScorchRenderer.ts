@@ -69,6 +69,9 @@ export class ScorchRenderer {
     private readonly contourBuilder =
         new ScorchContourBuilder();
 
+    // PERF-F1: reuse layer list between scorch contour rebuilds.
+    private readonly layerScratch: ScorchLayer[] = [];
+
     private readonly canvas:
         HTMLCanvasElement;
 
@@ -733,8 +736,9 @@ export class ScorchRenderer {
          * near-charcoal heavy interior. The contour geometry itself remains
          * unchanged.
          */
-        const layers:
-            ScorchLayer[] = [
+        const layers = this.layerScratch;
+        layers.length = 0;
+        layers.push(
                 {
                     threshold:
                         this.definition
@@ -786,7 +790,7 @@ export class ScorchRenderer {
                         this.definition
                             .heavyEdgeDeformationPixels,
                 },
-            ];
+            );
 
         for (
             const layer

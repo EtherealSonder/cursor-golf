@@ -9,8 +9,7 @@ import type {
     PerformanceSnapshot,
 } from "./PerformanceMetrics";
 
-const PERFORMANCE_DEBUG_ENABLED =
-    new URLSearchParams(window.location.search).get("perfdiag") !== "1";
+const PERFORMANCE_DEBUG_ENABLED = false; // Hidden during normal gameplay.
 
 const PERFORMANCE_DISPLAY_REFRESH_SECONDS =
     0.25;

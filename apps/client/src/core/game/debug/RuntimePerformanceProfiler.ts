@@ -283,7 +283,7 @@ export class RuntimePerformanceProfiler {
         const top = snapshot.sections.slice(0, 6)
             .map((section) => `${section.name} ${section.averageMilliseconds.toFixed(2)}ms`)
             .join(" | ");
-        console.info(
+        if (false) console.info(
             `[PERF] FPS ${snapshot.approximateFps.toFixed(1)} | frame avg ${snapshot.averageMeasuredFrameMilliseconds.toFixed(2)}ms | max ${snapshot.maximumMeasuredFrameMilliseconds.toFixed(2)}ms | over budget ${snapshot.overBudgetFrameCount}/${snapshot.frameCount} | ${top || "collecting"}`,
         );
     }
