@@ -1,3 +1,4 @@
+import bushPreviewTextureUrl from "../../../assets/sprites/environment/bush.png";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
 import { CourseBoundaryDeathDiagnostics } from "../debug/CourseBoundaryDeathDiagnostics";
@@ -50,7 +51,9 @@ import { BoulderFractureValidation } from "../debug/BoulderFractureValidation";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
+    Assets,
     Container,
+    Sprite,
     Graphics,
     Text,
     TilingSprite,
@@ -1203,6 +1206,7 @@ export class World {
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
         this.createCourse();
+        this.createTemporaryBushPreviews();
 
 
         this.createWetGroundRenderer();
@@ -6009,6 +6013,43 @@ export class World {
         }
 
         this.createGameplayCourseWalls();
+    }
+
+    /** Temporary visual-only scale comparison for the default development level. */
+    private createTemporaryBushPreviews(): void {
+        if (this.performanceLevelId !== "level-00-dev") return;
+
+        // Five visual-only bushes distributed through level-00-dev.
+        // Coordinates are level-local. Keep each 136 px sprite clear of
+        // the authored mechanisms, rocks, mines, robots, hole and ball spawn.
+        // No physics, environmental interaction, or level-definition registration.
+        const previews = [
+            { x: 350, y: 370, size: 136 },
+            { x: 650, y: 980, size: 136 },
+            { x: 430, y: 1160, size: 136 },
+            { x: 420, y: 1740, size: 136 },
+            { x: 780, y: 2420, size: 136 },
+        ];
+
+        void Assets.load(bushPreviewTextureUrl).then((texture) => {
+            // The world may have been destroyed while the asset was loading.
+            if (this.worldContainer.destroyed) return;
+            const layer = this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects);
+            for (const preview of previews) {
+                const sprite = new Sprite(texture);
+                sprite.anchor.set(0.5);
+                sprite.position.set(
+                    this.runtimeLevel.worldOrigin.x + preview.x,
+                    this.runtimeLevel.worldOrigin.y + preview.y,
+                );
+                sprite.width = preview.size;
+                sprite.height = preview.size;
+                sprite.eventMode = "none";
+                layer.addChild(sprite);
+            }
+        }).catch((error: unknown) => {
+            console.error("Failed to load temporary bush previews:", error);
+        });
     }
 
     private createGameplayCourseWalls(): void {
