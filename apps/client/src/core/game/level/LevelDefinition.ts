@@ -148,6 +148,11 @@ export interface StaticMetalBoxPlacement extends BaseObjectPlacement {
     readonly rotation: number;
 }
 
+/** Static visual foliage placement; shared size is defined in BushDefinition. */
+export interface BushPlacement extends BaseObjectPlacement {
+    readonly type: "bush";
+}
+
 export interface ProximityMinePlacement extends BaseObjectPlacement {
     readonly type: "proximityMine";
 }
@@ -201,6 +206,7 @@ export type LevelObjectPlacement =
     | DirectionalBumperPlacement
     | RotatingPaddlePlacement
     | ProximityMinePlacement
+    | BushPlacement
     | StaticMetalBoxPlacement
     | SmallRockPlacement
     | BoulderPlacement
@@ -228,6 +234,7 @@ export const LEVEL_OBJECT_TYPES = [
     "directionalBumper",
     "rotatingPaddle",
     "proximityMine",
+    "bush",
     "staticMetalBox",
     "smallRock",
     "boulder",

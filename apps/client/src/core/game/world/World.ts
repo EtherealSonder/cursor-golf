@@ -1,4 +1,16 @@
-import bushPreviewTextureUrl from "../../../assets/sprites/environment/bush.png";
+import { BushWaterInteractionSystem } from "../bush/BushWaterInteractionSystem";
+import { BushFireContactSystem } from "../bush/BushFireContactSystem";
+import { BushObjectCollisionSystem } from "../bush/BushObjectCollisionSystem";
+import { BushBallSilhouetteRenderer } from "../bush/BushBallSilhouetteRenderer";
+import { BushConcealmentVignette } from "../bush/BushConcealmentVignette";
+import { BUSH_CONCEALMENT_PRESENTATION } from "../bush/BushConcealmentPresentationDefinition";
+import { BUSH_MOVEMENT_DEFINITION } from "../bush/BushMovementDefinition";
+import { Bush } from "../bush/Bush";
+import { BushMovementController } from "../bush/BushMovementController";
+import { BushSpatialQueries } from "../bush/BushSpatialQueries";
+import { BushConcealmentController } from "../bush/BushConcealmentController";
+import { BUSH_DEFINITION } from "../bush/BushDefinition";
+import type { BushPoint, BushCoverage } from "../bush/BushGeometryDefinition";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
 import { CourseBoundaryDeathDiagnostics } from "../debug/CourseBoundaryDeathDiagnostics";
@@ -51,9 +63,7 @@ import { BoulderFractureValidation } from "../debug/BoulderFractureValidation";
 // O6 final Water optimization: integration remains behavior-neutral; Water gameplay logic stays in its owning systems.
 import {
     Application,
-    Assets,
     Container,
-    Sprite,
     Graphics,
     Text,
     TilingSprite,
@@ -587,6 +597,21 @@ export class World {
 
     /** R-ROCK-3/4 authoritative Rock population and runtime registrations. */
     private readonly rocks: Rock[] = [];
+    private readonly bushes: Bush[] = [];
+    private readonly bushObjectCollisionSystem = new BushObjectCollisionSystem();
+    private readonly bushConcealment = new BushConcealmentController();
+    private readonly bushRobotUnregister: Array<() => void> = [];
+    private readonly bushRobotUnregisterById = new Map<string, () => void>();
+    private bushFireContact: BushFireContactSystem | null = null;
+    private isBushAimForeground = true;
+    private readonly isRobotTargetConcealed = (id: string): boolean => id === "ball" && this.bushConcealment.isConcealed;
+    private bushBallSilhouette: BushBallSilhouetteRenderer | null = null;
+    private bushConcealmentVignette: BushConcealmentVignette | null = null;
+    /** B2 query-only API. No ball physics or robot visibility changes in this phase. */
+    public getBushCoverage(center: BushPoint, radius: number): BushCoverage {
+        return BushSpatialQueries.coverage(this.bushes.filter((b) => !b.isDestroyed).map((b) => b.geometry), center, radius);
+    }
+
     private readonly robotVoidUnregister = new Map<Robot, () => void>();
     /** Robot-perception registrations owned by movable fans; released before void shrink. */
     private readonly fanRobotInteractionUnregister = new Map<Fan, () => void>();
@@ -661,6 +686,7 @@ export class World {
         AirborneWaterCollisionResponse;
 
     /** Phase 8B-2 authoritative transport for Water currently in flight. */
+    private bushWaterInteraction: BushWaterInteractionSystem | null = null;
     private readonly airborneWaterSystem:
         AirborneWaterSystem;
 
@@ -1116,6 +1142,14 @@ export class World {
                 this.airborneWaterCollisionResponse,
             );
         this.airborneWaterSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
+        // B8: shared packet transport powers both sprinkler and robot hose water.
+        this.bushWaterInteraction = new BushWaterInteractionSystem(() => this.bushes);
+        this.airborneWaterSystem.setBushWaterTransmission((x0,y0,x1,y1) =>
+            this.bushWaterInteraction!.transmission(this.bushWaterInteraction!.foliageLength(x0,y0,x1,y1)));
+        this.airborneWaterSystem.setBushInteriorQuery((x,y) => this.bushWaterInteraction!.inside(x,y));
+        this.airborneWaterSystem.setBushContactQuery((x0,y0,x1,y1) =>
+            this.bushWaterInteraction!.firstContact(x0,y0,x1,y1));
+
         this.fireSourceSystem =
             new FireSourceSystem(
                 this.environmentField,
@@ -1206,7 +1240,12 @@ export class World {
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
         this.createCourse();
-        this.createTemporaryBushPreviews();
+        this.createLevelBushes();
+        this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
+        this.bushBallSilhouette = new BushBallSilhouetteRenderer(
+            this.presentationLayers.getAimingForegroundLayer(),
+        );
+        this.bushConcealmentVignette = new BushConcealmentVignette(this.screenOverlayContainer);
 
 
         this.createWetGroundRenderer();
@@ -1417,6 +1456,10 @@ export class World {
                 this.windManager,
                 this.surfaceSystem,
                 this.waterField,
+                new BushMovementController(
+                    (center, radius) => this.getBushCoverage(center, radius).traversal,
+                    () => this.cameraShake.trigger(BUSH_MOVEMENT_DEFINITION.impactShake),
+                ),
             );
 
         this.addEntity(
@@ -1624,6 +1667,8 @@ export class World {
             this.club,
             WorldRenderLayer.GameplayActors,
         );
+        // B4: the club must stay visible above foliage and the ball silhouette.
+        this.presentationLayers.getAimingForegroundLayer().addChild(this.club.getContainer());
 
         // ---------------------------------------------------
         // Create Aim Indicator
@@ -1632,35 +1677,17 @@ export class World {
         this.aimIndicator =
             new AimIndicator();
 
-        /*
-         * The meter begins at Ball centre. Keep it in GameplayActors and
-         * insert it immediately beneath the Ball so the Ball naturally masks
-         * the rear portion of the meter.
-         */
+        // B4: the aim meter stays above foliage but its renderer clips the
+        // portion inside the ball radius, so it appears to emerge from under
+        // the ball even though it is in the foreground layer.
         this.addEntity(
             this.aimIndicator,
             WorldRenderLayer.GameplayActors,
         );
-
-        const aimIndicatorContainer =
-            this.aimIndicator.getContainer();
-
-        gameplayActors.removeChild(
-            aimIndicatorContainer,
-        );
-
-        const currentBallDisplayIndex =
-            gameplayActors.getChildIndex(
-                ballContainer,
-            );
-
-        gameplayActors.addChildAt(
-            aimIndicatorContainer,
-            Math.max(
-                0,
-                currentBallDisplayIndex,
-            ),
-        );
+        const aimingForeground = this.presentationLayers.getAimingForegroundLayer();
+        aimingForeground.addChildAt(this.aimIndicator.getContainer(), 0);
+        // The club remains on top of the aim indicator.
+        aimingForeground.addChild(this.club.getContainer());
 
         // ---------------------------------------------------
         // Create Shot Feedback
@@ -2006,6 +2033,8 @@ export class World {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSources")!==false)this.fireSourceSystem.update(deltaTime);
             fireSourceSystemMilliseconds = performance.now() - fireSourceStartedAt;
             if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSpread")!==false)this.fireManager.update(deltaTime);
+            // B7: independent bush ignition and destruction, after authoritative fire updates.
+            this.updateBushFire(deltaTime);
 
             if (this.ball) {
                 const exposure =
@@ -2182,6 +2211,34 @@ export class World {
          * Stress-test profiling keeps Robot AI separate from ordinary entity
          * updates while preserving the original entity-list update order.
          */
+        // B5: update gameplay concealment before any robot perception this frame.
+        if (this.ball && this.bushes.length > 0) {
+            const ballFootprint = this.ball.getBushPresentationFootprint();
+            this.bushConcealment.update(this.getBushCoverage(ballFootprint, ballFootprint.radius).concealment);
+        } else {
+            this.bushConcealment.reset();
+        }
+        // B6: the meter ALWAYS lives above foliage. Outside foliage, move the
+        // real ball directly above it so the meter starts at its exact centre
+        // but appears beneath the ball. Concealed: ball stays below foliage,
+        // with the existing translucent silhouette representing its position.
+        if (this.aimIndicator && this.ball) {
+            const foreground = this.presentationLayers.getAimingForegroundLayer();
+            const ballContainer = this.ball.getContainer();
+            const aimContainer = this.aimIndicator.getContainer();
+            const clubContainer = this.club?.getContainer() ?? null;
+            const footprint = this.ball.getAimOriginFootprint();
+            const insideFoliage = this.getBushCoverage(footprint, footprint.radius).traversal > 0.10;
+            if (insideFoliage) {
+                const actors = this.presentationLayers.getLayer(WorldRenderLayer.GameplayActors);
+                if (ballContainer.parent !== actors) actors.addChild(ballContainer);
+                this.presentationLayers.arrangeForegroundAim(aimContainer, null, clubContainer);
+            } else {
+                this.presentationLayers.arrangeForegroundAim(aimContainer, ballContainer, clubContainer);
+            }
+            this.isBushAimForeground = true;
+        }
+
         this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
         this.updateProximityMineTargets();
 
@@ -2358,6 +2415,11 @@ export class World {
                 }
             }
             this.dynamicStaticCollisionSystem.resolve(this.physicsWorld);
+            // B6: resolve bushes only against movable rigid bodies, never Ball.
+            this.bushObjectCollisionSystem.resolve(
+                this.bushes,
+                this.physicsWorld.getMovableRigidDynamicCollidables(),
+            );
         });
 
         /*
@@ -2533,6 +2595,19 @@ export class World {
             this.sprinklers.length,
         );
 
+        // B4 presentation follows the current authoritative ball position.
+        if (this.ball && this.bushes.length > 0) {
+            const footprint = this.ball.getBushPresentationFootprint();
+            const coverage = this.getBushCoverage(footprint, footprint.radius).concealment;
+            this.bushBallSilhouette?.update(footprint.x, footprint.y, footprint.radius, coverage);
+            this.bushConcealmentVignette?.update(deltaTime,
+                coverage, this.app.screen.width, this.app.screen.height);
+        } else {
+            this.bushBallSilhouette?.clear();
+            this.bushConcealmentVignette?.update(deltaTime, 0,
+                this.app.screen.width, this.app.screen.height);
+        }
+
         this.waterPerformanceProfiler
             .endFrame(
                 deltaTime,
@@ -2552,6 +2627,17 @@ export class World {
 
     public destroy():
         void {
+        this.bushFireContact = null;
+        this.bushRobotUnregisterById.clear();
+        this.bushBallSilhouette?.destroy();
+        this.bushBallSilhouette = null;
+        this.bushConcealmentVignette?.destroy();
+        this.bushConcealmentVignette = null;
+        for (const unregister of this.bushRobotUnregister) unregister();
+        this.bushRobotUnregister.length = 0;
+        this.bushConcealment.reset();
+        for (const bush of this.bushes) bush.destroy();
+        this.bushes.length = 0;
         this.courseEnvironmentBoundary.clearAccelerationCaches();
         this.performanceInvestigation?.destroy();
         this.sprinklerWaterVfx
@@ -4011,7 +4097,8 @@ export class World {
                 this.fireSourceSystem,
                 this.waterSourceSystem,
                 this.localWindSystem,
-            );
+            this.isRobotTargetConcealed,
+        );
 
         this.robotVoidUnregister.set(this.fireRobot, this.robotInteractionRegistry.register({
             id: definition.id, label: "Fire Robot",
@@ -4310,7 +4397,8 @@ export class World {
                 this.fireSourceSystem,
                 this.waterSourceSystem,
                 this.localWindSystem,
-            );
+            this.isRobotTargetConcealed,
+        );
 
             this.robotVoidUnregister.set(robot, this.robotInteractionRegistry.register({
                 id: definition.id,
@@ -4410,6 +4498,7 @@ export class World {
         this.windRobot = new Robot(
             definition, navigationQuery, this.robotInteractionRegistry,
             this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,
+        this.isRobotTargetConcealed,
         );
         const robot = this.windRobot;
 
@@ -5401,23 +5490,18 @@ export class World {
          *
          * The container is world-space and presentation-only.
          */
+        // ScorchRenderer is parented to groundContainer. Keep it on GroundState
+        // so darkened terrain can never cover the active flames.
         this.presentationLayers
-            .getLayer(
-                WorldRenderLayer.GroundState,
-            )
-            .addChild(
-                this.fireVfxSystem
-                    .getGroundContainer(),
-            );
+            .getLayer(WorldRenderLayer.GroundState)
+            .addChild(this.fireVfxSystem.getGroundContainer());
 
-        this.presentationLayers
-            .getLayer(
-                WorldRenderLayer.HazardEffects,
-            )
-            .addChild(
-                this.fireVfxSystem
-                    .getAirborneContainer(),
-            );
+        // FireVfxPool particles (including point and directional fire) live in
+        // airborneContainer, NOT groundContainer. Place the actual particle
+        // container above the bush sprites, but below aiming and HUD.
+        const fireParticles = this.fireVfxSystem.getAirborneContainer();
+        fireParticles.zIndex = 20;
+        this.presentationLayers.getBushForegroundLayer().addChild(fireParticles);
     }
 
     private createPhase4FireTestSurfaceZones():
@@ -6015,40 +6099,48 @@ export class World {
         this.createGameplayCourseWalls();
     }
 
-    /** Temporary visual-only scale comparison for the default development level. */
-    private createTemporaryBushPreviews(): void {
-        if (this.performanceLevelId !== "level-00-dev") return;
-
-        // Five visual-only bushes distributed through level-00-dev.
-        // Coordinates are level-local. Keep each 136 px sprite clear of
-        // the authored mechanisms, rocks, mines, robots, hole and ball spawn.
-        // No physics, environmental interaction, or level-definition registration.
-        const previews = [
-            { x: 350, y: 370, size: 136 },
-            { x: 650, y: 980, size: 136 },
-            { x: 430, y: 1160, size: 136 },
-            { x: 420, y: 1740, size: 136 },
-            { x: 780, y: 2420, size: 136 },
-        ];
-
-        void Assets.load(bushPreviewTextureUrl).then((texture) => {
-            // The world may have been destroyed while the asset was loading.
-            if (this.worldContainer.destroyed) return;
-            const layer = this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects);
-            for (const preview of previews) {
-                const sprite = new Sprite(texture);
-                sprite.anchor.set(0.5);
-                sprite.position.set(
-                    this.runtimeLevel.worldOrigin.x + preview.x,
-                    this.runtimeLevel.worldOrigin.y + preview.y,
-                );
-                sprite.width = preview.size;
-                sprite.height = preview.size;
-                sprite.eventMode = "none";
-                layer.addChild(sprite);
+    /** Bush ignition feeds the existing ground-fire simulation and VFX pipeline. */
+    private updateBushFire(dt: number): void {
+        if (!this.bushFireContact || dt <= 0) return;
+        for (const bush of this.bushes) {
+            if (bush.isDestroyed) continue;
+            if (bush.fire.status === "healthy") {
+                const contact = this.bushFireContact.findContact(bush);
+                if (contact && bush.ignite() && bush.fire.claimPointFireIgnition()) {
+                    // Contact anywhere on foliage triggers a single Point Fire
+                    // at the bush center, using the existing fire/VFX pipeline.
+                    this.fireManager.ignite(bush.x, bush.y);
+                }
             }
+            if (bush.fire.status !== "burning") continue;
+            if (!bush.updateBurn(dt)) continue;
+            this.bushRobotUnregisterById.get(bush.id)?.();
+            this.bushRobotUnregisterById.delete(bush.id);
+            bush.destroy();
+        }
+    }
+
+    /** B1: instantiate level-authored bushes without adding gameplay collisions. */
+    private createLevelBushes(): void {
+        const placements = runtimeObjectsOfType(this.runtimeLevel, "bush");
+        if (placements.length === 0) return;
+        const layer = this.presentationLayers.getBushForegroundLayer();
+        const instances = placements.map((placement) => new Bush(placement));
+        this.bushes.push(...instances);
+        for (const bush of instances) {
+            const unregister = this.robotInteractionRegistry.registerCircularEntity(
+                `bush-nav-${bush.id}`, "Bush", BUSH_DEFINITION.robotNavigationRadius,
+                () => bush.x, () => bush.y,
+                { navigationBlocker: true, attackTarget: false, visionOccluder: false },
+            );
+            this.bushRobotUnregister.push(unregister);
+            this.bushRobotUnregisterById.set(bush.id, unregister);
+        }
+        void Bush.loadTexture().then((texture) => {
+            if (this.worldContainer.destroyed) return;
+            for (const bush of instances) bush.attach(layer, texture);
         }).catch((error: unknown) => {
-            console.error("Failed to load temporary bush previews:", error);
+            console.error("Failed to load level bush texture:", error);
         });
     }
 

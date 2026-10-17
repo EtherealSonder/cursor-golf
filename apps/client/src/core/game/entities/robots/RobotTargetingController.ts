@@ -21,6 +21,8 @@ export class RobotTargetingController {
     private target: RobotInteractionEntry | null = null;
     private phase: RobotTargetingPhase = "NONE";
     private targetLossSeconds = 0;
+    private lastVisibleX = 0;
+    private lastVisibleY = 0;
 
     public constructor(
         private readonly alignmentToleranceDegrees: number,
@@ -41,6 +43,8 @@ export class RobotTargetingController {
                 this.phase = "DETECTING";
             }
             this.targetLossSeconds = 0;
+            this.lastVisibleX = perceivedTarget.getX();
+            this.lastVisibleY = perceivedTarget.getY();
         } else if (this.target) {
             this.targetLossSeconds += Math.max(0, deltaTime);
             if (this.targetLossSeconds > this.targetLossGraceSeconds) this.clear();
@@ -56,8 +60,9 @@ export class RobotTargetingController {
             return this.snapshot(null, 0);
         }
 
-        const dx = this.target.getX() - originX;
-        const dy = this.target.getY() - originY;
+        // A retained target is aimed at its last SEEN position, not live hidden coordinates.
+        const dx = this.lastVisibleX - originX;
+        const dy = this.lastVisibleY - originY;
         const desiredAngle = Math.atan2(dy, dx);
         const errorRadians = this.shortestAngle(desiredAngle - currentRotation);
         const errorDegrees = Math.abs(errorRadians) * 180 / Math.PI;

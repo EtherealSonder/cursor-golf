@@ -8,7 +8,7 @@ import { Entity } from "./Entity";
 /**
  * Forward shot direction + power meter.
  *
- * The silhouette begins at the Ball edge, grows strongly with normalized
+ * The silhouette begins at the Ball center, grows strongly with normalized
  * power, and ends in a compact tapered point. Six chevron-ended bands
  * communicate power progression. A white band travels outward continuously
  * as a directional visual cue.
@@ -135,11 +135,16 @@ export class AimIndicator extends Entity {
         g.clear();
 
         const d = this.definition;
-        const startX = d.startOffset;
+        // This indicator lives above foliage so it stays readable in a bush.
+        // Clip its origin to the ball's physical radius: the ball still
+        // appears to cover the meter at its centre, without changing layers.
+        // Keep actual geometry anchored at the ball center. The real ball
+        // occludes the inner portion via World presentation order.
+        const startX = 0;
         const length = this.currentLength;
         const half = this.currentThickness * 0.5;
         const tipLength = Math.min(d.tipLength, Math.max(8, length * 0.22));
-        const bodyLength = Math.max(0, length - tipLength);
+        const bodyLength = Math.max(0, length - startX - tipLength);
         const tipX = startX + length;
 
         // The silhouette itself grows with power. There is no long,

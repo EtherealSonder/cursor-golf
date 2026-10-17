@@ -284,198 +284,65 @@ export class ShotController {
         // Temporary Debug Information
         // -----------------------------
 
-        if (false) console.clear();
+        
 
-        if (false) console.log(
-            "========== SHOT DEBUG ==========",
-        );
+        
 
-        if (false) console.log(
-            "Power:",
-            normalizedPower.toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Required Power:",
-            ball
-                .getMinimumLaunchPower()
-                .toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Power Requirement Met:",
-            hasMinimumPower,
-        );
+        
 
-        if (false) console.log(
-            "Preparation Time:",
-            this.preparationElapsedTime
-                .toFixed(3),
-            "seconds",
-        );
+        
 
-        if (false) console.log(
-            "Required Preparation Time:",
-            ball
-                .getMinimumShotPreparationTime()
-                .toFixed(3),
-            "seconds",
-        );
+        
 
-        if (false) console.log(
-            "Time Requirement Met:",
-            hasMinimumPreparationTime,
-        );
+        
 
-        if (false) console.log(
-            "Shot Can Launch:",
-            shotCanLaunch,
-        );
+        
 
-        if (false) console.log(
-            "Predicted Launch Speed:",
-            ball
-                .getLaunchSpeedForPower(
-                    normalizedPower,
-                )
-                .toFixed(2),
-            "px/s",
-        );
+        
 
-        if (false) console.log(
-            "Power Curve Exponent:",
-            ball
-                .getShotPowerExponent()
-                .toFixed(2),
-        );
+        
 
-        if (false) console.log(
-            "Drag Distance:",
-            dragDistance.toFixed(2),
-            "px",
-        );
+        
 
-        if (false) console.log(
-            "Maximum Drag Distance:",
-            club
-                .getMaximumDragDistance()
-                .toFixed(2),
-            "px",
-        );
+        
 
-        if (false) console.log(
-            "Base Aim Angle:",
-            this.radiansToDegrees(
-                baseAimAngle,
-            ).toFixed(2),
-            "degrees",
-        );
+        
 
-        if (false) console.log(
-            "Current Aim Angle:",
-            this.radiansToDegrees(
-                currentAimAngle,
-            ).toFixed(2),
-            "degrees",
-        );
+        
 
-        if (false) console.log(
-            "Current Oscillation Offset:",
-            this.radiansToDegrees(
-                oscillationOffset,
-            ).toFixed(2),
-            "degrees",
-        );
+        
 
-        if (false) console.log(
-            "Optimal Accuracy Tolerance:",
-            "�" +
-            this.radiansToDegrees(
-                optimalAccuracyTolerance,
-            ).toFixed(2),
-            "degrees",
-        );
+        
 
-        if (false) console.log(
-            "Inside Optimal Range:",
-            insideOptimalAccuracyRange,
-        );
+        
 
-        if (false) console.log(
-            "Accuracy Quality:",
-            accuracyQuality.toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Current Oscillation Speed:",
-            this.shotPreparation
-                .getOscillationSpeed()
-                .toFixed(2),
-        );
+        
 
-        if (false) console.log(
-            "Oscillation Phase:",
-            this.shotPreparation
-                .getOscillationPhase()
-                .toFixed(2),
-            "radians",
-        );
+        
 
-        if (false) console.log(
-            "Raw Oscillation Wave:",
-            this.shotPreparation
-                .getRawOscillationWave()
-                .toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Shaped Oscillation Wave:",
-            this.shotPreparation
-                .getShapedOscillationWave()
-                .toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Aim Meter Length:",
-            aimIndicator.getMeterLength().toFixed(2),
-            "px",
-        );
+        
 
-        if (false) console.log(
-            "Aim Meter Thickness:",
-            aimIndicator.getMeterThickness().toFixed(2),
-            "px",
-        );
+        
 
-        if (false) console.log(
-            "Aim Meter Filled Length:",
-            aimIndicator.getFilledLength().toFixed(2),
-            "px",
-        );
+        
 
-        if (false) console.log(
-            "Aim Meter Active Bands:",
-            aimIndicator.getActiveBandCount(),
-            "/ 6",
-        );
+        
 
-        if (false) console.log(
-            "Aim Meter Pulse Band:",
-            aimIndicator.getPulseBandIndex() >= 0
-                ? aimIndicator.getPulseBandIndex() + 1
-                : "gap",
-        );
+        
 
-        if (false) console.log(
-            "Ball Tension Power:",
-            ball
-                .getTensionPower()
-                .toFixed(2),
-        );
+        
 
-        if (false) console.log(
-            "================================",
-        );
+        
     }
 
     // -------------------------------------------------------
@@ -530,9 +397,7 @@ export class ShotController {
                 ball.getY(),
             );
 
-        if (false) console.log(
-            "Shot Started",
-        );
+        
     }
 
     public cancelShot(): void {
@@ -569,9 +434,7 @@ export class ShotController {
             .getCamera()
             .restoreNormalZoom();
 
-        if (false) console.log(
-            "Shot Cancelled",
-        );
+        
     }
 
     public finishShot(): void {
@@ -860,45 +723,23 @@ export class ShotController {
         hasMinimumPreparationTime: boolean,
     ): void {
 
-        if (false) console.clear();
+        
 
-        if (false) console.log(
-            "==============================",
-        );
+        
 
-        if (false) console.log(
-            "SHOT REJECTED",
-        );
+        
 
-        if (false) console.log(
-            "Power:",
-            power.toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Power Requirement Met:",
-            hasMinimumPower,
-        );
+        
 
-        if (false) console.log(
-            "Preparation Time:",
-            preparationTime.toFixed(3),
-            "seconds",
-        );
+        
 
-        if (false) console.log(
-            "Time Requirement Met:",
-            hasMinimumPreparationTime,
-        );
+        
 
-        if (false) console.log(
-            "Ball Movement:",
-            "No launch",
-        );
+        
 
-        if (false) console.log(
-            "==============================",
-        );
+        
     }
 
     private logReleasedShot(
@@ -916,94 +757,39 @@ export class ShotController {
         speed: number,
     ): void {
 
-        if (false) console.clear();
+        
 
-        if (false) console.log(
-            "==============================",
-        );
+        
 
-        if (false) console.log(
-            "SHOT RELEASED",
-        );
+        
 
-        if (false) console.log(
-            "Power:",
-            power.toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Preparation Time:",
-            preparationTime.toFixed(3),
-            "seconds",
-        );
+        
 
-        if (false) console.log(
-            "Direction:",
-            this.radiansToDegrees(
-                directionRadians,
-            ).toFixed(2),
-            "degrees",
-        );
+        
 
-        if (false) console.log(
-            "Club Used:",
-            clubName,
-        );
+        
 
-        if (false) console.log(
-            "Oscillation Angle:",
-            this.radiansToDegrees(
-                oscillationOffsetRadians,
-            ).toFixed(2),
-            "degrees",
-        );
+        
 
-        if (false) console.log(
-            "Oscillation Speed:",
-            oscillationSpeed.toFixed(2),
-        );
+        
 
-        if (false) console.log(
-            "Accuracy Quality:",
-            accuracyQuality.toFixed(3),
-        );
+        
 
-        if (false) console.log(
-            "Inside Optimal Range:",
-            insideOptimalRange,
-        );
+        
 
-        if (false) console.log(
-            "Feedback Spawned:",
-            insideOptimalRange,
-        );
+        
 
-        if (false) console.log(
-            "Launch Succeeded:",
-            launchSucceeded,
-        );
+        
 
-        if (false) console.log(
-            "Velocity X:",
-            velocityX.toFixed(2),
-            "px/s",
-        );
+        
 
-        if (false) console.log(
-            "Velocity Y:",
-            velocityY.toFixed(2),
-            "px/s",
-        );
+        
 
-        if (false) console.log(
-            "Launch Speed:",
-            speed.toFixed(2),
-            "px/s",
-        );
+        
 
-        if (false) console.log(
-            "==============================",
-        );
+        
     }
 
     // -------------------------------------------------------

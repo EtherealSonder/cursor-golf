@@ -93,6 +93,9 @@ export class HoseWaterVfx {
                         return;
                     }
 
+                    // B8: do not reconstruct a fully dense hose ribbon through opaque foliage.
+                    if (this.airborneWaterSystem.isInsideBushFoliage(packet.getPositionX(),packet.getPositionY()) &&
+                        packet.getSequence() % 3 !== 0) return;
                     packetSamples.push({
                         x:
                             packet.getPositionX(),

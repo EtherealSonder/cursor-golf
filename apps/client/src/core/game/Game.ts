@@ -221,11 +221,7 @@ export class Game {
 
         this.world.initialize();
         if (isPerformanceInvestigationEnabled()) console.info("[PERF] Pass A diagnostic dashboard enabled; rendering timing is CPU-side only.");
-        if (false) { // Obsolete shot-power URL validation disabled.
-            const ball = this.world.getBall();
-            const spawn = this.world.getBallWorldPosition();
-            if (ball && spawn) this.shotPowerBaselineValidation = new ShotPowerBaselineValidation(ball, spawn.x, spawn.y);
-        }
+        
 
         // Startup camera authority is the live Ball spawn, not CameraDefinition's
         // generic (0, 0) fallback. Viewport size has already been resolved above.

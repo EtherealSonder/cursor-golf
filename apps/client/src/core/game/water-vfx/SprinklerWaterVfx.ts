@@ -163,6 +163,10 @@ export class SprinklerWaterVfx {
                         return;
                     }
 
+                    // B8: thin in-foliage droplet marks; authoritative absorption
+                    // already removes most packets on the far side of the bush.
+                    if (this.airborneWaterSystem.isInsideBushFoliage(packet.getPositionX(),packet.getPositionY()) &&
+                        Math.abs(packet.getSequence()) % 3 !== 0) return;
                     const sequence = packet.getSequence();
                     if (
                         Math.abs(sequence) %

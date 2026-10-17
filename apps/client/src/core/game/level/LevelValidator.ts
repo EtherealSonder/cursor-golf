@@ -374,6 +374,7 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
 
                 case "radialBumper":
                 case "proximityMine":
+                case "bush":
                     break;
             }
         });

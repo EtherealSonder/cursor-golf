@@ -5,6 +5,18 @@ import { resolve } from 'node:path';
 import { runFigmaImportPipeline } from './FigmaImportPipeline';
 import { parseFigmaNodes } from './FigmaNodeParser';
 import { loadLevelDefinition } from '../../src/core/game/level/LevelLoader';
+import { identifyFigmaObject, getFigmaLevelObjectHandler } from './FigmaObjectRegistry';
+import type { FigmaConvertedObject } from './FigmaNodeDefinition';
+
+const bushIdentity = identifyFigmaObject('bush_5');
+assert.equal(bushIdentity?.id, 'bush-5');
+assert.ok(bushIdentity);
+const bushPlacement = getFigmaLevelObjectHandler('bush')!({
+    object: { identity: bushIdentity!, bounds: { x: 0, y: 0, width: 136, height: 136 } },
+    transform: { position: { x: 350, y: 370 }, rotationRadians: 0, scaleX: 1, scaleY: 1 },
+} as FigmaConvertedObject);
+assert.deepEqual(bushPlacement, { id: 'bush-5', type: 'bush', x: 350, y: 370 });
+
 
 const names = [
     'COURSE_BOUNDARY', 'fan_2', 'box_1', 'box_3', 'golf_ball', 'hole',

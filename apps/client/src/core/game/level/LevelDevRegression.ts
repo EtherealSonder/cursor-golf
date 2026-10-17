@@ -51,6 +51,12 @@ const EXPECTED_OBJECTS = [
     ["fire-robot", "fireRobot", 390, 745, 150],
     ["water-robot-rock-acceptance", "waterRobot", 600, 710, 90],
     ["wind-robot", "windRobot", 810, 745, 150],
+    // B1: level-defined visual bush instances (worldOrigin: +100, -1250).
+    ["bush-1", "bush", 450, -880],
+    ["bush-2", "bush", 750, -270],
+    ["bush-3", "bush", 530, -90],
+    ["bush-4", "bush", 520, 490],
+    ["bush-5", "bush", 880, 1170],
 ] as const;
 
 const EXPECTED_OPENINGS = [

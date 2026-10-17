@@ -1,4 +1,5 @@
 import { BallDeathPhysicsLock } from "../death/BallDeathPhysicsLock";
+import type { BushMovementController } from "../bush/BushMovementController";
 import {
     Container,
     Graphics,
@@ -335,6 +336,7 @@ export class Ball extends Entity {
         this.stop(false);
     }
     public unlockDeathPhysics(): void { this.deathPhysicsLock.release(); this.stop(false); }
+    private readonly bushMovementController: BushMovementController | null;
     private velocityX = 0;
     private velocityY = 0;
 
@@ -426,6 +428,8 @@ export class Ball extends Entity {
 
         waterField?:
             WaterField,
+
+        bushMovementController?: BushMovementController,
     ) {
         super();
 
@@ -462,6 +466,8 @@ export class Ball extends Entity {
 
         this.windManager =
             windManager;
+
+        this.bushMovementController = bushMovementController ?? null;
 
         this.surfaceSystem =
             surfaceSystem;
@@ -725,6 +731,16 @@ export class Ball extends Entity {
         return { kind: "circle", x: this.getX(), y: this.getY(), radius: this.getRadius() };
     }
 
+    /** B4 read-only presentation footprint; does not modify ball physics. */
+    public getBushPresentationFootprint(): { x: number; y: number; radius: number } {
+        return { x: this.getX(), y: this.getY(), radius: this.getRadius() };
+    }
+
+    /** B6: presentation-only reference for centered aiming; never changes shot physics. */
+    public getAimOriginFootprint(): { x: number; y: number; radius: number } {
+        return { x: this.getX(), y: this.getY(), radius: this.getRadius() };
+    }
+
     public getRadius():
         number {
 
@@ -888,6 +904,16 @@ export class Ball extends Entity {
 
         this.launchPositionY =
             this.getY();
+
+        // Shots launched while concealed retain full impulse but shake the camera.
+        // Synchronizing prevents a second entry clamp on this same shot.
+        if (this.bushMovementController) {
+            const center = { x: this.getX(), y: this.getY() };
+            if (this.bushMovementController.isInside(center, this.radius)) {
+                this.bushMovementController.onShotInside();
+            }
+            this.bushMovementController.synchronize(center, this.radius);
+        }
 
         this.mostRecentLaunchSpeed =
             launchSpeed;
@@ -1659,8 +1685,17 @@ export class Ball extends Entity {
                 .rollingDeceleration *
             combinedRollingResistance;
 
+        // B3: progressive foliage resistance, evaluated per physics substep.
+        // No velocity clamp on entry and no modification to shot impulse.
+        const bushDeceleration = this.shotPowerBaselineValidationMode
+            ? 0
+            : (this.bushMovementController?.getAdditionalRollingDeceleration(
+                { x: this.getX(), y: this.getY() },
+                this.radius,
+                this.physicsDefinition.rollingDeceleration,
+            ) ?? 0);
         const speedReduction =
-            effectiveRollingDeceleration *
+            (effectiveRollingDeceleration + bushDeceleration) *
             deltaTime;
 
         const speedAfterRollingResistance =
@@ -1813,6 +1848,18 @@ export class Ball extends Entity {
             movementX,
             movementY,
         );
+
+        // Compress incoming momentum once on the first meaningful foliage overlap.
+        // This runs after movement integration so even weak boundary entries count.
+        if (!this.shotPowerBaselineValidationMode && this.bushMovementController) {
+            const retention = this.bushMovementController.getEntryVelocityRetention(
+                { x: this.getX(), y: this.getY() }, this.radius,
+            );
+            if (retention < 1) {
+                this.velocityX *= retention;
+                this.velocityY *= retention;
+            }
+        }
 
         this.updateRollingVisual(
             movementX,

@@ -98,6 +98,24 @@
   "terrain": [],
   "objects": [
     {
+      "id": "bush-3",
+      "x": 1156,
+      "y": 702,
+      "type": "bush"
+    },
+    {
+      "id": "water-robot-1",
+      "x": 817,
+      "y": 698,
+      "type": "waterRobot"
+    },
+    {
+      "id": "bush-2",
+      "x": 672,
+      "y": 1355,
+      "type": "bush"
+    },
+    {
       "id": "directional-bumper-1",
       "x": 1411.9909666914677,
       "y": 671.1022315485326,
@@ -133,13 +151,6 @@
       "type": "fireRobot"
     },
     {
-      "id": "water-sprinkler-1",
-      "x": 657,
-      "y": 1367.2,
-      "type": "sprinkler",
-      "rotation": 0
-    },
-    {
       "id": "rotate-paddle-anticlockwise",
       "x": 2040,
       "y": 1380,
@@ -160,6 +171,12 @@
       "x": 1490,
       "y": 1354.5,
       "type": "windRobot"
+    },
+    {
+      "id": "bush-1",
+      "x": 1758,
+      "y": 1368,
+      "type": "bush"
     }
   ]
 }

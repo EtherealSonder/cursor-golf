@@ -4,6 +4,9 @@ import { WorldRenderLayer } from "./WorldRenderLayer";
 /** Owns the fixed semantic PixiJS container hierarchy inside the world root. */
 export class WorldPresentationLayers {
     private readonly layers = new Map<WorldRenderLayer, Container>();
+    private readonly bushForeground = new Container();
+    // Always above foliage; club, aiming UI and ball silhouette live here.
+    private readonly aimingForeground = new Container();
 
     public constructor(private readonly worldRoot: Container) {
         /*
@@ -35,6 +38,14 @@ export class WorldPresentationLayers {
             this.worldRoot.addChild(container);
         }
 
+        this.bushForeground.label = "WorldLayer:BushForeground";
+        this.bushForeground.zIndex = 750;
+        this.bushForeground.sortableChildren = true;
+        this.worldRoot.addChild(this.bushForeground);
+        this.aimingForeground.label = "WorldLayer:AimingForeground";
+        this.aimingForeground.zIndex = 850;
+        this.aimingForeground.sortableChildren = true;
+        this.worldRoot.addChild(this.aimingForeground);
         this.worldRoot.sortableChildren = true;
     }
 
@@ -46,7 +57,21 @@ export class WorldPresentationLayers {
         return container;
     }
 
+    public getBushForegroundLayer(): Container { return this.bushForeground; }
+    public getAimingForegroundLayer(): Container { return this.aimingForeground; }
+
+    /** B6: ball covers the meter origin, while the club stays on top. */
+    public arrangeForegroundAim(indicator: Container, ball: Container | null, club: Container | null): void {
+        this.aimingForeground.addChildAt(indicator, 0);
+        if (ball) this.aimingForeground.addChild(ball);
+        if (club) this.aimingForeground.addChild(club);
+    }
+
     public destroy(): void {
+        this.aimingForeground.removeFromParent();
+        this.aimingForeground.destroy({ children: false });
+        this.bushForeground.removeFromParent();
+        this.bushForeground.destroy({ children: false });
         this.layers.forEach(
             (container): void => {
                 container.removeFromParent();

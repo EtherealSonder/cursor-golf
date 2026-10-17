@@ -134,6 +134,23 @@ export class AirborneWaterSystem {
     private readonly activePackets:
         AirborneWaterPacket[] = [];
 
+    /** B8 porous foliage callback; applied to all packet sources before downstream impact/deposition. */
+    private bushWaterTransmission: ((x0:number,y0:number,x1:number,y1:number)=>number) | null = null;
+    private readonly bushPacketSurvival = new WeakMap<AirborneWaterPacket, number>();
+    private readonly bushPacketTransmission = new WeakMap<AirborneWaterPacket, number>();
+    public setBushWaterTransmission(query: ((x0:number,y0:number,x1:number,y1:number)=>number) | null):void {
+        this.bushWaterTransmission=query;
+    }
+    /** B8.1: swept foliage collision and tangential edge flow. */
+    private bushContactQuery: ((x0:number,y0:number,x1:number,y1:number)=>{
+        bush: object; x:number; y:number; normalX:number; normalY:number;
+    } | null) | null = null;
+    private readonly bushDeflectedPackets = new WeakMap<AirborneWaterPacket, WeakSet<object>>();
+    public setBushContactQuery(query: typeof this.bushContactQuery): void { this.bushContactQuery = query; }
+    /** B8 presentation can thin water visible inside foliage. */
+    private bushInteriorQuery: ((x:number,y:number)=>boolean) | null = null;
+    public setBushInteriorQuery(query: ((x:number,y:number)=>boolean)|null):void { this.bushInteriorQuery=query; }
+    public isInsideBushFoliage(x:number,y:number):boolean { return this.bushInteriorQuery?.(x,y)??false; }
     private readonly impactAwareTargets = new Map<string, AirborneWaterImpactAwareTarget>();
     // O6: reused per-emission batch to avoid allocating a Map on every source handoff.
     private readonly emissionOrdinalScratch = new Map<string, number>();
@@ -510,6 +527,68 @@ export class AirborneWaterSystem {
              * For 8D-5 a static hit terminates the airborne packet and records
              * its Water as rejected rather than allowing it through the solid.
              */
+            // B8: authoritative porous absorption before impacts, walls, sweeps and deposition.
+            // Each packet is removed probabilistically according to its foliage travel distance;
+            // this preserves the amount carried by surviving packets and naturally thins VFX.
+            const transmission = this.bushWaterTransmission?.(
+                previousPositionX, previousPositionY, proposedPositionX, proposedPositionY,
+            ) ?? 1;
+            if (transmission < 1) {
+                let survival = this.bushPacketSurvival.get(packet);
+                if (survival === undefined) {
+                    const key = `${packet.getSourceId()}:${packet.getSequence()}:${packet.getPositionX().toFixed(2)}:${packet.getPositionY().toFixed(2)}`;
+                    let hash = 2166136261;
+                    for(let i=0;i<key.length;i++)hash=Math.imul(hash^key.charCodeAt(i),16777619);
+                    survival = ((hash>>>0)+0.5)/4294967296;
+                    this.bushPacketSurvival.set(packet,survival);
+                }
+                // A packet's fixed random threshold is tested against cumulative transmission.
+                const accumulated = (this.bushPacketTransmission.get(packet) ?? 1) * Math.max(0,Math.min(1,transmission));
+                this.bushPacketTransmission.set(packet,accumulated);
+                if(survival>accumulated) {
+                    this.totalRejectedWaterAmount += packet.getWaterAmount();
+                    this.activePackets.splice(index,1);
+                    continue;
+                }
+            }
+
+            // B8.1: deflect a fraction of packets around foliage edges. Each packet
+            // can be redirected only once per bush, preventing edge jitter.
+            const bushContact = this.bushContactQuery?.(
+                previousPositionX, previousPositionY, proposedPositionX, proposedPositionY,
+            );
+            if (bushContact) {
+                let visited = this.bushDeflectedPackets.get(packet);
+                if (!visited) { visited = new WeakSet<object>(); this.bushDeflectedPackets.set(packet, visited); }
+                if (!visited.has(bushContact.bush)) {
+                    visited.add(bushContact.bush);
+                    const vx = packet.getVelocityX(), vy = packet.getVelocityY();
+                    const speed = Math.hypot(vx, vy);
+                    if (speed > 0.01) {
+                        const side = vx * bushContact.normalY - vy * bushContact.normalX >= 0 ? 1 : -1;
+                        // 65% of arriving packets are guided tangentially around foliage;
+                        // the rest continue through and remain subject to absorption.
+                        const seed = Math.abs(packet.getSequence() * 1103515245 +
+                            Math.round(previousPositionX * 17) + Math.round(previousPositionY * 31));
+                        if (seed % 100 < 65) {
+                            const tangentX = -bushContact.normalY * side;
+                            const tangentY = bushContact.normalX * side;
+                            const outX = tangentX * 0.84 + bushContact.normalX * 0.54;
+                            const outY = tangentY * 0.84 + bushContact.normalY * 0.54;
+                            const norm = Math.hypot(outX, outY) || 1;
+                            packet.redirectAfterStaticCollision(
+                                bushContact.x + bushContact.normalX * 3,
+                                bushContact.y + bushContact.normalY * 3,
+                                packet.getHeight(), speed * outX / norm * 0.8,
+                                speed * outY / norm * 0.8,
+                            );
+                            // The original swept path is invalid after deflection.
+                            continue;
+                        }
+                    }
+                }
+            }
+
             this.notifyImpactAwareTargets(
                 previousPositionX, previousPositionY,
                 proposedPositionX, proposedPositionY,

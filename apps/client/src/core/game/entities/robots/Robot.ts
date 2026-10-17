@@ -94,6 +94,7 @@ export class Robot extends Entity {
         fireSourceSystem: FireSourceSystem,
         waterSourceSystem: WaterSourceSystem,
         localWindSystem: LocalWindSystem,
+        isTargetConcealed: (id: string) => boolean = () => false,
     ) {
         super();
         this.spawnX = definition.positionX;
@@ -101,7 +102,7 @@ export class Robot extends Entity {
         this.roamCenterX = definition.positionX;
         this.roamCenterY = definition.positionY;
         this.obstacleAvoidance = new RobotObstacleAvoidance(navigationQuery);
-        this.visionSystem = new RobotVisionSystem(new RobotTargetQuery(interactionRegistry), interactionRegistry);
+        this.visionSystem = new RobotVisionSystem(new RobotTargetQuery(interactionRegistry, isTargetConcealed), interactionRegistry);
         this.targetingController = new RobotTargetingController(
             definition.targetAlignmentToleranceDegrees,
             definition.targetLossGraceSeconds,

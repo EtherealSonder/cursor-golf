@@ -34,7 +34,7 @@ const PROFILES: Readonly<Record<FigmaGameplayObjectKind, FigmaTransformProfile>>
     rotatingPaddle: CENTER,
     fan: CENTER, waterSprinkler: CENTER, proximityMine: CENTER,
     fireRobot: CENTER, waterRobot: CENTER, windRobot: CENTER,
-    smallRock: CENTER, boulder: CENTER,
+    smallRock: CENTER, boulder: CENTER, bush: CENTER,
 };
 export function getFigmaTransformProfile(kind: FigmaGameplayObjectKind): FigmaTransformProfile {
     return PROFILES[kind];
@@ -60,6 +60,7 @@ const handlers: Partial<Record<FigmaGameplayObjectKind, FigmaLevelObjectHandler>
     windRobot: entry => ({ ...base(entry), type: 'windRobot' }),
     smallRock: entry => ({ ...base(entry), type: 'smallRock', radius: Math.min(entry.object.bounds.width, entry.object.bounds.height) / 2, seed: entry.object.identity.index ?? 1 }),
     boulder: entry => ({ ...base(entry), type: 'boulder', radius: Math.min(entry.object.bounds.width, entry.object.bounds.height) / 2, seed: entry.object.identity.index ?? 1 }),
+    bush: entry => ({ ...base(entry), type: "bush" }),
     radialBumper: entry => ({ ...base(entry), type: "radialBumper" }),
     directionalBumper: entry => {
         // The level schema only serializes a rotation, not a reflection. A
