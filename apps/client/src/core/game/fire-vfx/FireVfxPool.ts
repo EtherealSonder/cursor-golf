@@ -246,6 +246,16 @@ export class FireVfxPool {
         return suppressedCount;
     }
 
+    /** CB6: presentation-only ground flame occlusion; directional flames remain visible. */
+    public applyGroundOcclusion(isCovered: (x: number, y: number) => boolean): void {
+        for (const particle of this.particles) {
+            if (!particle.isActive()) continue;
+            if (particle.getPresentationOrigin() === "ground") {
+                particle.getSprite().visible = !isCovered(particle.getWorldX(), particle.getWorldY());
+            }
+        }
+    }
+
     public update(
         deltaTime: number,
     ): void {

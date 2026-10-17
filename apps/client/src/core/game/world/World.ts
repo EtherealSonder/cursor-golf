@@ -8,8 +8,14 @@ import { Bush } from "../bush/Bush";
 import { Crate } from "../crate/Crate";
 import { ConveyorBelt } from "../entities/mechanisms/ConveyorBelt";
 import { ConveyorBeltBallTransportSystem } from "../conveyor/ConveyorBeltBallTransportSystem";
+import { ConveyorBeltDynamicTransportSystem } from "../conveyor/ConveyorBeltDynamicTransportSystem";
+import { ConveyorBeltWaterTransportSystem } from "../conveyor/ConveyorBeltWaterTransportSystem";
+import { assertConveyorBeltWaterRegression } from "../conveyor/ConveyorBeltWaterRegression";
+import { assertConveyorBeltDynamicRegression } from "../conveyor/ConveyorBeltDynamicRegression";
 import { assertConveyorBeltPhysicsRegression } from "../conveyor/ConveyorBeltPhysicsRegression";
 import { assertConveyorBeltRegression } from "../level/ConveyorBeltRegression";
+import { assertConveyorBeltRenderingRegression } from "../conveyor/ConveyorBeltRenderingRegression";
+import { conveyorOccludesGroundPoint } from "../conveyor/ConveyorBeltRenderingDefinition";
 import { assertConveyorBeltAnimationRegression } from "../conveyor/ConveyorBeltAnimationRegression";
 import { CrateFireContactSystem } from "../crate/CrateFireContactSystem";
 import { CRATE_FIRE } from "../crate/CrateFireDefinition";
@@ -595,6 +601,8 @@ export class World {
     private readonly rotatingPaddles: RotatingPaddle[] = [];
     private readonly conveyorBelts: ConveyorBelt[] = [];
     private readonly conveyorBallTransportSystem = new ConveyorBeltBallTransportSystem();
+    private readonly conveyorDynamicTransportSystem = new ConveyorBeltDynamicTransportSystem();
+    private readonly conveyorWaterTransportSystem = new ConveyorBeltWaterTransportSystem();
     private readonly rotatingPaddleBallInteractionSystem = new RotatingPaddleBallInteractionSystem();
     private readonly rotatingPaddleDynamicInteractionSystem = new RotatingPaddleDynamicInteractionSystem();
     private readonly rotatingPaddleWaterCollisionSystem = new RotatingPaddleWaterCollisionSystem();
@@ -1430,6 +1438,9 @@ export class World {
         assertConveyorBeltRegression();
         assertConveyorBeltAnimationRegression();
         assertConveyorBeltPhysicsRegression();
+        assertConveyorBeltDynamicRegression();
+        assertConveyorBeltWaterRegression();
+        assertConveyorBeltRenderingRegression();
         for (const placement of runtimeObjectsOfType(this.runtimeLevel, "conveyorBelt")) {
             const conveyor = new ConveyorBelt(placement.id, placement.x, placement.y, placement.rotation);
             this.conveyorBelts.push(conveyor);
@@ -1932,6 +1943,9 @@ export class World {
                     deltaTime,
                 );
         });
+        // CB5: transport settled Water before the sparse WaterFlowSolver step.
+        // Airborne water deposition/flight is deliberately untouched.
+        this.conveyorWaterTransportSystem.update(deltaTime, this.waterField, this.conveyorBelts);
         // RP-3.1: apply powered-surface momentum after airborne deposition and
         // before the authoritative Water solver transports standing Water.
         for (const paddle of this.rotatingPaddles) {
@@ -2115,6 +2129,12 @@ export class World {
             (): void => {
                 if (this.fireVfxEnabled && this.diagnosticVfx.fire) {
                     this.fireVfxSystem?.update(deltaTime);
+                    this.fireVfxSystem?.applyConveyorGroundOcclusion((x, y) =>
+                        this.conveyorBelts.some((belt) => conveyorOccludesGroundPoint(
+                            x, y, belt.getX(), belt.getY(), belt.getRotationRadians(),
+                            182, 62,
+                        )),
+                    );
                 }
             },
         );
@@ -2391,6 +2411,9 @@ export class World {
         });
 
 
+
+        // CB4: independent registered rigid bodies share the existing impulse solver.
+        this.conveyorDynamicTransportSystem.update(deltaTime, this.physicsWorld, this.conveyorBelts);
 
         // CB3: apply conveyor impulse after ball integration, as other powered surfaces do.
         if (this.ball) this.conveyorBallTransportSystem.update(deltaTime, this.ball, this.conveyorBelts);

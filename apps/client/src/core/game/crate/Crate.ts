@@ -83,6 +83,10 @@ export class Crate implements DynamicCollidable {
     public applyImpulseAtWorldPoint(ix: number, iy: number, cx: number, cy: number): void {
         if (!this.destroyed) this.physics.applyImpulse(ix, iy, cx, cy);
     }
+    /** CB4: reuse the crate rigid body for belt forces and contact torque. */
+    public applyConveyorImpulse(ix: number, iy: number, cx: number, cy: number): void {
+        if (!this.destroyed) this.physics.applyConveyorImpulse(ix, iy, cx, cy);
+    }
     /** C3: one authoritative wind application, with off-center torque. */
     public applyLocalWindImpulse(
         impulseX: number, impulseY: number, wind: LocalWindSystem,

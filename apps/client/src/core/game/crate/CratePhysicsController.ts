@@ -28,6 +28,11 @@ export class CratePhysicsController {
         this.y += dy;
     }
 
+    /** Conveyor impulses share the existing rigid-body momentum and torque solver. */
+    public applyConveyorImpulse(ix: number, iy: number, contactX: number, contactY: number): void {
+        this.applyImpulse(ix, iy, contactX, contactY);
+    }
+
     public applyImpulse(ix: number, iy: number, contactX: number, contactY: number): void {
         this.body.applyImpulseAtWorldPoint(ix, iy, contactX - this.x, contactY - this.y);
     }

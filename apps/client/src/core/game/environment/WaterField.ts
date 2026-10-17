@@ -967,6 +967,24 @@ export class WaterField {
      *
      * Exposed read-only for validation/diagnostics. It never mutates Water.
      */
+    /**
+     * CB5 moving-surface bridge. Drives velocity and transfers conserved Water
+     * depth through the existing obstacle-aware sparse field API.
+     */
+    public transportSurfaceWaterByIndex(
+        index: number, destinationX: number, destinationY: number,
+        velocityX: number, velocityY: number, responsePerSecond: number,
+        deltaTime: number, maximumSpeed: number, transferRatePerSecond: number,
+    ): number {
+        const depth = this.getDepthByIndex(index);
+        if (!(depth > 0) || !Number.isFinite(transferRatePerSecond) || transferRatePerSecond <= 0) return 0;
+        this.driveVelocityByIndex(index, velocityX, velocityY, responsePerSecond, deltaTime, maximumSpeed);
+        const fraction = 1 - Math.exp(-transferRatePerSecond * deltaTime);
+        return this.transferWaterByIndexToWorld(
+            index, destinationX, destinationY, depth * fraction, velocityX, velocityY,
+        );
+    }
+
     public getCurrentShallowWaterMobility(): number {
         return this.calculateCurrentShallowWaterMobility();
     }

@@ -305,6 +305,11 @@ export class FireVfxSystem {
         );
     }
 
+    /** CB6: hide only ground-origin fire particles over conveyor beds. */
+    public applyConveyorGroundOcclusion(isCovered: (x: number, y: number) => boolean): void {
+        this.pool.applyGroundOcclusion(isCovered);
+    }
+
     public getGroundContainer():
         Container {
 
