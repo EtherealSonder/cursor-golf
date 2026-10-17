@@ -32,6 +32,7 @@ const PROFILES: Readonly<Record<FigmaGameplayObjectKind, FigmaTransformProfile>>
     radialBumper: CENTER,
     directionalBumper: DIRECTIONAL,
     rotatingPaddle: CENTER,
+    conveyorBelt: CENTER,
     fan: CENTER, waterSprinkler: CENTER, proximityMine: CENTER,
     fireRobot: CENTER, waterRobot: CENTER, windRobot: CENTER,
     smallRock: CENTER, boulder: CENTER, bush: CENTER, crate: CENTER,
@@ -62,6 +63,14 @@ const handlers: Partial<Record<FigmaGameplayObjectKind, FigmaLevelObjectHandler>
     boulder: entry => ({ ...base(entry), type: 'boulder', radius: Math.min(entry.object.bounds.width, entry.object.bounds.height) / 2, seed: entry.object.identity.index ?? 1 }),
     bush: entry => ({ ...base(entry), type: "bush" }),
     crate: entry => ({ ...base(entry), type: "crate" }),
+    conveyorBelt: entry => {
+        if (entry.transform.mirrored) throw new Error(`Mirrored conveyor ${entry.object.identity.id} is not supported.`);
+        const quarterTurns = Math.round(entry.transform.rotationRadians / (Math.PI / 2));
+        if (Math.abs(entry.transform.rotationRadians - quarterTurns * Math.PI / 2) > 1e-5) {
+            throw new Error(`Conveyor ${entry.object.identity.id} must face a cardinal direction.`);
+        }
+        return { ...base(entry), type: "conveyorBelt", rotation: ((quarterTurns % 4) + 4) % 4 * Math.PI / 2 };
+    },
     radialBumper: entry => ({ ...base(entry), type: "radialBumper" }),
     directionalBumper: entry => {
         // The level schema only serializes a rotation, not a reflection. A

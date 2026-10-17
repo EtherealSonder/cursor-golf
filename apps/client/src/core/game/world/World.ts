@@ -6,6 +6,11 @@ import { BushConcealmentVignette } from "../bush/BushConcealmentVignette";
 import { BUSH_MOVEMENT_DEFINITION } from "../bush/BushMovementDefinition";
 import { Bush } from "../bush/Bush";
 import { Crate } from "../crate/Crate";
+import { ConveyorBelt } from "../entities/mechanisms/ConveyorBelt";
+import { ConveyorBeltBallTransportSystem } from "../conveyor/ConveyorBeltBallTransportSystem";
+import { assertConveyorBeltPhysicsRegression } from "../conveyor/ConveyorBeltPhysicsRegression";
+import { assertConveyorBeltRegression } from "../level/ConveyorBeltRegression";
+import { assertConveyorBeltAnimationRegression } from "../conveyor/ConveyorBeltAnimationRegression";
 import { CrateFireContactSystem } from "../crate/CrateFireContactSystem";
 import { CRATE_FIRE } from "../crate/CrateFireDefinition";
 import { calculateProximityMineBlastSurfaceDistance } from "../physics/ProximityMineExplosionSystem";
@@ -588,6 +593,8 @@ export class World {
 
     /** RP-1 continuously powered surface mechanisms. */
     private readonly rotatingPaddles: RotatingPaddle[] = [];
+    private readonly conveyorBelts: ConveyorBelt[] = [];
+    private readonly conveyorBallTransportSystem = new ConveyorBeltBallTransportSystem();
     private readonly rotatingPaddleBallInteractionSystem = new RotatingPaddleBallInteractionSystem();
     private readonly rotatingPaddleDynamicInteractionSystem = new RotatingPaddleDynamicInteractionSystem();
     private readonly rotatingPaddleWaterCollisionSystem = new RotatingPaddleWaterCollisionSystem();
@@ -1419,6 +1426,16 @@ export class World {
         }
 
         // ---------------------------------------------------
+        // CB1: visual-only conveyors, rendered on the surface mechanism layer.
+        assertConveyorBeltRegression();
+        assertConveyorBeltAnimationRegression();
+        assertConveyorBeltPhysicsRegression();
+        for (const placement of runtimeObjectsOfType(this.runtimeLevel, "conveyorBelt")) {
+            const conveyor = new ConveyorBelt(placement.id, placement.x, placement.y, placement.rotation);
+            this.conveyorBelts.push(conveyor);
+            this.addEntity(conveyor, WorldRenderLayer.SurfaceMechanisms);
+        }
+
         // RP-1 Rotating Paddles
         // ---------------------------------------------------
         // Authored clear test positions. These are surface mechanisms, so their
@@ -2374,6 +2391,9 @@ export class World {
         });
 
 
+
+        // CB3: apply conveyor impulse after ball integration, as other powered surfaces do.
+        if (this.ball) this.conveyorBallTransportSystem.update(deltaTime, this.ball, this.conveyorBelts);
 
         // RP-1: after Ball integration, drive its tangential component toward
         // each overlapping rotating surface and resolve the solid center stopper.

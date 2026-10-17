@@ -122,7 +122,13 @@ export function runLevel00DevRegression(input: unknown): LevelDevRegressionResul
     const byId = new Map<string, RuntimeLevelObjectPlacement>(
         level.objects.map((object) => [object.id, object]),
     );
-    expect("objects.length", level.objects.length, EXPECTED_OBJECTS.length);
+    // CB1: additional conveyor fixtures are permitted without weakening legacy object checks.
+    const legacyObjects = level.objects.filter(object => object.type !== "conveyorBelt");
+    expect("objects.length", legacyObjects.length, EXPECTED_OBJECTS.length);
+    for (const conveyor of level.objects.filter(object => object.type === "conveyorBelt")) {
+        expect(`objects.${conveyor.id}.cardinal`,
+            Math.abs(conveyor.rotation / (Math.PI / 2) - Math.round(conveyor.rotation / (Math.PI / 2))) < 1e-6, true);
+    }
 
     for (const expected of EXPECTED_OBJECTS) {
         const [id, type, x, y, extraA, extraB] = expected;

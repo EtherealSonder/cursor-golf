@@ -19,4 +19,5 @@ export const FIGMA_GAMEPLAY_CATALOG: readonly GameplayCatalogEntry[] = [
     { prefix: 'boulder', kind: 'boulder', levelType: 'boulder' },
     { prefix: 'bush', kind: 'bush', levelType: 'bush', assetBasename: 'bush' },
     { prefix: 'crate', kind: 'crate', levelType: 'crate', assetBasename: 'crate' },
+    { prefix: 'conveyer_belt_bg', kind: 'conveyorBelt', levelType: 'conveyorBelt', assetBasename: 'conveyer_belt_bg' },
 ];

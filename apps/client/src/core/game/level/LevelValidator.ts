@@ -1,3 +1,4 @@
+import { normalizeConveyorRotation } from "../config/ConveyorBeltDefinition";
 import { pointInPolygon, validatePolygonGeometry } from "./CourseGeometryValidation";
 import {
     isAuthoredTerrainType,
@@ -343,6 +344,11 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                     }
                     if (!isFiniteNumber(object.rotation)) {
                         error("INVALID_ROTATION", "Static metal box rotation must be finite radians.", `${path}.rotation`, objectId);
+                    }
+                    break;
+                case "conveyorBelt":
+                    if (typeof object.rotation !== "number" || normalizeConveyorRotation(object.rotation) === null) {
+                        error("INVALID_CONVEYOR_ROTATION", "Conveyor rotation must be a cardinal multiple of PI/2 radians.", `${path}.rotation`, objectId);
                     }
                     break;
                 case "rotatingPaddle":

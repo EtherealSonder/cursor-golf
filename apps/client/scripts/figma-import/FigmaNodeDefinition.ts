@@ -37,6 +37,7 @@ export type FigmaGameplayObjectKind =
     | "radialBumper"
     | "directionalBumper"
     | "rotatingPaddle"
+    | "conveyorBelt"
     | "fan" | "waterSprinkler" | "proximityMine"
     | "fireRobot" | "waterRobot" | "windRobot"
     | "smallRock" | "boulder" | "bush" | "crate";

@@ -22,6 +22,13 @@ for (const entry of FIGMA_GAMEPLAY_CATALOG) {
 }
 assert.equal(identifyFigmaObject('bush_3')?.id, 'bush-3');
 assert.equal(identifyFigmaObject('crate_3')?.id, 'crate-3');
+assert.equal(identifyFigmaObject('conveyer_belt_bg_2')?.kind, 'conveyorBelt');
+assert.equal(getFigmaTransformProfile('conveyorBelt').strategy, 'center');
+const conveyorHandler = getFigmaLevelObjectHandler('conveyorBelt')!;
+assert.deepEqual(conveyorHandler({
+    object: { identity: { kind: 'conveyorBelt', id: 'conveyer-belt-bg-2' }, bounds: { x: 0, y: 0, width: 200, height: 89 } },
+    transform: { position: { x: 200, y: 300 }, rotationRadians: Math.PI / 2, scaleX: 1, scaleY: 1, mirrored: false },
+} as FigmaConvertedObject), { id: 'conveyer-belt-bg-2', x: 200, y: 300, type: 'conveyorBelt', rotation: Math.PI / 2 });
 assert.equal(getFigmaTransformProfile('crate').strategy, 'center');
 assert.equal(getFigmaTransformProfile('crate').sizing, 'fixed');
 assert.equal(getFigmaTransformProfile('bush').sizing, 'fixed');

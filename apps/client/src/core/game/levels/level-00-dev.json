@@ -373,6 +373,34 @@
       "x": 500,
       "y": 2300,
       "roamRadius": 70
+    },
+    {
+      "type": "conveyorBelt",
+      "id": "cb1-conveyor-right",
+      "x": 710,
+      "y": 475,
+      "rotation": 0
+    },
+    {
+      "type": "conveyorBelt",
+      "id": "cb1-conveyor-down",
+      "x": 590,
+      "y": 1190,
+      "rotation": 1.5707963267948966
+    },
+    {
+      "type": "conveyorBelt",
+      "id": "cb1-conveyor-left",
+      "x": 350,
+      "y": 1440,
+      "rotation": 3.141592653589793
+    },
+    {
+      "type": "conveyorBelt",
+      "id": "cb1-conveyor-up",
+      "x": 530,
+      "y": 1930,
+      "rotation": 4.71238898038469
     }
   ]
 }
