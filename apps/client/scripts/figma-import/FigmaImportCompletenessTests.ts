@@ -16,6 +16,13 @@ const bushPlacement = getFigmaLevelObjectHandler('bush')!({
     transform: { position: { x: 350, y: 370 }, rotationRadians: 0, scaleX: 1, scaleY: 1 },
 } as FigmaConvertedObject);
 assert.deepEqual(bushPlacement, { id: 'bush-5', type: 'bush', x: 350, y: 370 });
+const crateIdentity = identifyFigmaObject('crate_7');
+assert.ok(crateIdentity);
+const cratePlacement = getFigmaLevelObjectHandler('crate')!({
+    object: { identity: crateIdentity!, bounds: { x: 0, y: 0, width: 68, height: 68 } },
+    transform: { position: { x: 240, y: 320 }, rotationRadians: 0, scaleX: 1, scaleY: 1 },
+} as Parameters<NonNullable<ReturnType<typeof getFigmaLevelObjectHandler>>>[0]);
+assert.deepEqual(cratePlacement, { id: 'crate-7', type: 'crate', x: 240, y: 320 });
 
 
 const names = [

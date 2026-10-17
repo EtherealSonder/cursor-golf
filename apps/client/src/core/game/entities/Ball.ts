@@ -2789,6 +2789,9 @@ export class Ball extends Entity {
                     sourceId: "player-ball",
                     positionX: dynamicManifold.contactPointX,
                     positionY: dynamicManifold.contactPointY,
+                    closingNormalSpeed: result.closingNormalSpeed,
+                    effectiveMass: result.effectiveMass,
+                    normalImpulseMagnitude: result.normalImpulseMagnitude,
                 });
 
                 this.logDynamicObstacleCollision(

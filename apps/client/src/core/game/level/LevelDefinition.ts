@@ -153,6 +153,11 @@ export interface BushPlacement extends BaseObjectPlacement {
     readonly type: "bush";
 }
 
+/** Level-authored wooden crate; dynamic physics begins in C2. */
+export interface CratePlacement extends BaseObjectPlacement {
+    readonly type: "crate";
+}
+
 export interface ProximityMinePlacement extends BaseObjectPlacement {
     readonly type: "proximityMine";
 }
@@ -207,6 +212,7 @@ export type LevelObjectPlacement =
     | RotatingPaddlePlacement
     | ProximityMinePlacement
     | BushPlacement
+    | CratePlacement
     | StaticMetalBoxPlacement
     | SmallRockPlacement
     | BoulderPlacement
@@ -235,6 +241,7 @@ export const LEVEL_OBJECT_TYPES = [
     "rotatingPaddle",
     "proximityMine",
     "bush",
+    "crate",
     "staticMetalBox",
     "smallRock",
     "boulder",

@@ -58,6 +58,7 @@ export class RobotVisionSystem {
             const blocker = this.findBlockingOccluder(originX, originY, tx, ty, target.id, excludedId);
             const visible = blocker === null;
             candidates.push({ target, distance, angleDegrees: angle * 180 / Math.PI, visible, blockingOccluderId: blocker?.id ?? null });
+            // Preserve existing nearest-visible-target selection (including the Ball).
             if (visible && distance < selectedDistance) { selectedTarget = target; selectedDistance = distance; }
         }
 

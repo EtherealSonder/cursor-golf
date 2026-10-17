@@ -57,6 +57,9 @@ const EXPECTED_OBJECTS = [
     ["bush-3", "bush", 530, -90],
     ["bush-4", "bush", 520, 490],
     ["bush-5", "bush", 880, 1170],
+    ["crate-1", "crate", 240, 100],
+    ["crate-2", "crate", 1030, 200],
+    ["crate-3", "crate", 240, 900],
 ] as const;
 
 const EXPECTED_OPENINGS = [

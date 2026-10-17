@@ -23,6 +23,10 @@ interface LocalWindForceTarget {
     getX(): number;
     getY(): number;
     getInverseMass(): number;
+    applyLocalWindImpulse?(
+        impulseX: number, impulseY: number, wind: LocalWindSystem,
+        sourceIds: readonly string[], deltaTime: number,
+    ): void;
     applyImpulseAtWorldPoint(
         impulseX: number, impulseY: number, contactPointX: number, contactPointY: number,
     ): void;
@@ -116,7 +120,15 @@ export class LocalWindDynamicForceSystem {
                 impulseY *= scale;
             }
 
-            body.applyImpulseAtWorldPoint(impulseX, impulseY, x, y);
+            const windAwareBody = body as LocalWindForceTarget;
+            if (windAwareBody.applyLocalWindImpulse) {
+                windAwareBody.applyLocalWindImpulse(
+                    impulseX, impulseY, this.localWindSystem,
+                    sample.contributingSourceIds, deltaTime,
+                );
+            } else {
+                body.applyImpulseAtWorldPoint(impulseX, impulseY, x, y);
+            }
         }
     }
 

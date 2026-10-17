@@ -4,7 +4,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runFigmaImportPipeline } from './FigmaImportPipeline';
 import { parseFigmaNodes } from './FigmaNodeParser';
+import { identifyFigmaObject } from './FigmaObjectRegistry';
 
+assert.equal(identifyCrateForRegression(), true);
+function identifyCrateForRegression(): boolean {
+    const identity = identifyFigmaObject('crate_2');
+    return identity?.kind === 'crate' && identity.id === 'crate-2';
+}
 const jsonPath = resolve(process.argv[2] ?? 'figma-exports/level-01/level.json');
 const svgPath = resolve(process.argv[3] ?? 'figma-exports/level-01/level.svg');
 if (!existsSync(jsonPath) || !existsSync(svgPath)) {

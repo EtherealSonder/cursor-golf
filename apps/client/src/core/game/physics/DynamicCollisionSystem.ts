@@ -147,6 +147,11 @@ export class DynamicCollisionSystem {
                                 .positionalCorrectionSlop,
                         );
 
+                    if (result.normalImpulseMagnitude > 0) {
+                        const severity = { closingNormalSpeed: result.closingNormalSpeed, effectiveMass: result.effectiveMass, normalImpulseMagnitude: result.normalImpulseMagnitude };
+                        (first as typeof first & {notifyCollisionSeverity?: (source:"other", severity:{closingNormalSpeed:number; effectiveMass:number; normalImpulseMagnitude:number})=>void}).notifyCollisionSeverity?.("other",severity);
+                        (second as typeof second & {notifyCollisionSeverity?: (source:"other", severity:{closingNormalSpeed:number; effectiveMass:number; normalImpulseMagnitude:number})=>void}).notifyCollisionSeverity?.("other",severity);
+                    }
                     if (
                         result.resolved
                     ) {

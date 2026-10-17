@@ -253,12 +253,6 @@
     },
     {
       "type": "proximityMine",
-      "id": "mine-rock-fracture-direct",
-      "x": 550,
-      "y": 2300
-    },
-    {
-      "type": "proximityMine",
       "id": "mine-rock-fracture-wind",
       "x": 590,
       "y": 820
@@ -276,25 +270,11 @@
       "y": 1860
     },
     {
-      "type": "fireRobot",
-      "id": "fire-robot",
-      "x": 290,
-      "y": 1995,
-      "roamRadius": 150
-    },
-    {
       "type": "waterRobot",
       "id": "water-robot-rock-acceptance",
-      "x": 500,
-      "y": 1960,
+      "x": 450,
+      "y": 1050,
       "roamRadius": 90
-    },
-    {
-      "type": "windRobot",
-      "id": "wind-robot",
-      "x": 710,
-      "y": 1995,
-      "roamRadius": 150
     },
     {
       "type": "bush",
@@ -325,6 +305,74 @@
       "id": "bush-5",
       "x": 780,
       "y": 2420
+    },
+    {
+      "type": "crate",
+      "id": "crate-1",
+      "x": 140,
+      "y": 1350
+    },
+    {
+      "type": "crate",
+      "id": "crate-2",
+      "x": 930,
+      "y": 1450
+    },
+    {
+      "type": "crate",
+      "id": "crate-3",
+      "x": 330,
+      "y": 2250
+    },
+    {
+      "type": "crate",
+      "id": "crate-water-jet-test-2",
+      "x": 680,
+      "y": 2250
+    },
+    {
+      "type": "windRobot",
+      "id": "wind-robot-crate-test",
+      "x": 690,
+      "y": 930,
+      "roamRadius": 90
+    },
+    {
+      "type": "crate",
+      "id": "crate-destruction-test-1",
+      "x": 280,
+      "y": 2140
+    },
+    {
+      "type": "crate",
+      "id": "crate-destruction-test-2",
+      "x": 480,
+      "y": 2130
+    },
+    {
+      "type": "crate",
+      "id": "crate-destruction-test-3",
+      "x": 700,
+      "y": 2130
+    },
+    {
+      "type": "crate",
+      "id": "crate-destruction-test-4",
+      "x": 790,
+      "y": 2050
+    },
+    {
+      "type": "crate",
+      "id": "crate-destruction-test-5",
+      "x": 190,
+      "y": 2050
+    },
+    {
+      "type": "fireRobot",
+      "id": "fire-robot-crate-fire-test",
+      "x": 500,
+      "y": 2300,
+      "roamRadius": 70
     }
   ]
 }

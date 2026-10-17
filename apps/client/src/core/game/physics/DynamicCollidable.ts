@@ -34,4 +34,7 @@ export interface DynamicCollidableImpact {
     readonly sourceId?: string;
     readonly positionX: number;
     readonly positionY: number;
+    readonly closingNormalSpeed?: number;
+    readonly effectiveMass?: number;
+    readonly normalImpulseMagnitude?: number;
 }

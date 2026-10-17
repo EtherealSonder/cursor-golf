@@ -158,6 +158,10 @@ export class DynamicStaticCollisionSystem {
                                 .positionalCorrectionSlop,
                         );
 
+                    if (result.normalImpulseMagnitude > 0) {
+                        const severity = { closingNormalSpeed: result.closingNormalSpeed, effectiveMass: result.effectiveMass, normalImpulseMagnitude: result.normalImpulseMagnitude };
+                        (collidable as typeof collidable & {notifyCollisionSeverity?: (source:"wall", severity:{closingNormalSpeed:number; effectiveMass:number; normalImpulseMagnitude:number})=>void}).notifyCollisionSeverity?.("wall",severity);
+                    }
                     if (result.resolved) {
                         resolvedCollisionCount +=
                             1;

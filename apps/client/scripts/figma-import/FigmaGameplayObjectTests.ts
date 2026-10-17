@@ -21,6 +21,9 @@ for (const entry of FIGMA_GAMEPLAY_CATALOG) {
     assert.equal(serialized.y, 80);
 }
 assert.equal(identifyFigmaObject('bush_3')?.id, 'bush-3');
+assert.equal(identifyFigmaObject('crate_3')?.id, 'crate-3');
+assert.equal(getFigmaTransformProfile('crate').strategy, 'center');
+assert.equal(getFigmaTransformProfile('crate').sizing, 'fixed');
 assert.equal(getFigmaTransformProfile('bush').sizing, 'fixed');
 for (const name of ['fan_1', 'water_sprinkler_2', 'proximity_mine_1',
     'fire_robot_1', 'water_robot_1', 'wind_robot_1', 'box_3',

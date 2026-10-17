@@ -18,4 +18,5 @@ export const FIGMA_GAMEPLAY_CATALOG: readonly GameplayCatalogEntry[] = [
     { prefix: 'small_rock', kind: 'smallRock', levelType: 'smallRock' },
     { prefix: 'boulder', kind: 'boulder', levelType: 'boulder' },
     { prefix: 'bush', kind: 'bush', levelType: 'bush', assetBasename: 'bush' },
+    { prefix: 'crate', kind: 'crate', levelType: 'crate', assetBasename: 'crate' },
 ];

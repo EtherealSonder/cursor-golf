@@ -13,6 +13,7 @@ export interface WindSuctionCaptureTarget {
     /** Presentation scale, 1 at contact and 0 at completion. */
     readonly setCaptureScale: (scale: number) => void;
     readonly canCapture?: () => boolean;
+    readonly immediate?: boolean;
 }
 
 interface ActiveCapture {
@@ -101,6 +102,10 @@ export class WindSuctionCaptureSystem {
                 }
 
                 target.beginCapture();
+                if (target.immediate) {
+                    this.targets.delete(target.id);
+                    break;
+                }
                 target.setCaptureScale(1);
                 this.active.set(target.id, { target, elapsedSeconds: 0 });
                 break;

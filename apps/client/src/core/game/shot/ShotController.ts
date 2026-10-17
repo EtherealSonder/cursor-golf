@@ -208,38 +208,6 @@ export class ShotController {
             this.shotPreparation
                 .getCurrentAimAngle();
 
-        const oscillationOffset =
-            this.shotPreparation
-                .getOscillationOffset();
-
-        const accuracyQuality =
-            this.shotPreparation
-                .getAccuracyQuality();
-
-        const optimalAccuracyTolerance =
-            this.shotPreparation
-                .getOptimalAccuracyTolerance();
-
-        const insideOptimalAccuracyRange =
-            this.shotPreparation
-                .isInsideOptimalAccuracyRange();
-
-        const hasMinimumPower =
-            ball.canLaunchWithPower(
-                normalizedPower,
-            );
-
-        const hasMinimumPreparationTime =
-            ball.hasMetMinimumPreparationTime(
-                this.preparationElapsedTime,
-            );
-
-        const shotCanLaunch =
-            ball.canLaunchShot(
-                normalizedPower,
-                this.preparationElapsedTime,
-            );
-
         // -----------------------------
         // Ball Tension Feedback
         // -----------------------------
@@ -717,10 +685,10 @@ export class ShotController {
     // -------------------------------------------------------
 
     private logRejectedShot(
-        power: number,
-        preparationTime: number,
-        hasMinimumPower: boolean,
-        hasMinimumPreparationTime: boolean,
+        _power: number,
+        _preparationTime: number,
+        _hasMinimumPower: boolean,
+        _hasMinimumPreparationTime: boolean,
     ): void {
 
         
@@ -743,18 +711,18 @@ export class ShotController {
     }
 
     private logReleasedShot(
-        power: number,
-        directionRadians: number,
-        clubName: string,
-        oscillationOffsetRadians: number,
-        oscillationSpeed: number,
-        accuracyQuality: number,
-        insideOptimalRange: boolean,
-        preparationTime: number,
-        launchSucceeded: boolean,
-        velocityX: number,
-        velocityY: number,
-        speed: number,
+        _power: number,
+        _directionRadians: number,
+        _clubName: string,
+        _oscillationOffsetRadians: number,
+        _oscillationSpeed: number,
+        _accuracyQuality: number,
+        _insideOptimalRange: boolean,
+        _preparationTime: number,
+        _launchSucceeded: boolean,
+        _velocityX: number,
+        _velocityY: number,
+        _speed: number,
     ): void {
 
         
@@ -841,14 +809,4 @@ export class ShotController {
     // Utilities
     // -------------------------------------------------------
 
-    private radiansToDegrees(
-        radians: number,
-    ): number {
-
-        return (
-            radians *
-            180 /
-            Math.PI
-        );
-    }
 }

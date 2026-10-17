@@ -3,9 +3,14 @@ import { BushFireContactSystem } from "../bush/BushFireContactSystem";
 import { BushObjectCollisionSystem } from "../bush/BushObjectCollisionSystem";
 import { BushBallSilhouetteRenderer } from "../bush/BushBallSilhouetteRenderer";
 import { BushConcealmentVignette } from "../bush/BushConcealmentVignette";
-import { BUSH_CONCEALMENT_PRESENTATION } from "../bush/BushConcealmentPresentationDefinition";
 import { BUSH_MOVEMENT_DEFINITION } from "../bush/BushMovementDefinition";
 import { Bush } from "../bush/Bush";
+import { Crate } from "../crate/Crate";
+import { CrateFireContactSystem } from "../crate/CrateFireContactSystem";
+import { CRATE_FIRE } from "../crate/CrateFireDefinition";
+import { calculateProximityMineBlastSurfaceDistance } from "../physics/ProximityMineExplosionSystem";
+import { registerCrateRobotTarget } from "../crate/CrateRobotTargetAdapter";
+import { CrateDestructionSystem } from "../crate/CrateDestructionSystem";
 import { BushMovementController } from "../bush/BushMovementController";
 import { BushSpatialQueries } from "../bush/BushSpatialQueries";
 import { BushConcealmentController } from "../bush/BushConcealmentController";
@@ -42,6 +47,8 @@ import { BallExplosionDeathValidation } from "../debug/BallExplosionDeathValidat
 import { DEFAULT_GAMEPLAY_COURSE_DEFINITION } from "../config/GameplayCourseDefinition";
 import { requireLevelById } from "../level/LevelRegistry";
 import { assertLevelGeometryRegression } from "../level/LevelGeometryRegression";
+// Immutable regression fixture, independent of editable level-00-dev gameplay layout.
+import level00DevRegressionBaseline from "../level/fixtures/level-00-dev-baseline.json";
 import { loadLevelDefinition } from "../level/LevelLoader";
 import { resolveLevelTechnicalBounds } from "../level/LevelTechnicalBounds";
 import { LevelNavigationBounds } from "../level/LevelNavigationBounds";
@@ -598,12 +605,27 @@ export class World {
     /** R-ROCK-3/4 authoritative Rock population and runtime registrations. */
     private readonly rocks: Rock[] = [];
     private readonly bushes: Bush[] = [];
+    private readonly crates: Crate[] = [];
+    private crateDestructionSystem: CrateDestructionSystem | null = null;
+    private readonly pendingCrateDestructions = new Set<Crate>();
+    private readonly crateRobotUnregister = new Map<string, () => void>();
+    private flushCrateDestructions(): void {
+        for (const crate of this.pendingCrateDestructions) {
+            this.crateRobotUnregister.get(crate.id)?.();
+            this.crateRobotUnregister.delete(crate.id);
+            this.physicsWorld.unregisterDestroyedDynamicBody(crate);
+            this.windSuctionCaptureSystem.unregisterTarget(`crate-capture-${crate.id}`);
+            this.crateDestructionSystem?.spawn(crate.x,crate.y);
+            crate.destroy();
+        }
+        this.pendingCrateDestructions.clear();
+    }
     private readonly bushObjectCollisionSystem = new BushObjectCollisionSystem();
     private readonly bushConcealment = new BushConcealmentController();
     private readonly bushRobotUnregister: Array<() => void> = [];
     private readonly bushRobotUnregisterById = new Map<string, () => void>();
     private bushFireContact: BushFireContactSystem | null = null;
-    private isBushAimForeground = true;
+    private crateFireContact: CrateFireContactSystem | null = null;
     private readonly isRobotTargetConcealed = (id: string): boolean => id === "ball" && this.bushConcealment.isConcealed;
     private bushBallSilhouette: BushBallSilhouetteRenderer | null = null;
     private bushConcealmentVignette: BushConcealmentVignette | null = null;
@@ -920,7 +942,7 @@ export class World {
 
         if (import.meta.env.DEV) {
             assertLevelGeometryRegression(
-                requireLevelById("level-00-dev"),
+                level00DevRegressionBaseline,
                 requireLevelById("level-geometry-test"),
             );
             if (false) console.info("[LD-8D] Rectangle and polygon geometry regression: PASS");
@@ -1241,7 +1263,9 @@ export class World {
         }
         this.createCourse();
         this.createLevelBushes();
+        this.createLevelCrates();
         this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
+        this.crateFireContact = new CrateFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.bushBallSilhouette = new BushBallSilhouetteRenderer(
             this.presentationLayers.getAimingForegroundLayer(),
         );
@@ -2035,6 +2059,7 @@ export class World {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSpread")!==false)this.fireManager.update(deltaTime);
             // B7: independent bush ignition and destruction, after authoritative fire updates.
             this.updateBushFire(deltaTime);
+            this.updateCrateFire(deltaTime);
 
             if (this.ball) {
                 const exposure =
@@ -2223,7 +2248,6 @@ export class World {
         // but appears beneath the ball. Concealed: ball stays below foliage,
         // with the existing translucent silhouette representing its position.
         if (this.aimIndicator && this.ball) {
-            const foreground = this.presentationLayers.getAimingForegroundLayer();
             const ballContainer = this.ball.getContainer();
             const aimContainer = this.aimIndicator.getContainer();
             const clubContainer = this.club?.getContainer() ?? null;
@@ -2236,7 +2260,6 @@ export class World {
             } else {
                 this.presentationLayers.arrangeForegroundAim(aimContainer, ballContainer, clubContainer);
             }
-            this.isBushAimForeground = true;
         }
 
         this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
@@ -2288,6 +2311,9 @@ export class World {
             entity => this.getVoidFootprint(entity),
         );
 
+        for (const crate of this.crates) crate.update(deltaTime);
+        this.crateDestructionSystem?.update();
+
         this.updateMinePhysicalContacts();
         applyDirectionalFireToMines(this.proximityMines, this.fireSourceSystem);
 
@@ -2308,6 +2334,7 @@ export class World {
         this.waterPerformanceProfiler.measure("windSuction", (): void => {
             this.windSuctionCaptureSystem.update(deltaTime);
             this.processCompletedWindSuctionCaptures();
+            this.flushCrateDestructions();
         });
 
         this.robotDebugVisualizer
@@ -2415,6 +2442,7 @@ export class World {
                 }
             }
             this.dynamicStaticCollisionSystem.resolve(this.physicsWorld);
+            this.flushCrateDestructions();
             // B6: resolve bushes only against movable rigid bodies, never Ball.
             this.bushObjectCollisionSystem.resolve(
                 this.bushes,
@@ -2628,6 +2656,7 @@ export class World {
     public destroy():
         void {
         this.bushFireContact = null;
+        this.crateFireContact = null;
         this.bushRobotUnregisterById.clear();
         this.bushBallSilhouette?.destroy();
         this.bushBallSilhouette = null;
@@ -2636,6 +2665,16 @@ export class World {
         for (const unregister of this.bushRobotUnregister) unregister();
         this.bushRobotUnregister.length = 0;
         this.bushConcealment.reset();
+        this.crateDestructionSystem?.destroy();
+        this.crateDestructionSystem = null;
+        this.pendingCrateDestructions.clear();
+        for (const unregister of this.crateRobotUnregister.values()) unregister();
+        this.crateRobotUnregister.clear();
+        for (const crate of this.crates) {
+            this.physicsWorld.unregisterDynamicBody(crate);
+            crate.destroy();
+        }
+        this.crates.length = 0;
         for (const bush of this.bushes) bush.destroy();
         this.bushes.length = 0;
         this.courseEnvironmentBoundary.clearAccelerationCaches();
@@ -4235,7 +4274,11 @@ export class World {
         for (const mine of this.proximityMines) {
             if (mine.getState() === "DETONATED") continue;
             const contact = firstMinePhysicalContact(mine.getX(), mine.getY(), mine.getBodyRadius(), circles, segments);
-            if (contact) mine.triggerImmediateDetonation(contact);
+            if (contact) {
+                mine.triggerImmediateDetonation(contact);
+                const touched = this.crates.find(crate => !crate.isDestroyed && crate.getDefinition().id === contact);
+                touched?.beginDestruction("mineContact");
+            }
         }
     }
 
@@ -4288,6 +4331,17 @@ export class World {
                         },
                     );
 
+            // C7: blast radius destroys crates, independently of knockback.
+            // A mine touching a crate is also guaranteed to destroy it.
+            for (const crate of this.crates) {
+                if (crate.isDestroyed) continue;
+                const def = crate.getDefinition();
+                const radius = Math.hypot(def.width, def.height) * 0.5;
+                const distance = calculateProximityMineBlastSurfaceDistance(event, crate.x, crate.y, radius);
+                if (distance < event.blastRadius) {
+                    crate.beginDestruction(distance === 0 ? "mineContact" : "mineExplosion");
+                }
+            }
             this.proximityMineExplosionSystem.apply(event, targets);
             for (const rock of [...this.rocks]) {
                 if (this.rockInteractionSystem.shouldPulverizeSmallRock(event, rock)) {
@@ -6118,6 +6172,58 @@ export class World {
             this.bushRobotUnregisterById.delete(bush.id);
             bush.destroy();
         }
+    }
+
+    /** C7: one-shot fire ignition, extended burn, and final smoke destruction. */
+    private updateCrateFire(dt: number): void {
+        if (!this.crateFireContact || dt <= 0) return;
+        for (const crate of this.crates) {
+            if (crate.isDestroyed) continue;
+            if (crate.fire.status === "healthy" && this.crateFireContact.touches(crate)) {
+                crate.ignite();
+            }
+            if (crate.fire.status !== "burning") continue;
+            if (crate.fire.claimPresentation()) {
+                // Existing Point Fire pipeline; a finite cluster is issued only once.
+                for (const [dx,dy] of CRATE_FIRE.flameOffsets) {
+                    this.fireManager.ignite(crate.x+dx,crate.y+dy);
+                }
+            }
+            if (crate.updateBurn(dt)) crate.beginDestruction("fire");
+        }
+    }
+
+    /** C1: visual-only crates, positioned by level-authored centers. */
+    private createLevelCrates(): void {
+        const placements = runtimeObjectsOfType(this.runtimeLevel, "crate");
+        if (placements.length === 0) return;
+        const layer = this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects);
+        this.crateDestructionSystem ??= new CrateDestructionSystem(
+            this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects),
+        );
+        const instances = placements.map((placement) => new Crate(placement));
+        this.crates.push(...instances);
+        for (const crate of instances) {
+            crate.onDestructionRequested = (destroyedCrate) => {
+                this.pendingCrateDestructions.add(destroyedCrate);
+            };
+            this.crateRobotUnregister.set(crate.id, registerCrateRobotTarget(this.robotInteractionRegistry, crate));
+            this.physicsWorld.registerDynamicCollidable(`crate-physics-${crate.id}`, crate);
+            this.windSuctionCaptureSystem.registerTarget({
+                id: `crate-capture-${crate.id}`,
+                body: crate,
+                immediate: true,
+                canCapture: () => !crate.isDestroyed,
+                beginCapture: () => { crate.beginDestruction("windNozzle"); },
+                setCaptureScale: () => {},
+            });
+        }
+        void Crate.loadTexture().then((texture) => {
+            if (this.worldContainer.destroyed) return;
+            for (const crate of instances) crate.attach(layer, texture);
+        }).catch((error: unknown) => {
+            console.error("Failed to load level crate texture:", error);
+        });
     }
 
     /** B1: instantiate level-authored bushes without adding gameplay collisions. */

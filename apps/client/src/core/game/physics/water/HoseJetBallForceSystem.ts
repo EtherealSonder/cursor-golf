@@ -13,6 +13,8 @@ import type { AirborneWaterSystem } from "../../environment/AirborneWaterSystem"
 import type { WaterField } from "../../environment/WaterField";
 import type { PhysicsWorld } from "../PhysicsWorld";
 import type { DynamicCollidable } from "../DynamicCollidable";
+import { applyCrateJetImpulse } from "../../crate/CrateWaterInteractionController";
+import { CRATE_WATER } from "../../crate/CrateWaterDefinition";
 
 export interface HoseJetBallForceSource {
     isJetActive(): boolean;
@@ -379,12 +381,24 @@ export class HoseJetBallForceSystem {
 
             const impulseScale =
                 this.definition.dynamicTargetReferenceMass * deltaTime * multiplier;
-            body.applyImpulseAtWorldPoint(
-                sample.accelerationX * impulseScale,
-                sample.accelerationY * impulseScale,
-                body.getX(),
-                body.getY(),
-            );
+            // C4: Crates receive high-pressure jet force at the upstream face,
+            // producing physical torque. Other dynamic targets retain the existing
+            // center-of-mass impulse contract unchanged.
+            if (bodyDefinition.id.startsWith("crate-") &&
+                sample.flowInfluence * sample.edgeInfluence > CRATE_WATER.minimumJetInfluence) {
+                applyCrateJetImpulse(
+                    body,
+                    sample.accelerationX * impulseScale,
+                    sample.accelerationY * impulseScale,
+                    nozzleX, nozzleY,
+                );
+            } else if (!bodyDefinition.id.startsWith("crate-")) {
+                body.applyImpulseAtWorldPoint(
+                    sample.accelerationX * impulseScale,
+                    sample.accelerationY * impulseScale,
+                    body.getX(), body.getY(),
+                );
+            }
         }
     }
 

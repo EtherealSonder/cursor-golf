@@ -39,6 +39,8 @@ export interface DynamicCollisionResolutionResult {
     readonly resolved: boolean;
     readonly normalImpulseMagnitude: number;
     readonly frictionImpulseMagnitude: number;
+    readonly closingNormalSpeed: number;
+    readonly effectiveMass: number;
 }
 
 export function resolveDynamicCollision(
@@ -128,6 +130,8 @@ export function resolveDynamicCollision(
             resolved: true,
             normalImpulseMagnitude: 0,
             frictionImpulseMagnitude: 0,
+            closingNormalSpeed: 0,
+            effectiveMass: 0,
         };
     }
 
@@ -165,6 +169,8 @@ export function resolveDynamicCollision(
             resolved: false,
             normalImpulseMagnitude: 0,
             frictionImpulseMagnitude: 0,
+            closingNormalSpeed: -normalVelocity,
+            effectiveMass: 0,
         };
     }
 
@@ -222,6 +228,8 @@ export function resolveDynamicCollision(
             resolved: true,
             normalImpulseMagnitude,
             frictionImpulseMagnitude: 0,
+            closingNormalSpeed: -normalVelocity,
+            effectiveMass: 1 / normalDenominator,
         };
     }
 
@@ -267,6 +275,8 @@ export function resolveDynamicCollision(
             resolved: true,
             normalImpulseMagnitude,
             frictionImpulseMagnitude: 0,
+            closingNormalSpeed: -normalVelocity,
+            effectiveMass: 1 / normalDenominator,
         };
     }
 
@@ -320,6 +330,8 @@ export function resolveDynamicCollision(
         resolved: true,
         normalImpulseMagnitude,
         frictionImpulseMagnitude,
+        closingNormalSpeed: -normalVelocity,
+        effectiveMass: 1 / normalDenominator,
     };
 }
 

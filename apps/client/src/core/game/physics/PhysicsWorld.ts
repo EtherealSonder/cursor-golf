@@ -311,6 +311,11 @@ export class PhysicsWorld {
         return true;
     }
 
+    /** Snapshot-safe deferred-removal consumer: caller flushes after collision passes. */
+    public unregisterDestroyedDynamicBody(body: DynamicCollidable): boolean {
+        return this.unregisterDynamicBody(body);
+    }
+
     public unregisterDynamicBody(
         body:
             DynamicCollidable,
