@@ -33,6 +33,7 @@ const PROFILES: Readonly<Record<FigmaGameplayObjectKind, FigmaTransformProfile>>
     directionalBumper: DIRECTIONAL,
     rotatingPaddle: CENTER,
     conveyorBelt: CENTER,
+    rotator: CENTER,
     fan: CENTER, waterSprinkler: CENTER, proximityMine: CENTER,
     fireRobot: CENTER, waterRobot: CENTER, windRobot: CENTER,
     smallRock: CENTER, boulder: CENTER, bush: CENTER, crate: CENTER,
@@ -63,6 +64,10 @@ const handlers: Partial<Record<FigmaGameplayObjectKind, FigmaLevelObjectHandler>
     boulder: entry => ({ ...base(entry), type: 'boulder', radius: Math.min(entry.object.bounds.width, entry.object.bounds.height) / 2, seed: entry.object.identity.index ?? 1 }),
     bush: entry => ({ ...base(entry), type: "bush" }),
     crate: entry => ({ ...base(entry), type: "crate" }),
+    rotator: entry => ({
+        ...base(entry), type: "rotator",
+        direction: entry.object.identity.direction === "anticlockwise" ? "counterClockwise" : "clockwise",
+    }),
     conveyorBelt: entry => {
         if (entry.transform.mirrored) throw new Error(`Mirrored conveyor ${entry.object.identity.id} is not supported.`);
         const quarterTurns = Math.round(entry.transform.rotationRadians / (Math.PI / 2));

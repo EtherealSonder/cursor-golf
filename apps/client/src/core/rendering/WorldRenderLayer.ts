@@ -9,6 +9,8 @@ export enum WorldRenderLayer {
     GroundState = 200,
     SurfaceMechanisms = 250,
     StandingWater = 300,
+    /** R5: motorized rotators sit above puddles but below airborne splashes. */
+    RotatorMechanisms = 350,
     WaterEffects = 400,
     PhysicalObjects = 500,
     /** Presentation-only hazards that must remain readable below actors. */

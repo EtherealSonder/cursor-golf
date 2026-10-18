@@ -17,6 +17,8 @@ import debuffDeathTexture from "../../assets/sprites/ui/debuff_death.png";
 import debuffNegativeTexture from "../../assets/sprites/ui/debuff_negative.png";
 import debuffPositiveTexture from "../../assets/sprites/ui/debuff_positive.png";
 import debuffWaterTexture from "../../assets/sprites/ui/debuff_water.png";
+import rotatorArmsTexture from "../../assets/sprites/mechanisms/rotator_arms.png";
+import rotatorHubTexture from "../../assets/sprites/mechanisms/rotator_hub.png";
 import conveyorBeltBaseTexture from "../../assets/sprites/mechanisms/conveyer_belt_bg.png";
 import conveyorBeltDirectionTexture from "../../assets/sprites/mechanisms/conveyer_belt_direction.png";
 import fanBodyTexture from "../../assets/sprites/mechanisms/fan_body.png";
@@ -141,6 +143,8 @@ export class AssetLoader {
         await this.loadTexture("debuffPositive", debuffPositiveTexture);
         await this.loadTexture("debuffWater", debuffWaterTexture);
 
+        await this.loadTexture("rotatorArms", rotatorArmsTexture);
+        await this.loadTexture("rotatorHub", rotatorHubTexture);
         await this.loadTexture("conveyorBeltBase", conveyorBeltBaseTexture);
         await this.loadTexture("conveyorBeltDirection", conveyorBeltDirectionTexture);
 

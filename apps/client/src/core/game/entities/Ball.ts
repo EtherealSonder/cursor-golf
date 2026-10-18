@@ -1079,6 +1079,13 @@ export class Ball extends Entity {
     // Velocity
     // -------------------------------------------------------
 
+    /** R3: positional correction by an external fixed mechanism; does not reset velocity. */
+    public correctRotatorPenetration(deltaX: number, deltaY: number): void {
+        if (this.isDeathPhysicsLocked || this.gameplayState !== BallGameplayState.Active) return;
+        if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+        this.translate(deltaX, deltaY);
+    }
+
     public getVelocityX():
         number {
 

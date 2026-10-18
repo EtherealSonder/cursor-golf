@@ -50,8 +50,8 @@ export class Crate implements DynamicCollidable {
         if (cause) this.beginDestruction(cause);
     }
     public notifyExternalImpact(impact: DynamicCollidableImpact): void {
-        if (impact.sourceKind !== "ball") return;
-        const cause = evaluateCrateImpact("ball",{
+        if (impact.sourceKind !== "ball" && impact.sourceKind !== "other") return;
+        const cause = evaluateCrateImpact(impact.sourceKind === "ball" ? "ball" : "other",{
             closingNormalSpeed: impact.closingNormalSpeed ?? 0,
             effectiveMass: impact.effectiveMass ?? 0,
             normalImpulseMagnitude: impact.normalImpulseMagnitude ?? 0,

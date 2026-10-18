@@ -21,6 +21,14 @@ for (const entry of FIGMA_GAMEPLAY_CATALOG) {
     assert.equal(serialized.y, 80);
 }
 assert.equal(identifyFigmaObject('bush_3')?.id, 'bush-3');
+assert.equal(identifyFigmaObject('rotator_clockwise_1')?.kind, 'rotator');
+assert.equal(identifyFigmaObject('rotator_anticlockwise_2')?.direction, 'anticlockwise');
+assert.equal(getFigmaTransformProfile('rotator').strategy, 'center');
+const rotatorHandler = getFigmaLevelObjectHandler('rotator')!;
+assert.deepEqual(rotatorHandler({
+    object: { identity: { kind: 'rotator', id: 'rotator-anticlockwise-2', direction: 'anticlockwise' }, bounds: { x: 0, y: 0, width: 200, height: 200 } },
+    transform: { position: { x: 400, y: 600 }, rotationRadians: 0, scaleX: 1, scaleY: 1, mirrored: false },
+} as FigmaConvertedObject), { id: 'rotator-anticlockwise-2', x: 400, y: 600, type: 'rotator', direction: 'counterClockwise' });
 assert.equal(identifyFigmaObject('crate_3')?.id, 'crate-3');
 assert.equal(identifyFigmaObject('conveyer_belt_bg_2')?.kind, 'conveyorBelt');
 assert.equal(getFigmaTransformProfile('conveyorBelt').strategy, 'center');

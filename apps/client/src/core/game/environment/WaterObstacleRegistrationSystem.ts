@@ -84,6 +84,12 @@ export class WaterObstacleRegistrationSystem {
         }
     }
 
+    /** R5 hook: moving mechanisms append shapes to the caches after the static/dynamic rebuild. */
+    public appendMovingObstacles(callback: (ground: WaterObstacleField,
+        airborne: AirborneWaterCollisionField) => void): void {
+        callback(this.groundField, this.airborneField);
+    }
+
     public hasRegistration(
         id:
             string,

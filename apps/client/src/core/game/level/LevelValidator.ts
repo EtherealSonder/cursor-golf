@@ -1,3 +1,5 @@
+import { ROTATOR_DEFINITION } from "../config/RotatorDefinition";
+import { isRotatorDirection } from "../config/RotatorDefinition";
 import { normalizeConveyorRotation } from "../config/ConveyorBeltDefinition";
 import { pointInPolygon, validatePolygonGeometry } from "./CourseGeometryValidation";
 import {
@@ -351,6 +353,11 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                         error("INVALID_CONVEYOR_ROTATION", "Conveyor rotation must be a cardinal multiple of PI/2 radians.", `${path}.rotation`, objectId);
                     }
                     break;
+                case "rotator":
+                    if (!isRotatorDirection(object.direction)) {
+                        error("INVALID_ROTATOR_DIRECTION", "Unknown rotator direction.", `${path}.direction`, objectId);
+                    }
+                    break;
                 case "rotatingPaddle":
                     if (!isRotatingPaddleDirection(object.direction)) {
                         error("INVALID_PADDLE_DIRECTION", "Unknown rotating paddle direction.", `${path}.direction`, objectId);
@@ -385,6 +392,29 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                     break;
             }
         });
+    }
+
+    // R6: validate the full rotating footprint, not just the mechanism center.
+    if (Array.isArray(input.objects) && courseDimensionsValid) {
+        const objects = input.objects.filter(isRecord);
+        for (const [index, object] of input.objects.entries()) {
+            if (!isRecord(object) || object.type !== "rotator" || !isFiniteNumber(object.x) || !isFiniteNumber(object.y)) continue;
+            const path = `objects[${index}]`;
+            const clearance = ROTATOR_DEFINITION.armOuterRadius + ROTATOR_DEFINITION.armCapHalfThickness + ROTATOR_DEFINITION.armTipSafetyMargin;
+            if (object.x - clearance < 0 || object.y - clearance < 0 || object.x + clearance > width || object.y + clearance > height) {
+                error("ROTATOR_WALL_OVERLAP", "Rotator swept footprint overlaps the rectangular course boundary.", path, nonEmptyString(object.id) ? object.id : undefined);
+            }
+            for (const other of objects) {
+                if (other === object || !isFiniteNumber(other.x) || !isFiniteNumber(other.y)) continue;
+                const fixedTypes = ["rotator", "radialBumper", "directionalBumper", "rotatingPaddle", "conveyorBelt", "staticMetalBox"];
+                if (!fixedTypes.includes(String(other.type))) continue;
+                const otherRadius = other.type === "rotator" ? clearance : other.type === "staticMetalBox" && isFiniteNumber(other.width) && isFiniteNumber(other.height)
+                    ? Math.hypot(other.width, other.height) / 2 : 35;
+                if (Math.hypot(object.x - other.x, object.y - other.y) < clearance + otherRadius) {
+                    warning("ROTATOR_MECHANISM_OVERLAP", `Rotator swept footprint may intersect fixed mechanism ${String(other.id)}.`, path, nonEmptyString(object.id) ? object.id : undefined);
+                }
+            }
+        }
     }
 
     // Intentionally conservative warning layer for LD-4. Geometry-overlap warnings

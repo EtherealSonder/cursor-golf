@@ -281,6 +281,11 @@ export class WaterObstacleField {
         return null;
     }
 
+    /** R5: moving obstacle occupancy uses the same raster and flow exclusions as fixed obstacles. */
+    public rasterizeMovingShape(shape: WaterObstacleShape): void {
+        this.rasterizeShape(shape);
+    }
+
     public rasterizeShape(
         shape:
             WaterObstacleShape,

@@ -4,6 +4,7 @@ import type { LocalWindObstacleDefinition } from "../config/LocalWindDefinition"
 import type { StaticObstacleDefinition } from "../config/ObstacleDefinition";
 import type { PhysicsWorld } from "../physics/PhysicsWorld";
 import { WindObstacleSpatialIndex } from "./WindObstacleSpatialIndex";
+import type { RotatorElementalObstacleSystem } from "../rotator/RotatorElementalObstacleSystem";
 
 export interface LocalWindObstacleResolution {
     readonly blocked: boolean;
@@ -24,6 +25,8 @@ export class LocalWindObstacleQuery {
         private readonly definition: LocalWindObstacleDefinition,
     ) {}
 
+    private rotatorObstacles: RotatorElementalObstacleSystem | null = null;
+    public setRotatorObstacles(obstacles: RotatorElementalObstacleSystem | null): void { this.rotatorObstacles = obstacles; }
     private courseBoundary: CourseEnvironmentBoundary | null = null;
     private staticIndex: WindObstacleSpatialIndex | null = null;
     private staticRevision = -1;
@@ -115,6 +118,7 @@ export class LocalWindObstacleQuery {
         P1.add("windObstacleRays");
         P1.add("windAnalyticRays");
         if (this.courseBoundary?.blocksSegment(x0, y0, x1, y1)) return true;
+        if (this.rotatorObstacles?.blocksSegment(x0, y0, x1, y1, this.definition.collisionTolerance)) return true;
         const obstacles = indexed ? this.getIndexedCandidates(x0, y0, x1, y1) : this.physicsWorld.getRigidStaticDefinitions();
         if (indexed) P1.add("windIndexCandidates", obstacles.length);
         else P1.add("windExhaustiveCandidates", obstacles.length);

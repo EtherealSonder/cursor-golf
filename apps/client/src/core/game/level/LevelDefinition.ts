@@ -136,6 +136,11 @@ export interface DirectionalBumperPlacement extends BaseObjectPlacement {
 export type RotatingPaddleDirection = "clockwise" | "counterClockwise";
 
 /** CB1: center-anchored conveyor, cardinal rotation in radians. */
+export interface RotatorPlacement extends BaseObjectPlacement {
+    readonly type: "rotator";
+    readonly direction: "clockwise" | "counterClockwise";
+}
+
 export interface ConveyorBeltPlacement extends BaseObjectPlacement {
     readonly type: "conveyorBelt";
     readonly rotation: number;
@@ -217,6 +222,7 @@ export type LevelObjectPlacement =
     | DirectionalBumperPlacement
     | RotatingPaddlePlacement
     | ConveyorBeltPlacement
+    | RotatorPlacement
     | ProximityMinePlacement
     | BushPlacement
     | CratePlacement
@@ -247,6 +253,7 @@ export const LEVEL_OBJECT_TYPES = [
     "directionalBumper",
     "rotatingPaddle",
     "conveyorBelt",
+    "rotator",
     "proximityMine",
     "bush",
     "crate",

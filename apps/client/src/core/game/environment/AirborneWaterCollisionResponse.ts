@@ -5,7 +5,8 @@ export interface AirborneWaterReflectionDefinition {
     readonly speedRetention: number;
     readonly separationDistance: number;
     readonly minimumOutgoingSpeed: number;
-    readonly onImpact?: () => void;
+    readonly onImpact?: (x: number, y: number, velocityX: number, velocityY: number) => void;
+    readonly getSurfaceVelocity?: (x: number, y: number) => { x: number; y: number };
 }
 
 export interface AirborneWaterReflectionResult {
@@ -36,6 +37,8 @@ export class AirborneWaterCollisionResponse {
         this.reflectors.set(colliderId, definition);
     }
 
+    public hasReflector(colliderId: string): boolean { return this.reflectors.has(colliderId); }
+
     public unregister(colliderId: string): void {
         this.reflectors.delete(colliderId);
     }
@@ -59,14 +62,17 @@ export class AirborneWaterCollisionResponse {
         const incomingX = packet.getVelocityX();
         const incomingY = packet.getVelocityY();
         const incomingSpeed = Math.hypot(incomingX, incomingY);
-        const normalVelocity = incomingX * normalX + incomingY * normalY;
+        const surface = definition.getSurfaceVelocity?.(hit.positionX, hit.positionY) ?? { x: 0, y: 0 };
+        const relativeX = incomingX - surface.x;
+        const relativeY = incomingY - surface.y;
+        const normalVelocity = relativeX * normalX + relativeY * normalY;
 
         // Only reflect Water travelling into the surface. This also prevents
         // a separated packet from being re-reflected while travelling away.
         if (normalVelocity >= 0) return null;
 
-        let reflectedX = incomingX - 2 * normalVelocity * normalX;
-        let reflectedY = incomingY - 2 * normalVelocity * normalY;
+        let reflectedX = relativeX - 2 * normalVelocity * normalX;
+        let reflectedY = relativeY - 2 * normalVelocity * normalY;
         let outgoingSpeed = incomingSpeed * definition.speedRetention;
         outgoingSpeed = Math.max(definition.minimumOutgoingSpeed, outgoingSpeed);
 
@@ -76,7 +82,9 @@ export class AirborneWaterCollisionResponse {
             reflectedY = reflectedY / reflectedLength * outgoingSpeed;
         }
 
-        definition.onImpact?.();
+        reflectedX += surface.x;
+        reflectedY += surface.y;
+        definition.onImpact?.(hit.positionX, hit.positionY, reflectedX, reflectedY);
         return {
             velocityX: reflectedX,
             velocityY: reflectedY,

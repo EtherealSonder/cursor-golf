@@ -257,6 +257,17 @@ export class WaterVfxSystem {
         );
     }
 
+    /** R5: pooled visual-only splash when an airborne packet is deflected by a rotator. */
+    public emitRotatorContactSplash(x: number, y: number, velocityX: number, velocityY: number): void {
+        if (this.destroyed || !this.definition.enabled || !this.diagnosticPresentationEnabled) return;
+        const speed = Math.min(90, Math.hypot(velocityX, velocityY) * 0.25);
+        const length = Math.hypot(velocityX, velocityY) || 1;
+        this.emitSplashFragment({x, y, velocityX: velocityX / length * speed,
+            velocityY: velocityY / length * speed, lifetime: 0.24,
+            startScaleX: 0.38, startScaleY: 0.38, endScaleX: 0.10, endScaleY: 0.10,
+            maximumAlpha: 0.85, dragPerSecond: 5});
+    }
+
     public emitSplashFragment(
         activation: WaterVfxParticleActivation,
     ): boolean {

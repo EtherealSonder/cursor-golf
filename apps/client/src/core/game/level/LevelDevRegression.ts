@@ -123,8 +123,11 @@ export function runLevel00DevRegression(input: unknown): LevelDevRegressionResul
         level.objects.map((object) => [object.id, object]),
     );
     // CB1: additional conveyor fixtures are permitted without weakening legacy object checks.
-    const legacyObjects = level.objects.filter(object => object.type !== "conveyorBelt");
+    const legacyObjects = level.objects.filter(object => object.type !== "conveyorBelt" && object.type !== "rotator");
     expect("objects.length", legacyObjects.length, EXPECTED_OBJECTS.length);
+    for (const rotator of level.objects.filter(object => object.type === "rotator")) {
+        expect(`objects.${rotator.id}.direction`, rotator.direction === "clockwise" || rotator.direction === "counterClockwise", true);
+    }
     for (const conveyor of level.objects.filter(object => object.type === "conveyorBelt")) {
         expect(`objects.${conveyor.id}.cardinal`,
             Math.abs(conveyor.rotation / (Math.PI / 2) - Math.round(conveyor.rotation / (Math.PI / 2))) < 1e-6, true);

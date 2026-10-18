@@ -14,6 +14,8 @@ const prefixes=new Map<string,FigmaNamingPrefix>();
 const defaults:FigmaNamingPrefix[]=[
     {prefix:'opening',kind:'wallOpening'}, {prefix:'box',kind:'metalBox'},
     {prefix:'radial_bumper',kind:'radialBumper'}, {prefix:'directional_bumper',kind:'directionalBumper'},
+    {prefix:'rotator_clockwise',kind:'rotator',direction:'clockwise'},
+    {prefix:'rotator_anticlockwise',kind:'rotator',direction:'anticlockwise'},
     {prefix:'rotate_paddle_clockwise',kind:'rotatingPaddle',direction:'clockwise'},
     {prefix:'rotate_paddle_anticlockwise',kind:'rotatingPaddle',direction:'anticlockwise'},
 ];

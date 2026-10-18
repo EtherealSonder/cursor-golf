@@ -217,41 +217,6 @@
       "rotation": 3.141592653589793
     },
     {
-      "type": "fan",
-      "id": "rock-fracture-mine-fan",
-      "x": 400,
-      "y": 820,
-      "rotation": 0
-    },
-    {
-      "type": "fan",
-      "id": "stress-fan-wind-1",
-      "x": 150,
-      "y": 560,
-      "rotation": 0
-    },
-    {
-      "type": "fan",
-      "id": "stress-fan-wind-2",
-      "x": 850,
-      "y": 1130,
-      "rotation": 3.141592653589793
-    },
-    {
-      "type": "fan",
-      "id": "stress-fan-wind-3",
-      "x": 150,
-      "y": 1870,
-      "rotation": 0
-    },
-    {
-      "type": "fan",
-      "id": "stress-fan-wind-4",
-      "x": 850,
-      "y": 2230,
-      "rotation": 3.141592653589793
-    },
-    {
       "type": "proximityMine",
       "id": "mine-rock-fracture-wind",
       "x": 590,
@@ -268,13 +233,6 @@
       "id": "mine-4",
       "x": 690,
       "y": 1860
-    },
-    {
-      "type": "waterRobot",
-      "id": "water-robot-rock-acceptance",
-      "x": 450,
-      "y": 1050,
-      "roamRadius": 90
     },
     {
       "type": "bush",
@@ -331,13 +289,6 @@
       "y": 2250
     },
     {
-      "type": "windRobot",
-      "id": "wind-robot-crate-test",
-      "x": 690,
-      "y": 930,
-      "roamRadius": 90
-    },
-    {
       "type": "crate",
       "id": "crate-destruction-test-1",
       "x": 280,
@@ -368,13 +319,6 @@
       "y": 2050
     },
     {
-      "type": "fireRobot",
-      "id": "fire-robot-crate-fire-test",
-      "x": 500,
-      "y": 2300,
-      "roamRadius": 70
-    },
-    {
       "type": "conveyorBelt",
       "id": "cb1-conveyor-right",
       "x": 710,
@@ -401,6 +345,83 @@
       "x": 530,
       "y": 1930,
       "rotation": 4.71238898038469
+    },
+    {
+      "type": "rotator",
+      "id": "rotator-clockwise-test",
+      "x": 160,
+      "y": 2330,
+      "direction": "clockwise"
+    },
+    {
+      "type": "rotator",
+      "id": "rotator-counterclockwise-test",
+      "x": 160,
+      "y": 890,
+      "direction": "counterClockwise"
+    },
+    {
+      "type": "fan",
+      "id": "rock-fracture-mine-fan",
+      "x": 400,
+      "y": 820,
+      "rotation": 0
+    },
+    {
+      "type": "fan",
+      "id": "stress-fan-wind-1",
+      "x": 150,
+      "y": 560,
+      "rotation": 0
+    },
+    {
+      "type": "fan",
+      "id": "stress-fan-wind-2",
+      "x": 850,
+      "y": 1130,
+      "rotation": 3.141592653589793
+    },
+    {
+      "type": "fan",
+      "id": "stress-fan-wind-3",
+      "x": 150,
+      "y": 1870,
+      "rotation": 0
+    },
+    {
+      "type": "fan",
+      "id": "stress-fan-wind-4",
+      "x": 850,
+      "y": 2230,
+      "rotation": 3.141592653589793
+    },
+    {
+      "type": "waterRobot",
+      "id": "water-robot-rock-acceptance",
+      "x": 450,
+      "y": 1050,
+      "roamRadius": 90
+    },
+    {
+      "type": "windRobot",
+      "id": "wind-robot-crate-test",
+      "x": 690,
+      "y": 930,
+      "roamRadius": 90
+    },
+    {
+      "type": "waterRobot",
+      "id": "water-robot-starting-area",
+      "x": 500,
+      "y": 2300,
+      "roamRadius": 70
+    },
+    {
+      "type": "fireRobot",
+      "id": "fire-robot-rotator-r7",
+      "x": 360,
+      "y": 900,
+      "roamRadius": 75
     }
   ]
 }

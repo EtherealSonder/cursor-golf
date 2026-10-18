@@ -1,3 +1,20 @@
+import { assertRotatorElementalRegression } from "../rotator/RotatorElementalRegression";
+import { RotatorElementalObstacleSystem } from "../rotator/RotatorElementalObstacleSystem";
+import { RotatorRobotCollisionSystem } from "../rotator/RotatorRobotCollisionSystem";
+import { RotatorEnvironmentInteractionSystem } from "../rotator/RotatorEnvironmentInteractionSystem";
+import { assertRotatorEnvironmentRegression } from "../rotator/RotatorEnvironmentRegression";
+import { RotatorWaterInteractionSystem } from "../rotator/RotatorWaterInteractionSystem";
+import { assertRotatorWaterRegression } from "../rotator/RotatorWaterRegression";
+import { RotatorDynamicCollisionSystem } from "../rotator/RotatorDynamicCollisionSystem";
+import { assertRotatorDynamicCollisionRegression } from "../rotator/RotatorDynamicCollisionRegression";
+import { shouldCollideRotators } from "../rotator/RotatorPerformanceDebug";
+import { assertRotatorPerformanceRegression } from "../rotator/RotatorPerformanceRegression";
+import { ROTATOR_DEFINITION } from "../config/RotatorDefinition";
+import { RotatorBallCollisionSystem } from "../rotator/RotatorBallCollisionSystem";
+import { assertRotatorBallCollisionRegression } from "../rotator/RotatorBallCollisionRegression";
+import { Rotator } from "../entities/mechanisms/Rotator";
+import { assertRotatorRegression } from "../level/RotatorRegression";
+import { assertRotatorAnimationRegression } from "../rotator/RotatorAnimationRegression";
 import { BushWaterInteractionSystem } from "../bush/BushWaterInteractionSystem";
 import { BushFireContactSystem } from "../bush/BushFireContactSystem";
 import { BushObjectCollisionSystem } from "../bush/BushObjectCollisionSystem";
@@ -600,6 +617,14 @@ export class World {
     /** RP-1 continuously powered surface mechanisms. */
     private readonly rotatingPaddles: RotatingPaddle[] = [];
     private readonly conveyorBelts: ConveyorBelt[] = [];
+    private readonly rotators: Rotator[] = [];
+    private readonly rotatorElementalObstacles = new RotatorElementalObstacleSystem();
+    private readonly rotatorBallCollisionSystem = new RotatorBallCollisionSystem();
+    private readonly rotatorDynamicCollisionSystem = new RotatorDynamicCollisionSystem();
+    private readonly rotatorWaterInteractionSystem = new RotatorWaterInteractionSystem();
+    private readonly rotatorRobotCollisionSystem = new RotatorRobotCollisionSystem();
+    private readonly rotatorEnvironmentInteractionSystem = new RotatorEnvironmentInteractionSystem();
+    private lastRotatorShakeTime = 0;
     private readonly conveyorBallTransportSystem = new ConveyorBeltBallTransportSystem();
     private readonly conveyorDynamicTransportSystem = new ConveyorBeltDynamicTransportSystem();
     private readonly conveyorWaterTransportSystem = new ConveyorBeltWaterTransportSystem();
@@ -1447,6 +1472,25 @@ export class World {
             this.addEntity(conveyor, WorldRenderLayer.SurfaceMechanisms);
         }
 
+        // R2: fixed-position rotators; Entity.update drives their arm animation. R3 adds colliders.
+        assertRotatorRegression();
+        assertRotatorAnimationRegression();
+        assertRotatorBallCollisionRegression();
+        assertRotatorDynamicCollisionRegression();
+        assertRotatorWaterRegression();
+        assertRotatorElementalRegression();
+        assertRotatorEnvironmentRegression();
+        assertRotatorPerformanceRegression();
+        for (const placement of runtimeObjectsOfType(this.runtimeLevel, "rotator")) {
+            const rotator = new Rotator(placement.id, placement.x, placement.y, placement.direction);
+            this.rotators.push(rotator);
+            this.addEntity(rotator, WorldRenderLayer.RotatorMechanisms);
+            const hub = rotator.getCenter();
+            this.robotInteractionRegistry.registerCircularEntity(`rotator-hub-${rotator.getId()}`, "Rotator Hub",
+                ROTATOR_DEFINITION.hubDiameter / 2, () => hub.x, () => hub.y,
+                { navigationBlocker: true, attackTarget: true, visionOccluder: true });
+        }
+
         // RP-1 Rotating Paddles
         // ---------------------------------------------------
         // Authored clear test positions. These are surface mechanisms, so their
@@ -1821,6 +1865,9 @@ export class World {
 
         this.waterPerformanceProfiler
             .beginFrame();
+
+        this.rotatorElementalObstacles.synchronize(this.rotators);
+        this.localWindSystem.getObstacleQuery()?.setRotatorObstacles(this.rotatorElementalObstacles);
 
         this.localWindSystem
             .beginPerformanceFrame();
@@ -2351,6 +2398,9 @@ export class World {
         for (const crate of this.crates) crate.update(deltaTime);
         this.crateDestructionSystem?.update();
 
+        if (shouldCollideRotators()) {
+            this.rotatorEnvironmentInteractionSystem.triggerMineContacts(this.rotators, this.proximityMines);
+        }
         this.updateMinePhysicalContacts();
         applyDirectionalFireToMines(this.proximityMines, this.fireSourceSystem);
 
@@ -2417,6 +2467,22 @@ export class World {
 
         // CB3: apply conveyor impulse after ball integration, as other powered surfaces do.
         if (this.ball) this.conveyorBallTransportSystem.update(deltaTime, this.ball, this.conveyorBelts);
+
+        // R3: resolve moving arm and fixed hub contacts after Ball integration.
+        if (shouldCollideRotators() && this.ball && !this.ball.isDeathPhysicsLocked) {
+            this.lastRotatorShakeTime = Math.max(0, this.lastRotatorShakeTime - deltaTime);
+            for (const rotator of this.rotators) {
+                const impact = this.rotatorBallCollisionSystem.resolve(deltaTime, this.ball, rotator);
+                if (impact && impact.speed >= ROTATOR_DEFINITION.shakeImpactThreshold && this.lastRotatorShakeTime <= 0) {
+                    this.cameraShake.trigger({ amplitude: Math.min(5, impact.speed / 110), duration: 0.14, frequency: 25, decayExponent: 1.8, roughness: 0.35, preferredDirectionX: impact.normalX, preferredDirectionY: impact.normalY, directionalBias: 0.45 });
+                    this.lastRotatorShakeTime = 0.18;
+                }
+            }
+        }
+
+        // R4: moving arm impulses and off-center torque on registered rigid bodies.
+        if (shouldCollideRotators()) this.rotatorDynamicCollisionSystem.resolve(this.rotators, this.physicsWorld.getMovableRigidDynamicCollidables());
+        if (shouldCollideRotators()) this.rotatorRobotCollisionSystem.resolve(this.rotators, [this.fireRobot, this.secondFireRobot, this.waterRobot, this.secondWaterRobot, this.windRobot, this.secondWindRobot].filter((robot): robot is Robot => robot !== null));
 
         // RP-1: after Ball integration, drive its tangential component toward
         // each overlapping rotating surface and resolve the solid center stopper.
@@ -2562,12 +2628,18 @@ export class World {
 
         this.waterPerformanceProfiler.measure("waterObstacleSync", (): void => {
             this.waterObstacleRegistrationSystem.synchronize();
+            this.waterObstacleRegistrationSystem.appendMovingObstacles((ground, airborne) => {
+                this.rotatorWaterInteractionSystem.synchronize(this.rotators, airborne, ground,
+                    this.airborneWaterCollisionResponse, this.waterVfxSystem);
+            });
+            this.rotatorWaterInteractionSystem.displaceGroundWater(this.rotators, this.waterField, deltaTime);
         });
 
 
 
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
+        this.rotatorElementalObstacles.synchronize(this.rotators);
         this.waterPerformanceProfiler.measure("windPresentation", (): void => {
             this.localWindDebugVisualizer?.update();
             this.windVfxSystem?.update(deltaTime);
@@ -2665,6 +2737,19 @@ export class World {
             this.fans.length,
             this.sprinklers.length,
         );
+
+        // R4: final nonpenetration after other systems reposition rigid bodies.
+        if (shouldCollideRotators()) this.rotatorDynamicCollisionSystem.resolve(this.rotators, this.physicsWorld.getMovableRigidDynamicCollidables(), false);
+        if (shouldCollideRotators()) this.rotatorRobotCollisionSystem.resolve(this.rotators, [this.fireRobot, this.secondFireRobot, this.waterRobot, this.secondWaterRobot, this.windRobot, this.secondWindRobot].filter((robot): robot is Robot => robot !== null), false);
+
+        // R3.1: final position-only projection after ALL other mechanism/physics
+        // consumers have had their chance to reposition the ball this frame.
+        // Keep velocity and the rotator's existing sweep/impulse behavior intact.
+        if (this.ball && !this.ball.isDeathPhysicsLocked && shouldCollideRotators()) {
+            for (const rotator of this.rotators) {
+                this.rotatorBallCollisionSystem.resolveFinalPenetration(this.ball, rotator);
+            }
+        }
 
         // B4 presentation follows the current authoritative ball position.
         if (this.ball && this.bushes.length > 0) {
