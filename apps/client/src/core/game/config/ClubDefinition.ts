@@ -122,7 +122,7 @@ export const BASIC_CLUB_DEFINITION:
     visual: {
 
         renderScale:
-            0.10,
+            0.15625,
 
         contactAnchorX:
             0.33,

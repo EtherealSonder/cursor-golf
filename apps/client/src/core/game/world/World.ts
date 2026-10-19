@@ -1,3 +1,6 @@
+import { PixiPresentationProfiler as P3C2 } from "../debug/PixiPresentationProfiler";
+import { WaterSubphaseProfiler as P3C1 } from "../debug/WaterSubphaseProfiler";
+import { GeometryQueryAttributionProfiler as P3B1 } from "../debug/GeometryQueryAttributionProfiler";
 import { assertRotatorElementalRegression } from "../rotator/RotatorElementalRegression";
 import { RotatorElementalObstacleSystem } from "../rotator/RotatorElementalObstacleSystem";
 import { RotatorRobotCollisionSystem } from "../rotator/RotatorRobotCollisionSystem";
@@ -48,7 +51,7 @@ import { PerformanceInvestigationCounters as PassBCounters } from "../debug/Perf
 import type { CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
 import { CourseBoundaryDeathDiagnostics } from "../debug/CourseBoundaryDeathDiagnostics";
 import { PerformanceInvestigationController } from "../debug/PerformanceInvestigationController";
-import { isPerformanceInvestigationEnabled } from "../debug/PerformanceInvestigationDefinition";
+import { isPerformanceInvestigationEnabled, isWaterVfxIsolationB1, isWindVfxIsolationB3, isBackgroundAnimationIsolationB4 } from "../debug/PerformanceInvestigationDefinition";
 import { assertCourseWindBoundaryValidation } from "../debug/CourseWindBoundaryValidation";
 import { assertCourseWindPerformanceValidation } from "../debug/CourseWindPerformanceValidation";
 import { assertCourseFireBoundaryValidation } from "../debug/CourseFireBoundaryValidation";
@@ -518,13 +521,16 @@ export class World {
         : null;
 
     private diagnosticVfx = { fire:true, water:true, wind:true };
+    private readonly waterVfxIsolationB1 = isWaterVfxIsolationB1();
+    private readonly windVfxIsolationB3 = isWindVfxIsolationB3();
+    private readonly backgroundAnimationIsolationB4 = isBackgroundAnimationIsolationB4();
 
     private readonly waterPerformanceProfiler:
         WaterPerformanceProfiler =
         new WaterPerformanceProfiler(
             { ...DEFAULT_WORLD_PERFORMANCE_PROFILE_DEFINITION,
                 enabled: isPerformanceInvestigationEnabled(),
-                overlayEnabled: false, consoleReportingEnabled: false },
+                overlayEnabled: false, consoleReportingEnabled: false, consoleReportIntervalSeconds: 5 },
         );
 
     private readonly contourRefreshScheduler =
@@ -1297,7 +1303,7 @@ export class World {
                 resetVerified: false,
                 note: "Live gameplay state; fresh-world reconstruction not implemented",
             }));
-            this.performanceInvestigation.bindChange(config => { this.diagnosticVfx = {...config}; });
+            this.performanceInvestigation.bindChange(config => { this.diagnosticVfx = {...config, water: this.waterVfxIsolationB1 ? false : config.water, wind: this.windVfxIsolationB3 ? false : config.wind}; });
             this.performanceInvestigation.layout(this.app.screen.width);
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
@@ -1840,7 +1846,7 @@ export class World {
 
         // O3.1: Camera position is authoritative now. Refresh presentation
         // world bounds here so culling never uses the previous Camera frame.
-        if (this.courseBackgroundAnimator && !this.p1BackgroundDisabled) {
+        if (this.courseBackgroundAnimator && !this.p1BackgroundDisabled && !this.backgroundAnimationIsolationB4) {
             this.courseBackgroundAnimator.update(deltaTime);
         }
         this.presentationVisibilityQuery.refresh();
@@ -1857,8 +1863,10 @@ export class World {
             number,
     ): void {
 
+        P3B1.setScope("world-start");
         // O3 presentation culling: snapshot Camera bounds once per frame.
         // Simulation remains world-authoritative and never consumes this query.
+        P3B1.setScope("presentation");
         this.presentationVisibilityQuery.refresh();
 
         this.applyPresentationDiagnosticMode();
@@ -1879,8 +1887,12 @@ export class World {
             .beginFrame();
 
         this.waterPerformanceProfiler.measure("surface", (): void => {
+            P3C2.measure("surfacePresentation", (): void => {
+
             this.surfaceSystem.update(deltaTime);
-        });
+        
+            });
+});
 
 
 
@@ -1889,22 +1901,29 @@ export class World {
          * source timing -> immutable emission handoff -> Wind-responsive
          * airborne flight -> ground impact -> standing-Water simulation.
          */
+        P3B1.setScope("water");
         this.waterPerformanceProfiler.measure("waterSources", (): void => {
+                const p3c1Start = P3C1.start();
+                try {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("waterTransport")!==false)this.waterSourceSystem.update(deltaTime);
             this.airborneWaterSystem.consumeEmissionRequests(
                 this.waterSourceSystem.drainEmissionRequests(),
             );
-        });
+        } finally { P3C1.end("waterSources", p3c1Start); }
+            });
 
         this.waterPerformanceProfiler
             .measure(
                 "airborneWater",
                 (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                     if(this.performanceInvestigation?.passBIsolation.isEnabled("waterTransport")!==false)this.airborneWaterSystem
                         .update(
                             deltaTime,
                         );
-                },
+                } finally { P3C1.end("airborneWater", p3c1Start); }
+            },
             );
 
         /*
@@ -1926,35 +1945,47 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "waterFireAirborneDirectional",
             (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                 this.waterFireInteraction.updateAirborneWaterDirectionalFire(
                     airborneWaterSweeps,
                     this.fireSourceSystem,
                 );
+            } finally { P3C1.end("waterFireAirborneDirectional", p3c1Start); }
             },
         );
 
         this.waterPerformanceProfiler.measure(
             "waterFireAirborneGround",
             (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                 this.waterFireInteraction.updateAirborneWaterGroundFire(
                     airborneWaterSweeps,
                     this.fireManager,
                 );
+            } finally { P3C1.end("waterFireAirborneGround", p3c1Start); }
             },
         );
 
-        this.airborneWaterVisualizer?.update();
+        if (!this.waterVfxIsolationB1) this.airborneWaterVisualizer?.update();
 
         this.waterPerformanceProfiler.measure("sprinklerWaterVfx", (): void => {
-            this.sprinklerWaterVfx?.update(deltaTime);
-        });
+                const p3c1Start = P3C1.start();
+                try {
+            if (!this.waterVfxIsolationB1) this.sprinklerWaterVfx?.update(deltaTime);
+        } finally { P3C1.end("sprinklerWaterVfx", p3c1Start); }
+            });
         this.waterPerformanceProfiler.measure("waterImpactVfx", (): void => {
+                const p3c1Start = P3C1.start();
+                try {
             this.waterVfxSystem?.updateSprinklerImpacts(
                 deltaTime,
                 this.sprinklers,
                 this.airborneWaterSystem,
             );
-        });
+        } finally { P3C1.end("waterImpactVfx", p3c1Start); }
+            });
         if (this.sprinklerWaterVfx) {
             const sprinklerPerformance = this.sprinklerWaterVfx.getPerformanceDetails();
             this.waterPerformanceProfiler.recordSprinklerDeepProfileDetails({
@@ -1975,21 +2006,33 @@ export class World {
         }
 
         this.waterPerformanceProfiler.measure("hoseWaterVfx", (): void => {
-            this.hoseWaterVfx?.update(deltaTime);
-            this.waterRobotHoseVfx?.update(deltaTime);
-            this.secondWaterRobotHoseVfx?.update(deltaTime);
-        });
+                const p3c1Start = P3C1.start();
+                try {
+            if (!this.waterVfxIsolationB1) {
+                this.hoseWaterVfx?.update(deltaTime);
+                this.waterRobotHoseVfx?.update(deltaTime);
+                this.secondWaterRobotHoseVfx?.update(deltaTime);
+            }
+        } finally { P3C1.end("hoseWaterVfx", p3c1Start); }
+            });
 
         /*
          * Phase 8I-5: advance presentation-only Water particles and the
          * stable downstream material animation used by current-state Sprinkler ribbons.
          */
         this.waterPerformanceProfiler.measure("waterVfxCore", (): void => {
+            P3C2.measure("waterPresentation", (): void => {
+
+                const p3c1Start = P3C1.start();
+                try {
             this.waterVfxSystem
                 ?.update(
                     deltaTime,
                 );
-        });
+        } finally { P3C1.end("waterVfxCore", p3c1Start); }
+            
+            });
+});
         // CB5: transport settled Water before the sparse WaterFlowSolver step.
         // Airborne water deposition/flight is deliberately untouched.
         this.conveyorWaterTransportSystem.update(deltaTime, this.waterField, this.conveyorBelts);
@@ -2007,11 +2050,14 @@ export class World {
             .measure(
                 "waterSimulation",
                 (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                     if(this.performanceInvestigation?.passBIsolation.isEnabled("waterEvolution")!==false)this.waterField
                         .update(
                             deltaTime,
                         );
-                },
+                } finally { P3C1.end("waterSimulation", p3c1Start); }
+            },
             );
 
 
@@ -2019,7 +2065,10 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "waterGroundInteraction",
             (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                 if(this.performanceInvestigation?.passBIsolation.isEnabled("waterEvolution")!==false)this.waterGroundInteractionSystem.update(deltaTime);
+            } finally { P3C1.end("waterGroundInteraction", p3c1Start); }
             },
         );
 
@@ -2033,7 +2082,10 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "moistureSurfaceBridge",
             (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                 this.moistureSurfaceBridge.update(deltaTime);
+            } finally { P3C1.end("moistureSurfaceBridge", p3c1Start); }
             },
         );
 
@@ -2046,10 +2098,13 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "waterFireStandingGround",
             (): void => {
+                const p3c1Start = P3C1.start();
+                try {
                 this.waterFireInteraction.updateStandingWaterGroundFire(
                     this.waterField,
                     this.fireManager,
                 );
+            } finally { P3C1.end("waterFireStandingGround", p3c1Start); }
             },
         );
 
@@ -2167,13 +2222,19 @@ export class World {
         this.waterPerformanceProfiler.measure(
             "fireSourceVisualizer",
             (): void => {
+            P3C2.measure("firePresentation", (): void => {
+
                 this.fireSourceVisualizer?.update();
-            },
+            
+            });
+},
         );
 
         this.waterPerformanceProfiler.measure(
             "fireVfxUpdate",
             (): void => {
+            P3C2.measure("firePresentation", (): void => {
+
                 if (this.fireVfxEnabled && this.diagnosticVfx.fire) {
                     this.fireVfxSystem?.update(deltaTime);
                     this.fireVfxSystem?.applyConveyorGroundOcclusion((x, y) =>
@@ -2183,7 +2244,9 @@ export class World {
                         )),
                     );
                 }
-            },
+            
+            });
+},
         );
 
         if (this.fireVfxSystem) {
@@ -2346,6 +2409,7 @@ export class World {
             }
         }
 
+        P3B1.setScope("mechanisms");
         this.mineWindMovement.update(this.proximityMines, this.localWindSystem, deltaTime);
         this.updateProximityMineTargets();
 
@@ -2369,6 +2433,7 @@ export class World {
             );
         }
 
+        P3B1.setScope("entities");
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
             if (!entity) continue;
@@ -2415,6 +2480,7 @@ export class World {
          * transforms. Impulses are consumed by each body's normal physics update;
          * mass response comes from DynamicCollidable inverse mass.
          */
+        P3B1.setScope("wind");
         this.waterPerformanceProfiler.measure("localWindForces", (): void => {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("windForces")!==false)this.localWindDynamicForceSystem.update(deltaTime);
         });
@@ -2640,10 +2706,15 @@ export class World {
         this.forceBenchmarkFireTubeSourcesIfRequired();
 
         this.rotatorElementalObstacles.synchronize(this.rotators);
+        P3B1.setScope("vfx");
         this.waterPerformanceProfiler.measure("windPresentation", (): void => {
-            this.localWindDebugVisualizer?.update();
+            P3C2.measure("windPresentation", (): void => {
+
+            if (!this.windVfxIsolationB3) this.localWindDebugVisualizer?.update();
             this.windVfxSystem?.update(deltaTime);
-        });
+        
+            });
+});
 
         if (this.windVfxSystem) {
             const windProfile =
@@ -2685,6 +2756,8 @@ export class World {
         }
 
         this.waterPerformanceProfiler.measure("gameplayPresentation", (): void => {
+            P3C2.measure("gameplayPresentation", (): void => {
+
             if (
                 this.connector &&
                 this.ball &&
@@ -2699,7 +2772,9 @@ export class World {
 
             this.windValidationMetrics
                 ?.update();
-        });
+        
+            });
+});
 
 
 
@@ -2764,13 +2839,14 @@ export class World {
                 this.app.screen.width, this.app.screen.height);
         }
 
+        P3B1.setScope("world-end");
         this.waterPerformanceProfiler
             .endFrame(
                 deltaTime,
             );
         if (this.performanceInvestigation) {
             PassBCounters.passB("worldFrames");
-            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.publishDiagnosticSnapshot(), {
+            this.performanceInvestigation.update(deltaTime, this.waterPerformanceProfiler.getSnapshot(), {
                 waterPackets: this.airborneWaterSystem.getActivePacketCount(),
                 windParticles: this.windVfxSystem?.getActiveParticleCount() ?? 0,
                 fireParticles: this.fireVfxSystem?.getActiveParticleCount() ?? 0,
@@ -2779,6 +2855,14 @@ export class World {
         }
 
 
+        P3B1.setScope("outside-world-update");
+    }    /** Read-only workload snapshot for the P3-A1 frame profiler. */
+    public getP3A1Workload(): {waterPackets:number;fireParticles:number;windParticles:number} {
+        return {
+            waterPackets:this.airborneWaterSystem.getActivePacketCount(),
+            fireParticles:this.fireVfxSystem?.getActiveParticleCount() ?? 0,
+            windParticles:this.windVfxSystem?.getActiveParticleCount() ?? 0,
+        };
     }
 
     public destroy():
@@ -3462,9 +3546,10 @@ export class World {
                 true;
 
             this.windVfxSystem
-                .setEnabled(
+                .setDiagnosticPresentationEnabled(
                     benchmarkWindEnabled &&
-                    !hideWind,
+                    !hideWind &&
+                    !this.windVfxIsolationB3,
                 );
         }
 

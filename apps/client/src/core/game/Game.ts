@@ -1,3 +1,7 @@
+import { PixiPresentationProfiler as P3C2 } from "./debug/PixiPresentationProfiler";
+import { WaterSubphaseProfiler as P3C1 } from "./debug/WaterSubphaseProfiler";
+import { GeometryQueryAttributionProfiler as P3B1 } from "./debug/GeometryQueryAttributionProfiler";
+import { PerformanceDiagnosticStatusOverlay as P3B1Overlay } from "./debug/PerformanceDiagnosticStatusOverlay";
 import { Container } from "pixi.js";
 import { EngineLoop } from "../engine/EngineLoop";
 import { EngineState } from "../engine/EngineState";
@@ -42,7 +46,9 @@ import type {
 
 import { ShotController } from "./shot/ShotController";
 import { World } from "./world/World";
-import { isPerformanceInvestigationEnabled } from "./debug/PerformanceInvestigationDefinition";
+import { isPerformanceInvestigationEnabled, isFrameStallAttributionP3A1, isBrowserMainThreadTraceP3A2 } from "./debug/PerformanceInvestigationDefinition";
+import { FrameStallAttributionProfiler } from "./debug/FrameStallAttributionProfiler";
+import { BrowserMainThreadTraceProfiler } from "./debug/BrowserMainThreadTraceProfiler";
 import { BallLivesHud } from "./ui/BallLivesHud";
 import { ResetBallButton } from "./ui/ResetBallButton";
 import { BallDeathController } from "./death/BallDeathController";
@@ -61,6 +67,10 @@ import { BallDeathTransitionValidation } from "./debug/BallDeathTransitionValida
 import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation";
 
 export class Game {
+    private readonly p3b1StartedAt = performance.now();
+    private readonly p3a2Profiler = isBrowserMainThreadTraceP3A2() ? new BrowserMainThreadTraceProfiler() : null;
+    private readonly p3a1Profiler = isFrameStallAttributionP3A1() ? new FrameStallAttributionProfiler() : null;
+
     private shotPowerBaselineValidation: ShotPowerBaselineValidation | null = null;
 
     private readonly container:
@@ -780,6 +790,16 @@ export class Game {
 
         const gameUpdateStartedAt =
             performance.now();
+        P3C2.recordFrame(gameUpdateStartedAt);
+        const p3c2FrameStart = P3C2.start();
+        if (P3B1.enabled) {
+            P3B1.recordFrame(gameUpdateStartedAt);
+            const elapsed = performance.now() - this.p3b1StartedAt;
+            if (elapsed < 5000) P3B1Overlay.show(`P3-B1 | Warm-up: ${Math.max(0, Math.ceil((5000-elapsed)/1000))}s`);
+            else if (elapsed < 65000) P3B1Overlay.show(`P3-B1 | Recording: ${Math.min(12,Math.floor((elapsed-5000)/5000)+1)}/12`);
+        }
+        if (P3C1.enabled) P3C1.recordFrame(gameUpdateStartedAt);
+        let p3a1WorldMs = 0;
 
         this.ballDeathController
             ?.update(deltaTime);
@@ -904,7 +924,9 @@ export class Game {
             this.cameraController?.setEnabled(false);
 
             // World motion continues slowly, but player control stays locked.
-            this.world?.update(slowedDeltaTime);
+            const p3a1SlowWorldStart = (this.p3a1Profiler || this.p3a2Profiler) ? performance.now() : 0;
+            P3C2.measure("worldUpdate", () => { this.world?.update(slowedDeltaTime); });
+            if (this.p3a1Profiler || this.p3a2Profiler) p3a1WorldMs = performance.now() - p3a1SlowWorldStart;
 
             if (cameraFocusActive) {
                 this.world?.updateDeathCameraFocus(
@@ -963,8 +985,10 @@ export class Game {
             this.cameraController?.setShotFollowLocked(true);
         }
 
+        const p3a1WorldStart = (this.p3a1Profiler || this.p3a2Profiler) ? performance.now() : 0;
         this.world
             ?.update(deltaTime);
+        p3a1WorldMs = (this.p3a1Profiler || this.p3a2Profiler) ? performance.now() - p3a1WorldStart : 0;
         if (this.world) {
             this.shotCameraFollow.update(deltaTime, this.world.getBall(), this.world.getCamera());
             if (this.shotCameraFollow.consumeCompletion()) {
@@ -1087,6 +1111,7 @@ export class Game {
 
         this.inputManager.update();
 
+        P3C2.end("frameCallback",p3c2FrameStart);
         this.world
             ?.recordFramePresentationDiagnostics(
                 performance.now() -
@@ -1094,6 +1119,16 @@ export class Game {
                 this.renderer
                     .getLastPixiRenderMilliseconds(),
             );
+        if (this.p3a1Profiler || this.p3a2Profiler) {
+            const frameEnd = performance.now();
+            this.p3a2Profiler?.record(gameUpdateStartedAt, frameEnd, p3a1WorldMs, this.renderer.getLastPixiRenderMilliseconds());
+        }
+        if (this.p3a1Profiler) {
+            const frameEnd = performance.now();
+            this.p3a1Profiler.record(gameUpdateStartedAt, frameEnd, p3a1WorldMs,
+                this.renderer.getLastPixiRenderMilliseconds(),
+                this.world?.getP3A1Workload() ?? {waterPackets:0,fireParticles:0,windParticles:0});
+        }
     };
 
     // -------------------------------------------------------------------------

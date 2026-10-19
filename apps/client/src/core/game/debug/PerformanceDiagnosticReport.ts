@@ -25,13 +25,27 @@ export function buildDiagnosticReport(label: string, index: number, frameStats: 
         windVfx: snapshot.windPresentationAverageMilliseconds,
         surface: snapshot.surfaceAverageMilliseconds,
     };
-    return { tag: "PASS-A", configuration: label, report: `${index}/5`, frames: frameStats.frames, elapsedMs:+frameStats.elapsedMs.toFixed(1),
+    const categories: Record<string, number> = {
+        waterSimulation: metrics.waterAirborne + metrics.waterFlow + metrics.waterGround,
+        waterVfx: metrics.waterVfx,
+        fireSimulation: metrics.fireSimulation,
+        fireVfx: metrics.fireVfx,
+        windSimulation: metrics.windForces + metrics.windSuction,
+        windVfx: metrics.windVfx,
+        physicsCollisions: metrics.dynamicCollisions,
+        robotsAI: metrics.robotAI,
+        renderingCpu: metrics.pixiRender,
+        otherMeasured: metrics.surface + metrics.entities,
+    };
+    return { tag: "PASS-A", configuration: label, report: `${index}`, frames: frameStats.frames, elapsedMs:+frameStats.elapsedMs.toFixed(1),
         fps:+frameStats.fps.toFixed(1),
         frameAvgMs:+frameStats.averageMs.toFixed(2), frameP95Ms:+frameStats.p95Ms.toFixed(2), frameP99Ms:+frameStats.p99Ms.toFixed(2),
         frameMaxMs:+frameStats.maxMs.toFixed(2),
         spikesOver16_67ms:frameStats.spikes,browserStalls:frameStats.browserStalls,stallDurationsMs:frameStats.stallDurationsMs,wallElapsedMs:frameStats.wallElapsedMs,
         timingsMs:metrics,
+        categoriesMs: categories,
+        categoryRanking: Object.entries(categories).sort((a,b)=>b[1]-a[1]),
         ranking:Object.entries(metrics).filter(([k])=>k!=="world").sort((a,b)=>b[1]-a[1]).slice(0,8),
         workload, counters, cacheEffectiveness:{lookups:counters["geometry.cellCacheLookups"]??0,hits:counters["geometry.cellCacheHits"]??0,misses:counters["geometry.cellCacheMisses"]??0,bypasses:counters["geometry.cellCacheBypasses"]??0,invalidations:counters["geometry.cellCacheInvalidations"]??0}, geometryAcceleration:Object.fromEntries(Object.entries(counters).filter(([k])=>k.startsWith("geometry."))),
-        note:"Timings may overlap; Pixi render is CPU submission, not GPU completion. Subsystem timings are sampled from existing Water profiler and may use a different accumulation period; do not sum overlapping timings." };
+        note:"Category timings are diagnostic estimates, not additive frame totals. Timings may overlap; Pixi render is CPU submission, not GPU completion. Subsystem timings are sampled from existing Water profiler and may use a different accumulation period; do not sum overlapping timings." };
 }

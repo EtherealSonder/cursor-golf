@@ -171,6 +171,9 @@ export class WindVfxSystem {
 
         if (!enabled) {
             this.reset();
+            this.performanceDetails.globalEmitterMilliseconds = 0;
+            this.performanceDetails.localEmitterMilliseconds = 0;
+            this.performanceDetails.poolBookkeepingMilliseconds = 0;
         }
 
         this.container.visible =

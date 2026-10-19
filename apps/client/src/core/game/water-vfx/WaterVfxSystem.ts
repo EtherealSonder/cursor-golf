@@ -1,3 +1,4 @@
+import { WaterSubphaseProfiler as P3C1 } from "../debug/WaterSubphaseProfiler";
 import {
     Container,
     Texture,
@@ -147,7 +148,14 @@ export class WaterVfxSystem {
     }
 
     private diagnosticPresentationEnabled=true;
-    public setDiagnosticPresentationEnabled(enabled:boolean):void{this.diagnosticPresentationEnabled=enabled;this.groundContainer.visible=enabled&&this.definition.enabled;this.airborneContainer.visible=enabled&&this.definition.enabled;}
+    public setDiagnosticPresentationEnabled(enabled: boolean): void {
+        if (this.diagnosticPresentationEnabled === enabled) return;
+        this.diagnosticPresentationEnabled = enabled;
+        this.groundContainer.visible = enabled && this.definition.enabled;
+        this.airborneContainer.visible = enabled && this.definition.enabled;
+        // Clear stale effects when switching modes so re-enabling starts cleanly.
+        if (!enabled) this.reset();
+    }
     public getGroundContainer(): Container {
         return this.groundContainer;
     }
@@ -288,10 +296,10 @@ export class WaterVfxSystem {
             return;
         }
 
-        this.streamRenderer.update(deltaTime);
-        this.sprinklerDropletRenderer.update(deltaTime);
-        this.pool.update(deltaTime);
-        this.impactVfxSystem.update(deltaTime);
+        P3C1.measure("vfx.streamRenderer", () => { this.streamRenderer.update(deltaTime); });
+        P3C1.measure("vfx.sprinklerDroplets", () => { this.sprinklerDropletRenderer.update(deltaTime); });
+        P3C1.measure("vfx.particlePool", () => { this.pool.update(deltaTime); });
+        P3C1.measure("vfx.impactParticles", () => { this.impactVfxSystem.update(deltaTime); });
 
     }
 

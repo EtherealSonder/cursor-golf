@@ -1,3 +1,4 @@
+import { GeometryQueryAttributionProfiler as P3B1 } from "../debug/GeometryQueryAttributionProfiler";
 import { CourseGeometryAccelerationProfiler as Geo } from "../debug/CourseGeometryAccelerationProfiler";
 import { CourseGeometrySpatialIndex } from "./CourseGeometrySpatialIndex";
 import { CourseEnvironmentCellCache } from "./CourseEnvironmentCellCache";
@@ -30,15 +31,19 @@ export class CourseEnvironmentBoundary {
     }
     containsPoint(x: number, y: number): boolean {
         P1.add("polygonPoint");
-        if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+        const p3b1Sample = P3B1.beginQuery();
+        if (!Number.isFinite(x) || !Number.isFinite(y)) { P3B1.endQuery(p3b1Sample); return false; }
         Geo.add("exactPolygonTests");
         if (Geo.shouldSamplePoint()) {
             const started = performance.now();
             const result = containsCoursePoint(this.geometry, { x, y });
             Geo.recordPointSample(performance.now() - started);
+            P3B1.endQuery(p3b1Sample);
             return result;
         }
-        return containsCoursePoint(this.geometry, { x, y });
+        const result = containsCoursePoint(this.geometry, { x, y });
+        P3B1.endQuery(p3b1Sample);
+        return result;
     }
     isInsidePlayableArea(x: number, y: number): boolean { return this.containsPoint(x, y); }
     containsCircle(x: number, y: number, radius: number): boolean {

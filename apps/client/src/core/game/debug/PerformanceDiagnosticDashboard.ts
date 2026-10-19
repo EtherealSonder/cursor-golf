@@ -7,13 +7,15 @@ import type { PerformanceDiagnosticConfiguration, VfxKind } from "./PerformanceD
 export class PerformanceDiagnosticDashboard {
     private readonly root = new Container();
     private readonly heading = new Text({ text: "", style: {fontFamily:"monospace",fontSize:14,fill:0xffffff,fontWeight:"bold"} });
+    private readonly metrics = new Text({text:"Awaiting first 5-second report...",style:{fontFamily:"monospace",fontSize:11,fill:0xffffff}});
     private readonly buttons: Container[] = [];
     private readonly buttonsBg: Graphics[] = [];
     private selectedScenario: BenchmarkScenarioId = "P0-S5";
     constructor(private readonly change: (next: PerformanceDiagnosticConfiguration) => void, private readonly runAll:()=>void, private readonly runPassB:()=>void=()=>{}, private readonly runP0:()=>void=()=>{}, private readonly selectP0:(id:BenchmarkScenarioId)=>void=()=>{}) {
         this.root.zIndex = 30000;
         this.root.eventMode = "passive";
-        this.root.addChild(this.heading);
+        this.root.addChild(this.heading,this.metrics);
+        this.metrics.position.set(-320,185);
         DIAGNOSTIC_PRESETS.forEach((preset,i) => this.makeButton(preset.label, i, () => this.change({...preset.value})));
         this.makeButton("TOGGLE FIRE", 8, () => this.toggle("fire"));
         this.makeButton("TOGGLE WATER", 9, () => this.toggle("water"));
@@ -42,6 +44,11 @@ export class PerformanceDiagnosticDashboard {
             const active = i<8 ? DIAGNOSTIC_PRESETS[i].label===diagnosticLabel(config) : i>=13 && i<=17 ? P0_SCENARIOS[i-13].id===this.selectedScenario : i>=11 ? false : !config[(["fire","water","wind"] as const)[i-8]];
             g.clear().roundRect(0,0,128,24,5).fill({color:active?0x285b7c:0x202b38,alpha:.94});
         });
+    }
+    public setMetrics(ranking: [string,number][], fps:number,p95:number,max:number):void {
+        this.metrics.text = `FPS ${fps.toFixed(1)} | P95 ${p95.toFixed(1)}ms | MAX ${max.toFixed(1)}ms\n`+
+          ranking.map(([name,ms])=>`${name.padEnd(20)} ${ms.toFixed(2)} ms`).join("\n")+
+          "\nCategories may overlap; do not sum as total frame time.";
     }
     public layout(width: number): void {
         this.root.position.set(width/2,8);

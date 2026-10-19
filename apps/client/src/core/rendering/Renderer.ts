@@ -1,3 +1,4 @@
+import { PixiPresentationProfiler as P3C2 } from "../game/debug/PixiPresentationProfiler";
 import {
     Application,
     UPDATE_PRIORITY,
@@ -48,6 +49,7 @@ export class Renderer {
                 return;
             }
 
+            const p3c2Start = P3C2.start();
             const startedAt =
                 performance.now();
 
@@ -57,6 +59,7 @@ export class Renderer {
                 performance.now() -
                 startedAt;
 
+            P3C2.end("pixiRender", p3c2Start);
             this.lastPixiRenderMilliseconds =
                 elapsed;
 

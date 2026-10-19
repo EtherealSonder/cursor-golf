@@ -345,12 +345,39 @@ export class FireVfxSystem {
         );
     }
 
+    /** B2: suppress only active flame particles, preserving the scorched-ground renderer. */
+    private diagnosticFlamesEnabled = true;
+
+    public setDiagnosticFlamesEnabled(enabled: boolean): void {
+        if (this.diagnosticFlamesEnabled === enabled) return;
+        this.diagnosticFlamesEnabled = enabled;
+        if (!enabled) this.resetActiveFireOnly();
+        this.airborneContainer.visible = enabled;
+    }
+
+    /** Run scorch presentation without allocating/updating flame particles. */
+    public updateScorchOnly(deltaTime: number): void {
+        if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
+        const start = performance.now();
+        this.scorchRenderer.update(deltaTime);
+        this.performanceDetails.scorchRendererMilliseconds = performance.now() - start;
+        this.performanceDetails.groundEmitterMilliseconds = 0;
+        this.performanceDetails.directionalEmitterMilliseconds = 0;
+        this.performanceDetails.poolUpdateMilliseconds = 0;
+        this.performanceDetails.directionalRegionMilliseconds = 0;
+        this.performanceDetails.directionalSuppressionMilliseconds = 0;
+    }
+
     /** Diagnostic-only marker; World owns the update gate. */
     public isDiagnosticPresentationAvailable():boolean{return true;}
     public update(
         deltaTime:
             number,
     ): void {
+        if (!this.diagnosticFlamesEnabled) {
+            this.updateScorchOnly(deltaTime);
+            return;
+        }
 
         if (
             !Number.isFinite(
