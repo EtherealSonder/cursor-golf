@@ -49,3 +49,8 @@ export function isAllEnabledBaseline(): boolean {
 export function isPerformanceInvestigationEnabled(): boolean {
     return typeof window !== "undefined" && ["1", "B1", "B3", "B4", "P3A1", "P3A2", "P3B1", "P3C1", "P3C2", "BASELINE"].includes(new URLSearchParams(window.location.search).get("perfdiag")?.toUpperCase() ?? "");
 }
+
+/** Caller stack capture is strictly opt-in; BASELINE and gameplay remain unaffected. */
+export function isGeometryCallerSamplingEnabled(): boolean {
+    return isGeometryQueryAttributionP3B1();
+}

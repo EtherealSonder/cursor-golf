@@ -992,19 +992,24 @@ export class WaterField {
     private calculateCurrentShallowWaterMobility(): number {
         let representativeDepth = 0;
 
+        // O2-B: the maximum depth is only needed until full mobility is
+        // reached. Exit immediately once the exact result is known.
+        const fullDepth =
+            this.definition.fullMobilityDepth;
+
         for (const index of this.activeIndices) {
             representativeDepth =
                 Math.max(
                     representativeDepth,
                     this.depth[index],
                 );
+            if (representativeDepth >= fullDepth) {
+                return 1;
+            }
         }
 
         const thinDepth =
             this.definition.thinWaterDepth;
-
-        const fullDepth =
-            this.definition.fullMobilityDepth;
 
         if (representativeDepth <= thinDepth) {
             return this.definition

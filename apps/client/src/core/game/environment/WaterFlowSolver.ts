@@ -93,7 +93,6 @@ export class WaterFlowSolver {
             }
 
             const gridX = index % this.columnCount;
-            const gridY = Math.floor(index / this.columnCount);
 
             if (
                 gridX + 1 < this.columnCount &&
@@ -116,7 +115,7 @@ export class WaterFlowSolver {
             }
 
             if (
-                gridY + 1 < this.rowCount &&
+                index + this.columnCount < expectedCellCount &&
                 (
                     obstacleField === null ||
                     obstacleField.canFlowBetween(index, index + this.columnCount)

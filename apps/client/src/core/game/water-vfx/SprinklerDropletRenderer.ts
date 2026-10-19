@@ -38,6 +38,10 @@ interface DropletSlot {
     readonly highlight: Graphics;
     seenThisFrame: boolean;
     seed: number;
+    rotationOffset: number;
+    lengthVariation: number;
+    widthVariation: number;
+    pulsePhase: number;
 }
 
 /**
@@ -119,7 +123,9 @@ export class SprinklerDropletRenderer {
         for (let index = 0; index < presentations.length; index += 1) {
             const presentation = presentations[index];
             const slot = resolvedSlots[index];
-            slot.container.position.set(presentation.x, presentation.y);
+            if (slot.container.x !== presentation.x || slot.container.y !== presentation.y) {
+                slot.container.position.set(presentation.x, presentation.y);
+            }
 
             const speedSquared =
                 presentation.velocityX * presentation.velocityX +
@@ -130,10 +136,7 @@ export class SprinklerDropletRenderer {
                         presentation.velocityY,
                         presentation.velocityX,
                     ) +
-                    this.signedVariation(
-                        presentation.seed + 31,
-                        this.definition.rotationVariationRadians,
-                    );
+                    slot.rotationOffset;
             }
         }
         this.frameTransformMilliseconds = performance.now() - startedAt;
@@ -156,7 +159,7 @@ export class SprinklerDropletRenderer {
                 1 +
                 Math.sin(
                     this.animationTime * this.definition.pulseSpeed +
-                    presentation.seed * 0.731,
+                    slot.pulsePhase,
                 ) * this.definition.pulseAmplitude;
 
             slot.container.alpha = this.clamp01(
@@ -201,10 +204,7 @@ export class SprinklerDropletRenderer {
                     presentation.velocityY,
                     presentation.velocityX,
                 ) +
-                this.signedVariation(
-                    presentation.seed + 31,
-                    this.definition.rotationVariationRadians,
-                );
+                slot.rotationOffset;
         }
         this.frameTransformMilliseconds += performance.now() - startedAt;
 
@@ -218,7 +218,7 @@ export class SprinklerDropletRenderer {
             1 +
             Math.sin(
                 this.animationTime * this.definition.pulseSpeed +
-                presentation.seed * 0.731,
+                slot.pulsePhase,
             ) * this.definition.pulseAmplitude;
 
         slot.container.alpha = this.clamp01(
@@ -320,6 +320,10 @@ export class SprinklerDropletRenderer {
             highlight,
             seenThisFrame: true,
             seed,
+            rotationOffset: this.signedVariation(seed + 31, this.definition.rotationVariationRadians),
+            lengthVariation: this.signedVariation(seed + 11, this.definition.packetLengthVariation),
+            widthVariation: this.signedVariation(seed + 19, this.definition.packetWidthVariation),
+            pulsePhase: seed * 0.731,
         };
 
         this.slots.set(id, slot);
@@ -431,27 +435,11 @@ export class SprinklerDropletRenderer {
          */
         const lengthScale =
             1 +
-            this.signedVariation(
-                slot.seed + 11,
-                this.definition.packetLengthVariation *
-                this.lerp(
-                    0.85,
-                    1,
-                    downstreamProgress,
-                ),
-            );
+            slot.lengthVariation * this.lerp(0.85, 1, downstreamProgress);
 
         const widthScale =
             1 +
-            this.signedVariation(
-                slot.seed + 19,
-                this.definition.packetWidthVariation *
-                this.lerp(
-                    0.85,
-                    1,
-                    downstreamProgress,
-                ),
-            );
+            slot.widthVariation * this.lerp(0.85, 1, downstreamProgress);
 
         const length =
             Math.max(

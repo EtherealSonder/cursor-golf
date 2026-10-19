@@ -419,10 +419,11 @@ export class FireVfxSystem {
          * Directional presentation footprint reached them.
          */
         const suppressionStartedAt = performance.now();
-        this.pool
-            .suppressGroundParticlesInDirectionalRegion(
+        if (this.pool.hasActiveGroundParticles()) {
+            this.pool.suppressGroundParticlesInDirectionalRegion(
                 this.directionalPresentationRegion,
             );
+        }
         this.performanceDetails.directionalSuppressionMilliseconds =
             performance.now() - suppressionStartedAt;
 

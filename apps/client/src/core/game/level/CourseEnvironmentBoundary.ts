@@ -23,8 +23,59 @@ export class CourseEnvironmentBoundary {
     public clearAccelerationCaches(): void { this.cellCache.clear(); }
     public getCachedCellCount(): number { return this.cellCache.size; }
 
+    /** O1-B: reject footprints whose full bounding box is separated from every
+     * course edge. Otherwise retain the original exact sampling behavior. */
     public fractionOutside(footprint: CourseFootprint): number {
+        const box = this.getFootprintBounds(footprint);
+        if (box) {
+            const bounds = this.geometry.bounds;
+            if (box.maxX < bounds.minimumX || box.minX > bounds.maximumX ||
+                box.maxY < bounds.minimumY || box.minY > bounds.maximumY) {
+                P1.add("geometry.footprintOutsideFastPaths");
+                return 1;
+            }
+            if (box.minX > bounds.minimumX && box.maxX < bounds.maximumX &&
+                box.minY > bounds.minimumY && box.maxY < bounds.maximumY) {
+                let nearEdge = false;
+                for (const edge of this.geometry.edges) {
+                    if (Math.max(edge.start.x, edge.end.x) >= box.minX &&
+                        Math.min(edge.start.x, edge.end.x) <= box.maxX &&
+                        Math.max(edge.start.y, edge.end.y) >= box.minY &&
+                        Math.min(edge.start.y, edge.end.y) <= box.maxY) {
+                        nearEdge = true;
+                        break;
+                    }
+                }
+                if (!nearEdge) {
+                    // With no polygon boundary in the footprint's bounding box,
+                    // the entire connected footprint has the center's membership.
+                    const inside = this.containsPoint(footprint.x, footprint.y);
+                    P1.add("geometry.footprintInteriorFastPaths");
+                    return inside ? 0 : 1;
+                }
+            }
+        }
+        P1.add("geometry.footprintExactFallbacks");
         return fractionOutsideFootprint((x, y) => this.containsPoint(x, y), footprint);
+    }
+
+    private getFootprintBounds(footprint: CourseFootprint): {minX:number;maxX:number;minY:number;maxY:number} | null {
+        if (!Number.isFinite(footprint.x) || !Number.isFinite(footprint.y)) return null;
+        let extentX: number, extentY: number;
+        if (footprint.kind === "circle") {
+            if (!Number.isFinite(footprint.radius) || footprint.radius <= 0) return null;
+            extentX = footprint.radius;
+            extentY = footprint.radius;
+        } else {
+            if (!Number.isFinite(footprint.width) || !Number.isFinite(footprint.height) ||
+                !Number.isFinite(footprint.rotationRadians) || footprint.width <= 0 || footprint.height <= 0) return null;
+            const c = Math.abs(Math.cos(footprint.rotationRadians));
+            const s = Math.abs(Math.sin(footprint.rotationRadians));
+            extentX = c * footprint.width * 0.5 + s * footprint.height * 0.5;
+            extentY = s * footprint.width * 0.5 + c * footprint.height * 0.5;
+        }
+        return {minX:footprint.x-extentX,maxX:footprint.x+extentX,
+            minY:footprint.y-extentY,maxY:footprint.y+extentY};
     }
     public isFootprintMostlyOutside(footprint: CourseFootprint, threshold = 0.8): boolean {
         return this.fractionOutside(footprint) > threshold + 1e-6;

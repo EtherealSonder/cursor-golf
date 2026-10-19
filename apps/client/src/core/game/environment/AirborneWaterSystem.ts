@@ -449,10 +449,9 @@ export class AirborneWaterSystem {
          * this fixed step. Resolve it once rather than once per live packet.
          * Local Wind remains packet-position dependent and is sampled below.
          */
-        const globalWind =
-            this.windManager
-                ?.getAcceleration() ??
-            { x: 0, y: 0 };
+        const globalWind = this.windManager?.getAcceleration();
+        const globalWindX = globalWind?.x ?? 0;
+        const globalWindY = globalWind?.y ?? 0;
 
         for (
             let index =
@@ -474,21 +473,17 @@ export class AirborneWaterSystem {
              * Ball-speed-scaled APIs. Airborne Water has its own source-authored
              * windResponse and must not inherit Ball rest/reversal behaviour.
              */
-            const localWind =
-                this.localWindSystem
-                    ?.getAccelerationAt(
-                        packet.getPositionX(),
-                        packet.getPositionY(),
-                    ) ??
-                { x: 0, y: 0 };
+            const localWind = this.localWindSystem?.getAccelerationAt(
+                packet.getPositionX(), packet.getPositionY(),
+            );
 
             const combinedWindAccelerationX =
-                globalWind.x +
-                localWind.x;
+                globalWindX +
+                (localWind?.x ?? 0);
 
             const combinedWindAccelerationY =
-                globalWind.y +
-                localWind.y;
+                globalWindY +
+                (localWind?.y ?? 0);
 
             const previousPositionX =
                 packet.getPositionX();

@@ -163,16 +163,19 @@ export class SprinklerWaterVfx {
                         return;
                     }
 
-                    // B8: thin in-foliage droplet marks; authoritative absorption
-                    // already removes most packets on the far side of the bush.
-                    if (this.airborneWaterSystem.isInsideBushFoliage(packet.getPositionX(),packet.getPositionY()) &&
-                        Math.abs(packet.getSequence()) % 3 !== 0) return;
+                    // Reject visually skipped packets before the foliage query.
+                    // The two filters are independent; changing their order does
+                    // not change which authoritative packets become visible.
                     const sequence = packet.getSequence();
-                    if (
-                        Math.abs(sequence) %
-                        stride !==
-                        0
-                    ) {
+                    const absoluteSequence = Math.abs(sequence);
+                    if (absoluteSequence % stride !== 0) {
+                        return;
+                    }
+                    const packetX = packet.getPositionX();
+                    const packetY = packet.getPositionY();
+                    // B8: retain exactly the same foliage thinning rule.
+                    if (absoluteSequence % 3 !== 0 &&
+                        this.airborneWaterSystem.isInsideBushFoliage(packetX, packetY)) {
                         return;
                     }
 
@@ -207,10 +210,10 @@ export class SprinklerWaterVfx {
                             `sprinkler:${sourceId}:` +
                             `${sequence}:${emissionOrdinal}`,
                         x:
-                            packet.getPositionX() +
+                            packetX +
                             directionX * spacingOffset,
                         y:
-                            packet.getPositionY() +
+                            packetY +
                             directionY * spacingOffset,
                         velocityX,
                         velocityY,

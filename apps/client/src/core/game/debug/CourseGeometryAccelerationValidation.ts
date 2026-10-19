@@ -1,3 +1,4 @@
+import { fractionOutsideFootprint, type CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
 import { buildCourseGeometry } from "../level/CourseGeometryBuilder";
 import { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import { CourseGeometrySpatialIndex } from "../level/CourseGeometrySpatialIndex";
@@ -28,6 +29,17 @@ export function assertCourseGeometryAccelerationValidation():void {
                 throw new Error(`[P1] segment intersection mismatch for sample ${i}`);
             if(boundary.containsPoint(a.x,a.y)!==containsCoursePoint(geometry,a))
                 throw new Error(`[P1] point containment mismatch for sample ${i}`);
+            if (i < 150) {
+                const footprints: CourseFootprint[] = [
+                    {kind:"circle",x:a.x,y:a.y,radius:1+rand()*30},
+                    {kind:"rectangle",x:a.x,y:a.y,width:1+rand()*40,height:1+rand()*35,rotationRadians:rand()*Math.PI*2},
+                ];
+                for (const footprint of footprints) {
+                    const expected = fractionOutsideFootprint((x,y)=>containsCoursePoint(geometry,{x,y}),footprint);
+                    const actual = boundary.fractionOutside(footprint);
+                    if (Math.abs(expected-actual)>1e-12) throw new Error(`[O1-B] footprint equivalence mismatch for sample ${i}: ${actual} vs ${expected}`);
+                }
+            }
             const size=8;
             const x=Math.floor(a.x/size)*size,y=Math.floor(a.y/size)*size;
             for(const policy of ["center","full"] as const) {

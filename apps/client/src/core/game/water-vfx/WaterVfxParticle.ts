@@ -141,16 +141,20 @@ export class WaterVfxParticle {
         this.velocityX += this.gravityX * deltaTime;
         this.velocityY += this.gravityY * deltaTime;
 
-        const dragMultiplier = Math.exp(-this.dragPerSecond * deltaTime);
-        this.velocityX *= dragMultiplier;
-        this.velocityY *= dragMultiplier;
+        if (this.dragPerSecond > 0) {
+            const dragMultiplier = Math.exp(-this.dragPerSecond * deltaTime);
+            this.velocityX *= dragMultiplier;
+            this.velocityY *= dragMultiplier;
+        }
 
-        this.sprite.x += this.velocityX * deltaTime;
-        this.sprite.y += this.velocityY * deltaTime;
+        if (this.velocityX !== 0 || this.velocityY !== 0) {
+            this.sprite.x += this.velocityX * deltaTime;
+            this.sprite.y += this.velocityY * deltaTime;
+        }
 
         if (this.orientToVelocity) {
             this.applyVelocityOrientation();
-        } else {
+        } else if (this.angularVelocity !== 0) {
             this.sprite.rotation += this.angularVelocity * deltaTime;
         }
 

@@ -18,6 +18,8 @@ export class AirborneWaterCollisionField {
         AirborneWaterObstacleShape[] = [];
 
     private readonly spatialBuckets = new Map<string, number[]>();
+    // Bounds are computed once when shapes are registered, not for every sweep.
+    private readonly shapeBounds: Array<{minimumX: number; maximumX: number; minimumY: number; maximumY: number}> = [];
     private readonly spatialCellSize = 96;
 
     /*
@@ -39,6 +41,7 @@ export class AirborneWaterCollisionField {
     public clear(): void {
         this.shapes.length = 0;
         this.spatialBuckets.clear();
+        this.shapeBounds.length = 0;
         this.candidateStamps.length = 0;
         this.candidateScratch.length = 0;
         this.candidateGeneration = 1;
@@ -50,7 +53,9 @@ export class AirborneWaterCollisionField {
         this.validateShape(shape);
         const shapeIndex = this.shapes.length;
         this.shapes.push(shape);
-        this.registerShapeInSpatialBuckets(shape, shapeIndex);
+        const bounds = this.getShapeBounds(shape);
+        this.shapeBounds.push(bounds);
+        this.registerShapeInSpatialBuckets(bounds, shapeIndex);
     }
 
     public addRectangle(
@@ -119,12 +124,20 @@ export class AirborneWaterCollisionField {
         const candidateIndices = this.getCandidateShapeIndices(
             startX, startY, endX, endY,
         );
+        const segmentMinX = Math.min(startX, endX);
+        const segmentMaxX = Math.max(startX, endX);
+        const segmentMinY = Math.min(startY, endY);
+        const segmentMaxY = Math.max(startY, endY);
 
         for (const shapeIndex of candidateIndices) {
             const shape = this.shapes[shapeIndex];
             if (!shape) {
                 continue;
             }
+            // Conservative segment-AABB rejection; exact swept collision remains authoritative.
+            const bounds = this.shapeBounds[shapeIndex];
+            if (bounds && (segmentMaxX < bounds.minimumX || segmentMinX > bounds.maximumX ||
+                segmentMaxY < bounds.minimumY || segmentMinY > bounds.maximumY)) continue;
             if (
                 ignoredSourceId &&
                 shape.ownerSourceIds?.includes(ignoredSourceId)
@@ -165,10 +178,9 @@ export class AirborneWaterCollisionField {
 
 
     private registerShapeInSpatialBuckets(
-        shape: AirborneWaterObstacleShape,
+        bounds: {minimumX: number; maximumX: number; minimumY: number; maximumY: number},
         shapeIndex: number,
     ): void {
-        const bounds = this.getShapeBounds(shape);
         const minCellX = Math.floor(bounds.minimumX / this.spatialCellSize);
         const maxCellX = Math.floor(bounds.maximumX / this.spatialCellSize);
         const minCellY = Math.floor(bounds.minimumY / this.spatialCellSize);

@@ -1409,7 +1409,7 @@ export class World {
             this.robotInteractionRegistry.register({
                 id: collision.id,
                 label: "Radial Bumper",
-                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+                capabilities: { navigationBlocker: true, attackTarget: false, visionOccluder: true },
                 shape: { kind: "circle", radius: collision.shape === "circle" ? collision.radius : 39 },
                 getX: (): number => bumper.getX(),
                 getY: (): number => bumper.getY(),
@@ -1443,7 +1443,7 @@ export class World {
             this.robotInteractionRegistry.register({
                 id: bumper.getColliderId(),
                 label: "Directional Bumper",
-                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: false },
+                capabilities: { navigationBlocker: true, attackTarget: false, visionOccluder: false },
                 shape: { kind: "circle", radius: bumper.getDefinition().armLength },
                 getX: (): number => bumper.getX(),
                 getY: (): number => bumper.getY(),
@@ -1494,7 +1494,7 @@ export class World {
             const hub = rotator.getCenter();
             this.robotInteractionRegistry.registerCircularEntity(`rotator-hub-${rotator.getId()}`, "Rotator Hub",
                 ROTATOR_DEFINITION.hubDiameter / 2, () => hub.x, () => hub.y,
-                { navigationBlocker: true, attackTarget: true, visionOccluder: true });
+                { navigationBlocker: true, attackTarget: false, visionOccluder: true });
         }
 
         // RP-1 Rotating Paddles
@@ -1515,7 +1515,7 @@ export class World {
             this.robotInteractionRegistry.register({
                 id: `${paddle.getId()}:robot-center-target`,
                 label: "Rotating paddle center",
-                capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+                capabilities: { navigationBlocker: true, attackTarget: false, visionOccluder: true },
                 shape: { kind: "circle", radius: paddle.getCenterStopperRadius() },
                 getX: (): number => paddle.getX(),
                 getY: (): number => paddle.getY(),

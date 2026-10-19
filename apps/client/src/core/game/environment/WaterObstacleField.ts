@@ -66,7 +66,33 @@ export class WaterObstacleField {
 
     private readonly courseMask: Uint8Array;
 
+    // Immutable ground occupancy from static PhysicsWorld registrations.
+    // Dynamic bodies and moving mechanisms are still rasterized every step.
+    private staticOccupancy: Uint8Array | null = null;
+
+    public invalidateStaticOccupancy(): void {
+        this.staticOccupancy = null;
+    }
+
+    public hasStaticOccupancy(): boolean {
+        return this.staticOccupancy !== null;
+    }
+
+    public captureStaticOccupancy(): void {
+        this.staticOccupancy = this.blocked.slice();
+    }
+
+    public restoreStaticOccupancy(): void {
+        if (this.staticOccupancy) {
+            this.blocked.set(this.staticOccupancy);
+        } else {
+            this.blocked.set(this.courseMask);
+        }
+    }
+
+
     public setCourseBoundary(boundary: CourseEnvironmentBoundary | null): void {
+        this.invalidateStaticOccupancy();
         this.courseMask.fill(0);
         if (boundary) {
             for (let y = 0; y < this.rowCount; y += 1) {

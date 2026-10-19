@@ -65,6 +65,7 @@ import { BallDeathTransitionRenderer } from "./death/BallDeathTransitionRenderer
 import { BallDeathTransitionValidation } from "./debug/BallDeathTransitionValidation";
 
 import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation";
+import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEquivalenceValidation";
 
 export class Game {
     private readonly p3b1StartedAt = performance.now();
@@ -230,6 +231,10 @@ export class Game {
             );
 
         this.world.initialize();
+        // Explicit, development-only validation; never runs in normal gameplay or benchmarks.
+        if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("o2bvalidate") === "1") {
+            WaterSimulationEquivalenceValidation.run();
+        }
         if (isPerformanceInvestigationEnabled()) console.info("[PERF] Pass A diagnostic dashboard enabled; rendering timing is CPU-side only.");
         
 

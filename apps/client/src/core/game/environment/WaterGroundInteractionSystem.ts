@@ -819,6 +819,8 @@ export class WaterGroundInteractionSystem {
         const rowCount =
             this.environmentField
                 .getRowCount();
+        const lastRowStart =
+            (rowCount - 1) * columnCount;
 
         /*
          * Each grid edge is visited exactly once by considering only RIGHT
@@ -833,12 +835,8 @@ export class WaterGroundInteractionSystem {
                 sourceIndex %
                 columnCount;
 
-            const sourceRow =
-                Math.floor(
-                    sourceIndex /
-                    columnCount,
-                );
-
+            // O2-B: row membership is determined directly from the linear
+            // index; no integer division is needed for each moisture cell.
             if (
                 sourceColumn <
                 columnCount - 1
@@ -851,8 +849,8 @@ export class WaterGroundInteractionSystem {
             }
 
             if (
-                sourceRow <
-                rowCount - 1
+                sourceIndex <
+                lastRowStart
             ) {
                 this.scheduleMoistureDiffusionPair(
                     sourceIndex,

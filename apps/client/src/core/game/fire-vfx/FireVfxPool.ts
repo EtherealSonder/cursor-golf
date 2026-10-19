@@ -50,7 +50,7 @@ export class FireVfxPool {
     public getPerformanceDetails() {
         let activeGroundParticles = 0;
         let activeDirectionalParticles = 0;
-        for (const particle of this.particles) {
+        for (const particle of this.activeParticles) {
             if (!particle.isActive()) continue;
             if (particle.getPresentationOrigin() === "ground") activeGroundParticles += 1;
             if (particle.getPresentationOrigin() === "directional") activeDirectionalParticles += 1;
@@ -75,6 +75,8 @@ export class FireVfxPool {
 
     // Inactive particles are recycled in O(1) rather than scanning the pool per emission.
     private readonly availableParticles: FireVfxParticle[] = [];
+    // Active-only traversal; insertion order is stable and deactivation removes entries.
+    private readonly activeParticles = new Set<FireVfxParticle>();
     private activeGroundCount = 0;
 
     private readonly initialCapacity:
@@ -189,6 +191,14 @@ export class FireVfxPool {
                 : activation,
         );
 
+        if (particle.isActive()) {
+            this.activeParticles.add(particle);
+        } else {
+            // Defensive: activation may reject invalid presentation data.
+            if (activation.presentationOrigin === "ground") this.activeGroundCount -= 1;
+            this.availableParticles.push(particle);
+        }
+
         return particle;
     }
 
@@ -211,35 +221,16 @@ export class FireVfxPool {
         let suppressedCount =
             0;
 
-        for (
-            let index = 0;
-            index <
-            this.particles.length;
-            index += 1
-        ) {
-            const particle =
-                this.particles[index];
+        if (this.activeGroundCount === 0) return 0;
 
-            if (
-                !particle.isActive() ||
-                particle.getPresentationOrigin() !==
-                    "ground"
-            ) {
-                continue;
-            }
-
-            if (
-                region.containsPoint(
-                    particle.getWorldX(),
-                    particle.getWorldY(),
-                )
-            ) {
+        for (const particle of this.activeParticles) {
+            if (particle.getPresentationOrigin() !== "ground") continue;
+            if (region.containsPoint(particle.getWorldX(), particle.getWorldY())) {
                 particle.deactivate();
+                this.activeParticles.delete(particle);
                 this.activeGroundCount -= 1;
                 this.availableParticles.push(particle);
-
-                suppressedCount +=
-                    1;
+                suppressedCount += 1;
             }
         }
 
@@ -248,7 +239,7 @@ export class FireVfxPool {
 
     /** CB6: presentation-only ground flame occlusion; directional flames remain visible. */
     public applyGroundOcclusion(isCovered: (x: number, y: number) => boolean): void {
-        for (const particle of this.particles) {
+        for (const particle of this.activeParticles) {
             if (!particle.isActive()) continue;
             if (particle.getPresentationOrigin() === "ground") {
                 particle.getSprite().visible = !isCovered(particle.getWorldX(), particle.getWorldY());
@@ -269,28 +260,13 @@ export class FireVfxPool {
             return;
         }
 
-        for (
-            let index = 0;
-            index <
-            this.particles.length;
-            index += 1
-        ) {
-            const particle =
-                this.particles[index];
-
-            if (
-                particle.isActive()
-            ) {
-                const wasGround = particle.getPresentationOrigin() === "ground";
-                particle.update(
-                    deltaTime,
-                );
-                if (!particle.isActive()) {
-                    if (wasGround) {
-                        this.activeGroundCount -= 1;
-                    }
-                    this.availableParticles.push(particle);
-                }
+        for (const particle of this.activeParticles) {
+            const wasGround = particle.getPresentationOrigin() === "ground";
+            particle.update(deltaTime);
+            if (!particle.isActive()) {
+                this.activeParticles.delete(particle);
+                if (wasGround) this.activeGroundCount -= 1;
+                this.availableParticles.push(particle);
             }
         }
     }
@@ -298,6 +274,7 @@ export class FireVfxPool {
     public reset():
         void {
         this.availableParticles.length = 0;
+        this.activeParticles.clear();
         this.activeGroundCount = 0;
 
         for (
@@ -315,25 +292,11 @@ export class FireVfxPool {
     public getActiveCount():
         number {
 
-        let activeCount =
-            0;
+        return this.activeParticles.size;
+    }
 
-        for (
-            let index = 0;
-            index <
-            this.particles.length;
-            index += 1
-        ) {
-            if (
-                this.particles[index]
-                    .isActive()
-            ) {
-                activeCount +=
-                    1;
-            }
-        }
-
-        return activeCount;
+    public hasActiveGroundParticles(): boolean {
+        return this.activeGroundCount > 0;
     }
 
     public getCapacity():
@@ -358,6 +321,7 @@ export class FireVfxPool {
         this.particles.length =
             0;
         this.availableParticles.length = 0;
+        this.activeParticles.clear();
         this.activeGroundCount = 0;
 
         this.container.destroy({

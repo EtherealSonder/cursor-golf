@@ -88,9 +88,24 @@ export class ConveyorBeltDynamicTransportSystem {
             if (!(invMass > 0)) continue;
             for (const belt of belts) {
                 // Reject distant bodies before polygon clipping, especially important for robots.
-                const broadRadius = Math.hypot(belt.getFootprintWidth(), belt.getFootprintHeight()) * 0.5 +
-                    (body.getDefinition().shape === "circle" ? body.getDefinition().radius :
-                        Math.hypot(body.getDefinition().width, body.getDefinition().height) * 0.5);
+                const definition = body.getDefinition();
+                // Conservative radius: never reject a shape that might overlap the belt.
+                // Triangle points are expressed relative to the body's origin.
+                let bodyRadius: number;
+                switch (definition.shape) {
+                    case "circle":
+                        bodyRadius = definition.radius;
+                        break;
+                    case "rectangle":
+                        bodyRadius = Math.hypot(definition.width, definition.height) * 0.5;
+                        break;
+                    case "triangle":
+                        bodyRadius = definition.points.reduce(
+                            (radius, point) => Math.max(radius, Math.hypot(point.x, point.y)), 0,
+                        );
+                        break;
+                }
+                const broadRadius = Math.hypot(belt.getFootprintWidth(), belt.getFootprintHeight()) * 0.5 + bodyRadius;
                 if (Math.abs(body.getX() - belt.getX()) > broadRadius ||
                     Math.abs(body.getY() - belt.getY()) > broadRadius) continue;
                 const contact = conveyorDynamicContact(body, belt);

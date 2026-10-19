@@ -29,6 +29,10 @@ import type {
  */
 export class WaterObstacleRegistrationSystem {
 
+    // A static-definition geometry signature, not a per-frame body transform.
+    // Any changed static definition rebuilds the ground baseline.
+    private staticGroundSignature = "";
+
     public constructor(
         private readonly physicsWorld:
             PhysicsWorld,
@@ -49,7 +53,7 @@ export class WaterObstacleRegistrationSystem {
         void {
 
         this.groundField
-            .clear();
+            .restoreStaticOccupancy();
 
         this.airborneField
             .clear();
@@ -58,20 +62,42 @@ export class WaterObstacleRegistrationSystem {
     public synchronize():
         void {
 
-        // Rebuild from the authoritative PhysicsWorld registrations, including
-        // E2-A generated course-wall static definitions. Ground cache clear
-        // restores the immutable playable-area mask before shape rasterization.
-        this.clearCaches();
-
-        for (
-            const registration
-            of this.physicsWorld
-                .getGroundWaterRegistrations()
-        ) {
-            this.addGroundRegistration(
-                registration,
-            );
+        const groundRegistrations = this.physicsWorld.getGroundWaterRegistrations();
+        const staticRegistrations = groundRegistrations.filter(
+            (registration) => registration.kind === "static-definition",
+        );
+        // The signature covers identity, participation, and every geometry field
+        // consumed by addGroundDefinition. This avoids stale occupancy when
+        // definitions are replaced in place or course walls change.
+        const staticSignature = JSON.stringify(staticRegistrations.map((registration) => {
+            const definition = registration.definition;
+            return [registration.id, definition.shape, definition.positionX,
+                definition.positionY, "rotationRadians" in definition
+                    ? definition.rotationRadians ?? 0 : 0,
+                "width" in definition ? definition.width : null,
+                "height" in definition ? definition.height : null,
+                "radius" in definition ? definition.radius : null];
+        }));
+        if (staticSignature !== this.staticGroundSignature || !this.groundField.hasStaticOccupancy()) {
+            this.groundField.clear();
+            for (const registration of staticRegistrations) {
+                this.addGroundRegistration(registration);
+            }
+            this.groundField.captureStaticOccupancy();
+            this.staticGroundSignature = staticSignature;
+        } else {
+            this.groundField.restoreStaticOccupancy();
         }
+        // Fixed providers may return mutable shapes; dynamic bodies move.
+        // Both must be sampled afresh before the water simulation each step.
+        for (const registration of groundRegistrations) {
+            if (registration.kind !== "static-definition") {
+                this.addGroundRegistration(registration);
+            }
+        }
+        // Airborne collision buckets still rebuild to preserve moving collider
+        // and polyline accuracy; appendMovingObstacles remains unchanged.
+        this.airborneField.clear();
 
         for (
             const registration
