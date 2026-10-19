@@ -73,7 +73,7 @@ export class RobotInteractionRegistry {
             radius,
             getX,
             getY,
-            { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            { navigationBlocker: true, attackTarget: false, visionOccluder: true },
         );
     }
 

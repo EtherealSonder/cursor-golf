@@ -12,6 +12,8 @@ export interface RotatingPaddleDefinition {
     readonly additionalTangentialPushPerSecond: number;
     readonly ballOutwardEscapeSpeed: number;
     readonly ballOutwardCouplingPerSecond: number;
+    readonly ballOutwardEjectionDelaySeconds: number;
+    readonly ballOutwardEjectionRampSeconds: number;
     readonly maximumBallSpeed: number;
 
     readonly dynamicTargetTangentialSpeedAtOuterRadius: number;
@@ -55,12 +57,14 @@ export const ROTATING_PADDLE_DEFINITION: Omit<RotatingPaddleDefinition, "texture
 
     // Ball: rotation dominates. Outward escape is deliberately modest so the
     // paddle bends the shot strongly without turning into a launcher.
-    targetTangentialSpeedAtOuterRadius: 700,
-    maximumTangentialDeltaSpeedPerSecond: 9000,
-    additionalTangentialPushPerSecond: 0.5,
-    ballOutwardEscapeSpeed: 145,
-    ballOutwardCouplingPerSecond: 8.0,
-    maximumBallSpeed: 1050,
+    targetTangentialSpeedAtOuterRadius: 450,
+    maximumTangentialDeltaSpeedPerSecond: 8000,
+    additionalTangentialPushPerSecond: 0.2,
+    ballOutwardEscapeSpeed: 110,
+    ballOutwardCouplingPerSecond: 5.5,
+    ballOutwardEjectionDelaySeconds: 0.20,
+    ballOutwardEjectionRampSeconds: 0.30,
+    maximumBallSpeed: 650,
 
     // Generic rigid bodies: strong continuous tangential capture followed by a
     // controlled, mass-aware outward escape. The response floor prevents heavy

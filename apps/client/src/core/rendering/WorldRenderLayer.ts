@@ -18,5 +18,7 @@ export enum WorldRenderLayer {
     GameplayActors = 600,
     AirborneEffects = 700,
     GameplayIndicators = 800,
+    /** Wind particles render above foliage but below the aiming foreground. */
+    WindForeground = 825,
     Debug = 900,
 }

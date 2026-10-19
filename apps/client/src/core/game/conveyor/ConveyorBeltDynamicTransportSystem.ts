@@ -83,11 +83,16 @@ export class ConveyorBeltDynamicTransportSystem {
     public update(dt: number, physics: PhysicsWorld, belts: readonly ConveyorBelt[]): void {
         if (!Number.isFinite(dt) || dt <= 0 || belts.length === 0) return;
         for (const body of physics.getMovableRigidDynamicCollidables()) {
-            // Robot movement is AI-owned. Do not override navigation in CB4.
-            if (body instanceof Robot || (body instanceof Crate && body.isDestroyed)) continue;
+            if (body instanceof Crate && body.isDestroyed) continue;
             const invMass = body.getInverseMass();
             if (!(invMass > 0)) continue;
             for (const belt of belts) {
+                // Reject distant bodies before polygon clipping, especially important for robots.
+                const broadRadius = Math.hypot(belt.getFootprintWidth(), belt.getFootprintHeight()) * 0.5 +
+                    (body.getDefinition().shape === "circle" ? body.getDefinition().radius :
+                        Math.hypot(body.getDefinition().width, body.getDefinition().height) * 0.5);
+                if (Math.abs(body.getX() - belt.getX()) > broadRadius ||
+                    Math.abs(body.getY() - belt.getY()) > broadRadius) continue;
                 const contact = conveyorDynamicContact(body, belt);
                 if (contact.weight <= 0) continue;
                 const direction = belt.getTransportDirection();
@@ -103,6 +108,7 @@ export class ConveyorBeltDynamicTransportSystem {
                 const contactX = body.getX() + offsetX * offsetScale * CONVEYOR_BELT_PHYSICS.dynamicTorqueScale;
                 const contactY = body.getY() + offsetY * offsetScale * CONVEYOR_BELT_PHYSICS.dynamicTorqueScale;
                 if (body instanceof Crate) body.applyConveyorImpulse(ix, iy, contactX, contactY);
+                else if (body instanceof Robot) body.applyConveyorImpulse(ix, iy);
                 else body.applyImpulseAtWorldPoint(ix, iy, contactX, contactY);
             }
         }

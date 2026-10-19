@@ -5973,7 +5973,7 @@ export class World {
 
         this.presentationLayers
             .getLayer(
-                WorldRenderLayer.AirborneEffects,
+                WorldRenderLayer.WindForeground,
             )
             .addChild(
                 this.windVfxSystem

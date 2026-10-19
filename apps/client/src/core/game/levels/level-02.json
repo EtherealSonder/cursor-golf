@@ -21,12 +21,12 @@
         "y": 539.5
       },
       {
-        "x": 721.5,
+        "x": 449,
         "y": 539.5
       },
       {
         "x": 449,
-        "y": 835
+        "y": 660
       },
       {
         "x": 449,
@@ -82,8 +82,8 @@
       },
       {
         "edgeIndex": 4,
-        "start": 152,
-        "end": 272
+        "start": 327,
+        "end": 447
       }
     ]
   },
@@ -145,10 +145,11 @@
       "rotation": 2.0737304040495825
     },
     {
-      "id": "radial-bumper",
-      "x": 672,
-      "y": 791,
-      "type": "radialBumper"
+      "id": "rotator-anticlockwise-1",
+      "x": 670,
+      "y": 763.5,
+      "type": "rotator",
+      "direction": "counterClockwise"
     },
     {
       "id": "fan-2",
@@ -156,15 +157,6 @@
       "y": 459.5,
       "type": "fan",
       "rotation": 3.141592653589793
-    },
-    {
-      "id": "box-2",
-      "x": 1250,
-      "y": 1355,
-      "type": "staticMetalBox",
-      "width": 150,
-      "height": 150,
-      "rotation": 0
     },
     {
       "id": "box-1",
@@ -202,6 +194,13 @@
       "y": 695,
       "type": "conveyorBelt",
       "rotation": 4.71238898038469
+    },
+    {
+      "id": "rotator-clockwise-1",
+      "x": 1220,
+      "y": 1367.5,
+      "type": "rotator",
+      "direction": "clockwise"
     }
   ]
 }

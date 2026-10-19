@@ -27,6 +27,7 @@ export class WorldPresentationLayers {
             WorldRenderLayer.GameplayActors,
             WorldRenderLayer.AirborneEffects,
             WorldRenderLayer.GameplayIndicators,
+            WorldRenderLayer.WindForeground,
             WorldRenderLayer.Debug,
         ];
 

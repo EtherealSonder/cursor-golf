@@ -2,6 +2,9 @@ import type { Ball } from "../entities/Ball";
 import type { RotatingPaddle } from "../entities/mechanisms/RotatingPaddle";
 
 export class RotatingPaddleBallInteractionSystem {
+    // Per-paddle continuous contact timer. A new contact starts with rotation,
+    // then smoothly introduces the outward escape velocity over 0.20–0.50 s.
+    private readonly contactSeconds = new WeakMap<RotatingPaddle, number>();
     public update(deltaTime: number, ball: Ball, paddle: RotatingPaddle): void {
         if (deltaTime <= 0) return;
 
@@ -11,12 +14,25 @@ export class RotatingPaddleBallInteractionSystem {
         const definition = paddle.getDefinition();
         const ballRadius = ball.getRadius();
 
-        if (distance <= definition.centerStopperRadius + ballRadius) return;
-        if (distance >= definition.poweredRadius + ballRadius) return;
-        if (distance <= 0.0001) return;
+        if (distance <= definition.centerStopperRadius + ballRadius
+            || distance >= definition.poweredRadius + ballRadius
+            || distance <= 0.0001) {
+            this.contactSeconds.delete(paddle);
+            return;
+        }
 
         const tangent = paddle.getTangentialDirectionAt(ball.getX(), ball.getY());
-        if (!tangent) return;
+        if (!tangent) {
+            this.contactSeconds.delete(paddle);
+            return;
+        }
+
+        const contactTime = (this.contactSeconds.get(paddle) ?? 0) + deltaTime;
+        this.contactSeconds.set(paddle, contactTime);
+        const ejectionProgress = Math.max(0, Math.min(1,
+            (contactTime - definition.ballOutwardEjectionDelaySeconds)
+                / Math.max(0.0001, definition.ballOutwardEjectionRampSeconds),
+        ));
 
         const radialX = dx / distance;
         const radialY = dy / distance;
@@ -47,7 +63,7 @@ export class RotatingPaddleBallInteractionSystem {
         // rather than an accumulating radial force.
         const outwardError = definition.ballOutwardEscapeSpeed - currentRadialSpeed;
         const outwardBlend = Math.min(1, definition.ballOutwardCouplingPerSecond * deltaTime);
-        const outwardCorrection = Math.max(0, outwardError) * outwardBlend;
+        const outwardCorrection = Math.max(0, outwardError) * outwardBlend * ejectionProgress;
 
         const additionalPush = definition.additionalTangentialPushPerSecond * deltaTime;
         let deltaVelocityX = tangent.x * (tangentialCorrection + additionalPush)
@@ -65,7 +81,7 @@ export class RotatingPaddleBallInteractionSystem {
         const candidateSpeed = Math.hypot(candidateX, candidateY);
         const allowedSpeed = Math.min(
             definition.maximumBallSpeed,
-            Math.max(incomingSpeed + 35, definition.ballOutwardEscapeSpeed),
+            Math.max(incomingSpeed + 15, definition.ballOutwardEscapeSpeed),
         );
         if (candidateSpeed > allowedSpeed && candidateSpeed > 0.0001) {
             const scale = allowedSpeed / candidateSpeed;

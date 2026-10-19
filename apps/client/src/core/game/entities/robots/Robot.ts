@@ -78,6 +78,7 @@ export class Robot extends Entity {
     private readonly elementAttackController: RobotFireAttackController | RobotWaterAttackController | RobotWindAttackController;
     private readonly externalRigidBody: RigidBody2D;
     private explosionKnockbackSeconds = 0;
+    private conveyorTransportSeconds = 0;
     private lastCommittedTargetX: number | null = null;
     private lastCommittedTargetY: number | null = null;
     private readonly ledDisplay: RobotLedDisplay;
@@ -197,6 +198,12 @@ export class Robot extends Entity {
         this.externalRigidBody.applyImpulseAtWorldPoint(
             impulseX, impulseY, contactPointX - this.getX(), contactPointY - this.getY(),
         );
+    }
+    /** Conveyor movement is externally driven; keep AI targeting active while the belt carries the chassis. */
+    public applyConveyorImpulse(impulseX: number, impulseY: number): void {
+        if (this.voidRemoving || !Number.isFinite(impulseX) || !Number.isFinite(impulseY)) return;
+        this.externalRigidBody.applyLinearImpulse(impulseX, impulseY);
+        this.conveyorTransportSeconds = Math.max(this.conveyorTransportSeconds, 0.075);
     }
     /** Explosion-specific impulse: preserve existing collision responses, suspend AI walking briefly. */
     public receiveProximityMineBlast(impulseX: number, impulseY: number, recoverySeconds: number): void {
@@ -399,6 +406,7 @@ export class Robot extends Entity {
     protected onUpdate(deltaTime: number): void {
         if (this.voidRemoving) return;
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
+        this.conveyorTransportSeconds = Math.max(0, this.conveyorTransportSeconds - deltaTime);
         const externalMotion = this.externalRigidBody.integrate(deltaTime);
         if (externalMotion.positionDeltaX !== 0 || externalMotion.positionDeltaY !== 0) {
             this.setPosition(
@@ -757,6 +765,9 @@ export class Robot extends Entity {
 
         const locomotion = this.locomotion;
         if (!locomotion) return;
+        // Avoid adding AI step displacement on top of conveyor transport.
+        // Navigation, vision, attack, and heading updates remain active.
+        if (this.conveyorTransportSeconds > 0) return;
         const allowedDistance = Math.min(distance, this.definition.stepDistance);
         const advance = locomotion.update(deltaTime, allowedDistance);
         if (advance.distance <= 0) return;

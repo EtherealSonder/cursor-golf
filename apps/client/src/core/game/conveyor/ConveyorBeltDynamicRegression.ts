@@ -12,6 +12,11 @@ export function assertConveyorBeltDynamicRegression(): void {
     if (!(p.dynamicMaximumContactOffset > 0)) {
         throw new Error("CB4: contact offset must be positive");
     }
+    // Robot transport uses the same acceleration and overlap weighting as crates,
+    // with a linear (non-torque) impulse to preserve AI-owned heading.
+    if (!(p.dynamicTargetDirectionalSpeed <= 1100)) {
+        throw new Error("CB4: robot transport exceeds external rigid-body speed limit");
+    }
     const dt = 1 / 60;
     const delta = Math.min(p.dynamicTargetDirectionalSpeed + 1200, p.dynamicAcceleration * dt);
     if (!(delta > 0 && delta <= p.dynamicAcceleration * dt)) {
