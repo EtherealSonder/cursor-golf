@@ -26,7 +26,7 @@ export const DEFAULT_COURSE_VISUAL_DEFINITION:
     grassTextureKey: "grassTerrain",
     sandTextureKey: "sandTerrain",
     grassTileScale: 0.167,
-    sandTileScale: 0.25,
+    sandTileScale: 0.75,
     terrainAlpha: 1,
     outsideBackgroundColor: 0xeee8ef,
     gameplayWallColor: 0x3b2a3c,

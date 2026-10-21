@@ -1,4 +1,5 @@
-import { ProceduralSandDebugRenderer } from "../procedural/ProceduralSandDebugRenderer";
+import { ProceduralSandDebugControls } from "../procedural/ProceduralSandDebugControls";
+import { ProceduralSandRenderer } from "../procedural/ProceduralSandRenderer";
 import { ProceduralSandController } from "../procedural/ProceduralSandController";
 import { PixiPresentationProfiler as P3C2 } from "../debug/PixiPresentationProfiler";
 import { WaterSubphaseProfiler as P3C1 } from "../debug/WaterSubphaseProfiler";
@@ -963,7 +964,8 @@ export class World {
     /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
     private readonly runtimeLevel: RuntimeLevelDefinition;
     private readonly proceduralSandController: ProceduralSandController;
-    private proceduralSandDebugRenderer: ProceduralSandDebugRenderer | null = null;
+    private proceduralSandRenderer: ProceduralSandRenderer | null = null;
+    private proceduralSandDebugControls: ProceduralSandDebugControls | null = null;
     /** Resolved level identifier, retained for benchmark identity reporting. */
     private readonly performanceLevelId: string;
     private readonly technicalBounds: CourseBoundaryDefinition;
@@ -1313,9 +1315,33 @@ export class World {
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
         this.createCourse();
+        this.proceduralSandController.registerSurfaces(this.surfaceSystem);
+        this.proceduralSandRenderer = new ProceduralSandRenderer(
+            this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain),
+            AssetLoader.getTexture(this.courseVisualDefinition.sandTextureKey),
+            this.courseVisualDefinition.sandTileScale,
+            this.courseVisualDefinition.terrainAlpha,
+        );
+        this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
         if (import.meta.env.DEV) {
-            this.proceduralSandDebugRenderer = new ProceduralSandDebugRenderer(this.presentationLayers.getLayer(WorldRenderLayer.Debug));
-            this.proceduralSandDebugRenderer.render(this.proceduralSandController.getPatches());
+            const initial = this.proceduralSandController.getDiagnostics();
+            this.proceduralSandDebugControls = new ProceduralSandDebugControls(
+                this.screenOverlayContainer, initial.density, (density) => {
+                    if (!this.proceduralSandRenderer) return;
+                    this.proceduralSandController.regenerateLive(
+                        this.surfaceSystem,
+                        patches => this.proceduralSandRenderer?.render(patches),
+                        density,
+                    );
+                    const diagnostics = this.proceduralSandController.getDiagnostics();
+                    this.proceduralSandDebugControls?.updateDiagnostics(
+                        diagnostics.generationCount, diagnostics.seed, diagnostics.patchCount, diagnostics.coveragePercent,
+                    );
+                },
+            );
+            this.proceduralSandDebugControls.updateDiagnostics(
+                initial.generationCount, initial.seed, initial.patchCount, initial.coveragePercent,
+            );
         }
         this.createLevelBushes();
         this.createLevelCrates();
@@ -2904,8 +2930,11 @@ export class World {
 
     public destroy():
         void {
-        this.proceduralSandDebugRenderer?.destroy();
-        this.proceduralSandDebugRenderer = null;
+        this.proceduralSandDebugControls?.destroy();
+        this.proceduralSandDebugControls = null;
+        this.proceduralSandRenderer?.destroy();
+        this.proceduralSandRenderer = null;
+        this.surfaceSystem.clearProceduralPolygonZones();
         this.proceduralSandController.destroy();
         this.bushFireContact = null;
         this.crateFireContact = null;

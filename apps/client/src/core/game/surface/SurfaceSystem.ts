@@ -1,3 +1,4 @@
+import { PolygonSurfaceZone, type PolygonSurfaceZoneDefinition } from "./PolygonSurfaceZone";
 import {
     getSurfaceDefinition,
     isSurfaceStateAllowed,
@@ -68,6 +69,8 @@ export class SurfaceSystem {
 
     private readonly zones:
         SurfaceZone[] = [];
+
+    private readonly proceduralPolygonZones: PolygonSurfaceZone[] = [];
 
     private readonly stateRegions:
         SurfaceStateRegion[] = [];
@@ -282,6 +285,19 @@ export class SurfaceSystem {
         this.notifyChanged();
 
         return zone;
+    }
+
+    /** Procedural terrain sits below authored rectangular zones in precedence. */
+    public addProceduralPolygonZone(definition: PolygonSurfaceZoneDefinition): void {
+        if (this.proceduralPolygonZones.some(z => z.definition.id === definition.id)) throw new Error(`Duplicate procedural surface: ${definition.id}`);
+        this.proceduralPolygonZones.push(new PolygonSurfaceZone(definition));
+        this.notifyChanged();
+    }
+
+    public clearProceduralPolygonZones(): void {
+        if (this.proceduralPolygonZones.length === 0) return;
+        this.proceduralPolygonZones.length = 0;
+        this.notifyChanged();
     }
 
     public clearZones(): void {
@@ -847,6 +863,11 @@ export class SurfaceSystem {
             return this.createSampleForZone(
                 zone,
             );
+        }
+
+        for (let i = this.proceduralPolygonZones.length - 1; i >= 0; i--) {
+            const polygon = this.proceduralPolygonZones[i];
+            if (polygon.containsPoint(worldX, worldY)) return polygon.sample();
         }
 
         const defaultDefinition =
