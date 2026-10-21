@@ -8,7 +8,8 @@ export interface RobotInteractionCapabilities {
 
 export type RobotInteractionShape =
     | { readonly kind: "circle"; readonly radius: number }
-    | { readonly kind: "rectangle"; readonly width: number; readonly height: number };
+    | { readonly kind: "rectangle"; readonly width: number; readonly height: number }
+    | { readonly kind: "orientedRectangle"; readonly width: number; readonly height: number; readonly rotation: number };
 
 export interface RobotInteractionEntry {
     readonly id: string;

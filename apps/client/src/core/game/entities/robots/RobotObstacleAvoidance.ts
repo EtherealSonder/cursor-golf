@@ -38,6 +38,15 @@ export class RobotObstacleAvoidance {
         commitSeconds: number,
         releaseClearFrames: number,
     ): RobotAvoidanceResult | null {
+        // When physically pushed inside a navigation-only exclusion zone, ordinary
+        // clearance probes all fail. Move outward until regular path checks resume.
+        const escape = this.navigationQuery.getEscapeDirection(x, y, clearanceRadius);
+        if (escape) {
+            this.reset();
+            const escapeProbe = { x: x + escape.x * probeDistance, y: y + escape.y * probeDistance };
+            return { directionX: escape.x, directionY: escape.y, probePoint: escapeProbe,
+                avoiding: true, turnDegrees: 0 };
+        }
         const desiredAngle = Math.atan2(desiredDirectionY, desiredDirectionX);
         const direct = this.testDirection(x, y, desiredAngle, 0, clearanceRadius, probeDistance);
 

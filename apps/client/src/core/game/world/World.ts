@@ -1,3 +1,5 @@
+import { ProceduralSandDebugRenderer } from "../procedural/ProceduralSandDebugRenderer";
+import { ProceduralSandController } from "../procedural/ProceduralSandController";
 import { PixiPresentationProfiler as P3C2 } from "../debug/PixiPresentationProfiler";
 import { WaterSubphaseProfiler as P3C1 } from "../debug/WaterSubphaseProfiler";
 import { GeometryQueryAttributionProfiler as P3B1 } from "../debug/GeometryQueryAttributionProfiler";
@@ -960,6 +962,8 @@ export class World {
 
     /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
     private readonly runtimeLevel: RuntimeLevelDefinition;
+    private readonly proceduralSandController: ProceduralSandController;
+    private proceduralSandDebugRenderer: ProceduralSandDebugRenderer | null = null;
     /** Resolved level identifier, retained for benchmark identity reporting. */
     private readonly performanceLevelId: string;
     private readonly technicalBounds: CourseBoundaryDefinition;
@@ -1017,6 +1021,7 @@ export class World {
             throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
+        this.proceduralSandController = new ProceduralSandController(this.runtimeLevel);
         this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
         if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
         this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
@@ -1308,6 +1313,10 @@ export class World {
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
         this.createCourse();
+        if (import.meta.env.DEV) {
+            this.proceduralSandDebugRenderer = new ProceduralSandDebugRenderer(this.presentationLayers.getLayer(WorldRenderLayer.Debug));
+            this.proceduralSandDebugRenderer.render(this.proceduralSandController.getPatches());
+        }
         this.createLevelBushes();
         this.createLevelCrates();
         this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
@@ -1475,6 +1484,15 @@ export class World {
         for (const placement of runtimeObjectsOfType(this.runtimeLevel, "conveyorBelt")) {
             const conveyor = new ConveyorBelt(placement.id, placement.x, placement.y, placement.rotation);
             this.conveyorBelts.push(conveyor);
+            this.robotInteractionRegistry.register({
+                id: `conveyor-navigation-${conveyor.getId()}`,
+                label: "Conveyor belt",
+                capabilities: { navigationBlocker: true, attackTarget: false, visionOccluder: false },
+                shape: { kind: "orientedRectangle", width: conveyor.getFootprintWidth(),
+                    height: conveyor.getFootprintHeight(), rotation: conveyor.getRotationRadians() },
+                getX: (): number => conveyor.getX(),
+                getY: (): number => conveyor.getY(),
+            });
             this.addEntity(conveyor, WorldRenderLayer.SurfaceMechanisms);
         }
 
@@ -1516,7 +1534,7 @@ export class World {
                 id: `${paddle.getId()}:robot-center-target`,
                 label: "Rotating paddle center",
                 capabilities: { navigationBlocker: true, attackTarget: false, visionOccluder: true },
-                shape: { kind: "circle", radius: paddle.getCenterStopperRadius() },
+                shape: { kind: "circle", radius: paddle.getSurfaceRadius() },
                 getX: (): number => paddle.getX(),
                 getY: (): number => paddle.getY(),
             });
@@ -2461,6 +2479,25 @@ export class World {
         );
 
         for (const crate of this.crates) crate.update(deltaTime);
+        this.objectVoidController.updateCrates(deltaTime, this.crates,
+            crate => {
+                this.crateRobotUnregister.get(crate.id)?.();
+                this.crateRobotUnregister.delete(crate.id);
+                this.invalidateRobotTargets();
+                this.physicsWorld.unregisterDestroyedDynamicBody(crate);
+                this.windSuctionCaptureSystem.unregisterTarget(`crate-capture-${crate.id}`);
+            },
+            crate => {
+                this.objectVoidController.forgetCrate(crate);
+                this.pendingCrateDestructions.delete(crate);
+                crate.destroy();
+                const index = this.crates.indexOf(crate);
+                if (index !== -1) this.crates.splice(index, 1);
+            },
+            crate => ({ kind: "rectangle", x: crate.x, y: crate.y,
+                width: crate.getDefinition().width, height: crate.getDefinition().height,
+                rotationRadians: crate.getRotationRadians() }),
+        );
         this.crateDestructionSystem?.update();
 
         if (shouldCollideRotators()) {
@@ -2867,6 +2904,9 @@ export class World {
 
     public destroy():
         void {
+        this.proceduralSandDebugRenderer?.destroy();
+        this.proceduralSandDebugRenderer = null;
+        this.proceduralSandController.destroy();
         this.bushFireContact = null;
         this.crateFireContact = null;
         this.bushRobotUnregisterById.clear();

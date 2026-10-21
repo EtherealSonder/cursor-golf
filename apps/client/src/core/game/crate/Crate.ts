@@ -22,11 +22,12 @@ export class Crate implements DynamicCollidable {
     public readonly physics: CratePhysicsController;
     private sprite: Sprite | null = null;
     private destroyed = false;
+    private voidRemoving = false;
     public readonly destruction = new CrateDestructionController();
     public readonly fire = new CrateFireController();
-    public ignite(): boolean { return !this.destroyed && this.fire.ignite(); }
+    public ignite(): boolean { return !this.destroyed && !this.voidRemoving && this.fire.ignite(); }
     public updateBurn(dt: number): boolean {
-        if (this.destroyed || this.fire.status !== "burning") return false;
+        if (this.destroyed || this.voidRemoving || this.fire.status !== "burning") return false;
         const complete = this.fire.update(dt);
         if (this.sprite) {
             const t=this.fire.charProgress, target=CRATE_FIRE.charColor;
@@ -38,7 +39,7 @@ export class Crate implements DynamicCollidable {
     }
     public onDestructionRequested: ((crate: Crate, cause: CrateDestructionCause) => void) | null = null;
     public beginDestruction(cause: CrateDestructionCause): boolean {
-        if (!this.destruction.begin(cause)) return false;
+        if (this.voidRemoving || !this.destruction.begin(cause)) return false;
         this.destroyed = true;
         this.sprite?.destroy();
         this.sprite = null;
@@ -67,8 +68,20 @@ export class Crate implements DynamicCollidable {
     public get x(): number { return this.physics.x; }
     public get y(): number { return this.physics.y; }
     public get isDestroyed(): boolean { return this.destroyed; }
+    public get isVoidRemoving(): boolean { return this.voidRemoving; }
+    /** Stops gameplay interactions while keeping the sprite alive for the void animation. */
+    public beginVoidRemoval(): boolean {
+        if (this.destroyed || this.voidRemoving || !this.destruction.beginVoidRemoval()) return false;
+        this.voidRemoving = true;
+        return true;
+    }
+    public setVoidScale(fraction: number): void {
+        if (this.voidRemoving && this.sprite) this.sprite.scale.set(Math.max(0, fraction) * this.spriteBaseScaleX, Math.max(0, fraction) * this.spriteBaseScaleY);
+    }
+    private spriteBaseScaleX = 1;
+    private spriteBaseScaleY = 1;
     /** C8: only active crates are eligible for robot perception. */
-    public get isRobotTargetable(): boolean { return !this.destroyed && this.destruction.state === "active"; }
+    public get isRobotTargetable(): boolean { return !this.destroyed && !this.voidRemoving && this.destruction.state === "active"; }
     public get hasSprite(): boolean { return this.sprite !== null; }
     public getDefinition(): DynamicRectangleObstacleDefinition { return this.definition; }
     public getX(): number { return this.x; }
@@ -81,21 +94,21 @@ export class Crate implements DynamicCollidable {
     public getInverseMomentOfInertia(): number { return this.physics.body.getInverseMomentOfInertia(); }
     public translate(dx: number, dy: number): void { this.physics.translate(dx, dy); this.syncSprite(); }
     public applyImpulseAtWorldPoint(ix: number, iy: number, cx: number, cy: number): void {
-        if (!this.destroyed) this.physics.applyImpulse(ix, iy, cx, cy);
+        if (!this.destroyed && !this.voidRemoving) this.physics.applyImpulse(ix, iy, cx, cy);
     }
     /** CB4: reuse the crate rigid body for belt forces and contact torque. */
     public applyConveyorImpulse(ix: number, iy: number, cx: number, cy: number): void {
-        if (!this.destroyed) this.physics.applyConveyorImpulse(ix, iy, cx, cy);
+        if (!this.destroyed && !this.voidRemoving) this.physics.applyConveyorImpulse(ix, iy, cx, cy);
     }
     /** C3: one authoritative wind application, with off-center torque. */
     public applyLocalWindImpulse(
         impulseX: number, impulseY: number, wind: LocalWindSystem,
         sourceIds: readonly string[], deltaTime: number,
     ): void {
-        if (!this.destroyed) applyCrateWindImpulse(this, wind, sourceIds, impulseX, impulseY, deltaTime);
+        if (!this.destroyed && !this.voidRemoving) applyCrateWindImpulse(this, wind, sourceIds, impulseX, impulseY, deltaTime);
     }
     public update(dt: number): void {
-        if (this.destroyed) return;
+        if (this.destroyed || this.voidRemoving) return;
         this.physics.update(dt);
         this.syncSprite();
     }
@@ -115,6 +128,8 @@ export class Crate implements DynamicCollidable {
         sprite.eventMode = "none";
         parent.addChild(sprite);
         this.sprite = sprite;
+        this.spriteBaseScaleX = sprite.scale.x;
+        this.spriteBaseScaleY = sprite.scale.y;
         this.syncSprite();
     }
     public destroy(): void {

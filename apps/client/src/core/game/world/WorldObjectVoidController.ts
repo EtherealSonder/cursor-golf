@@ -1,3 +1,4 @@
+import type { Crate } from "../crate/Crate";
 import type { CourseFootprint } from "../level/CourseBoundaryFootprintQuery";
 import type { Entity } from "../entities/Entity";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
@@ -31,6 +32,29 @@ export class WorldObjectVoidController {
             }
         }
     }
+    private readonly pendingCrates = new Map<Crate, number>();
+    /** Uses the same footprint threshold, easing and duration as entity void removal. */
+    public updateCrates(deltaSeconds: number, candidates: readonly Crate[], deactivate: (crate: Crate) => void, remove: (crate: Crate) => void, footprintOf: (crate: Crate) => CourseFootprint): void {
+        for (const crate of candidates) {
+            if (crate.isDestroyed || crate.isVoidRemoving || this.pendingCrates.has(crate)) continue;
+            if (!this.boundary.isFootprintMostlyOutside(footprintOf(crate), 0.8)) continue;
+            if (!crate.beginVoidRemoval()) continue;
+            deactivate(crate);
+            this.pendingCrates.set(crate, 0);
+        }
+        const dt = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
+        for (const [crate, elapsed] of this.pendingCrates) {
+            if (crate.isDestroyed) { this.pendingCrates.delete(crate); continue; }
+            const next = elapsed + dt;
+            const fraction = Math.min(1, next / this.durationSeconds);
+            crate.setVoidScale((1 - fraction) * (1 - fraction));
+            if (fraction >= 1) {
+                this.pendingCrates.delete(crate);
+                remove(crate);
+            } else this.pendingCrates.set(crate, next);
+        }
+    }
+    public forgetCrate(crate: Crate): void { this.pendingCrates.delete(crate); }
     public forget(entity: Entity): void { this.pending.delete(entity); }
-    public clear(): void { this.pending.clear(); }
+    public clear(): void { this.pending.clear(); this.pendingCrates.clear(); }
 }

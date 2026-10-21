@@ -10,5 +10,11 @@ export class CrateDestructionController {
         this.causeValue = cause;
         return true;
     }
+    /** Void removal is visual-only: do not request the normal smoke destruction effect. */
+    public beginVoidRemoval(): boolean {
+        if (this.stateValue !== "active") return false;
+        this.stateValue = "destroying";
+        return true;
+    }
     public finish(): void { this.stateValue = "removed"; }
 }
