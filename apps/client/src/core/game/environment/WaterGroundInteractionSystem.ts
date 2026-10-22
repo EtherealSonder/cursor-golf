@@ -1,3 +1,4 @@
+import { SandWaterAbsorptionController } from "./SandWaterAbsorptionController";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 // O6 final Water optimization: preserve O5 staggered maintenance and authoritative ground-interaction semantics.
 import {
@@ -92,6 +93,8 @@ export interface WaterGroundInteractionWorkload {
 export class WaterGroundInteractionSystem {
     private readonly definition:
         WaterGroundInteractionDefinition;
+
+    private readonly sandAbsorptionController: SandWaterAbsorptionController;
 
     private simulationAccumulator =
         0;
@@ -219,6 +222,11 @@ export class WaterGroundInteractionSystem {
         this.definition =
             definition;
 
+        this.sandAbsorptionController = new SandWaterAbsorptionController(
+            this.waterField, this.environmentField, this.surfaceSystem,
+            definition.sandCompleteAbsorption,
+        );
+
         this.moistureDryingMaintenanceAccumulator =
             this.definition.moistureMaintenanceInterval *
             this.definition.moistureDryingPhaseFraction;
@@ -302,6 +310,10 @@ export class WaterGroundInteractionSystem {
         ) {
             return;
         }
+
+        // Sand is an unlimited water sink with finite retained wetness.
+        // Drain before contact wetting and regular capacity-limited infiltration.
+        this.sandAbsorptionController.update();
 
         const clampedDeltaTime =
             Math.min(

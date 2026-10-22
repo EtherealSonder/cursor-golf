@@ -675,6 +675,11 @@ export class WaterField {
      * the local flow neighbourhood so the solver can respond to the changed
      * depth on the next Water step.
      */
+    /** Completely drains a sand cell using the normal authoritative removal path. */
+    public drainWaterByIndex(index: number): number {
+        return this.removeWaterByIndex(index, this.getDepthByIndex(index));
+    }
+
     public removeWaterByIndex(
         index: number,
         amount: number,

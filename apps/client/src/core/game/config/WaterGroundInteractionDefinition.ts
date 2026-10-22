@@ -45,8 +45,23 @@ export interface SurfaceInfiltrationDefinition {
  * authoritative substrate state, never camera visibility. Sparse processing may
  * skip impossible/no-op work but must preserve the same per-second rates.
  */
+/** Arcade rule: sand stores visual moisture but never standing Water. */
+export interface SandCompleteAbsorptionDefinition {
+    readonly enabled: boolean;
+    /** Water-depth to normalized moisture conversion before the cap. */
+    readonly moistureGainPerWaterDepth: number;
+    /** Minimum moisture reached when meaningful water first contacts sand. */
+    readonly initialContactMoisture: number;
+    /** Maximum retained sand moisture; excess incoming water is discarded. */
+    readonly maximumSandMoisture: number;
+    /** Sand moisture overlay opacity relative to the normal wet-terrain style. */
+    readonly visualOpacityMultiplier: number;
+}
+
 export interface WaterGroundInteractionDefinition {
     readonly enabled: boolean;
+
+    readonly sandCompleteAbsorption: SandCompleteAbsorptionDefinition;
 
     /**
      * Standing Water at or above this depth counts as meaningful ground
@@ -172,6 +187,13 @@ export interface WaterGroundInteractionDefinition {
 export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
     WaterGroundInteractionDefinition = {
     enabled: true,
+    sandCompleteAbsorption: {
+        enabled: true,
+        moistureGainPerWaterDepth: 4.0,
+        initialContactMoisture: 0.12,
+        maximumSandMoisture: 1.0,
+        visualOpacityMultiplier: 0.8,
+    },
 
     /*
      * Meaningful standing Water immediately establishes a Wet ground
@@ -268,6 +290,14 @@ export const DEFAULT_WATER_GROUND_INTERACTION_DEFINITION:
 export function validateWaterGroundInteractionDefinition(
     definition: WaterGroundInteractionDefinition,
 ): void {
+    const sand = definition.sandCompleteAbsorption;
+    if (!sand || typeof sand.enabled !== "boolean" ||
+        !Number.isFinite(sand.moistureGainPerWaterDepth) || sand.moistureGainPerWaterDepth < 0 ||
+        !Number.isFinite(sand.initialContactMoisture) || sand.initialContactMoisture < 0 || sand.initialContactMoisture > 1 ||
+        !Number.isFinite(sand.maximumSandMoisture) || sand.maximumSandMoisture < sand.initialContactMoisture || sand.maximumSandMoisture > 1 ||
+        !Number.isFinite(sand.visualOpacityMultiplier) || sand.visualOpacityMultiplier < 0 || sand.visualOpacityMultiplier > 1) {
+        throw new Error("Invalid sand complete-absorption configuration.");
+    }
     if (typeof definition.enabled !== "boolean") {
         throw new Error(
             "Water ground interaction enabled must be a boolean.",

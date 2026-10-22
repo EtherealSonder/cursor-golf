@@ -86,6 +86,11 @@ export class PhysicsWorld {
         );
     }
 
+    /** M1 registration: a marble participates in normal ball/dynamic/static collisions. */
+    public registerElementalMarble(id: string, body: DynamicCollidable): void {
+        this.registerDynamicCollidable(`marble-physics-${id}`, body);
+    }
+
     public registerDynamicCollidable(
         id:
             string,

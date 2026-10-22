@@ -1,3 +1,5 @@
+import { ElementalMarbleDestructionController } from "../marble/ElementalMarbleDestructionController";
+import { ElementalMarble } from "../marble/ElementalMarble";
 import { ProceduralSandDebugControls } from "../procedural/ProceduralSandDebugControls";
 import { ProceduralSandRenderer } from "../procedural/ProceduralSandRenderer";
 import { ProceduralSandController } from "../procedural/ProceduralSandController";
@@ -655,6 +657,8 @@ export class World {
     private readonly rocks: Rock[] = [];
     private readonly bushes: Bush[] = [];
     private readonly crates: Crate[] = [];
+    private readonly elementalMarbles: ElementalMarble[] = [];
+    private readonly marbleDestructionController: ElementalMarbleDestructionController;
     private crateDestructionSystem: CrateDestructionSystem | null = null;
     private readonly pendingCrateDestructions = new Set<Crate>();
     private readonly crateRobotUnregister = new Map<string, () => void>();
@@ -1028,6 +1032,7 @@ export class World {
         if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
         this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
         this.objectVoidController = new WorldObjectVoidController(this.courseEnvironmentBoundary);
+        this.marbleDestructionController = new ElementalMarbleDestructionController(this.courseEnvironmentBoundary);
         if (import.meta.env.DEV) assertCourseObjectVoidValidation();
         if (import.meta.env.DEV) {
             assertCourseEnvironmentBoundaryValidation();
@@ -1178,6 +1183,9 @@ export class World {
                 this.waterObstacleField,
             );
 
+        // SandWaterAbsorptionController is owned by WaterGroundInteractionSystem.
+        // Its sink runs after WaterField transport and before moisture bridging;
+        // no separate World update or disposal is necessary.
         this.waterGroundInteractionSystem =
             new WaterGroundInteractionSystem(
                 this.waterField,
@@ -1345,6 +1353,7 @@ export class World {
         }
         this.createLevelBushes();
         this.createLevelCrates();
+        this.createM1TestMarbles();
         this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.crateFireContact = new CrateFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.bushBallSilhouette = new BushBallSilhouetteRenderer(
@@ -2505,6 +2514,11 @@ export class World {
         );
 
         for (const crate of this.crates) crate.update(deltaTime);
+        for (const marble of this.elementalMarbles) marble.update(deltaTime);
+        this.marbleDestructionController.update(deltaTime, this.elementalMarbles,
+            marble => this.deactivateElementalMarble(marble),
+            marble => this.removeElementalMarble(marble),
+        );
         this.objectVoidController.updateCrates(deltaTime, this.crates,
             crate => {
                 this.crateRobotUnregister.get(crate.id)?.();
@@ -2951,6 +2965,13 @@ export class World {
         this.pendingCrateDestructions.clear();
         for (const unregister of this.crateRobotUnregister.values()) unregister();
         this.crateRobotUnregister.clear();
+        for (const marble of this.elementalMarbles) {
+            this.windSuctionCaptureSystem.unregisterTarget(`marble-capture-${marble.id}`);
+            this.physicsWorld.unregisterDynamicBody(marble);
+            marble.destroy();
+        }
+        this.elementalMarbles.length = 0;
+        this.marbleDestructionController.clear();
         for (const crate of this.crates) {
             this.physicsWorld.unregisterDynamicBody(crate);
             crate.destroy();
@@ -4903,6 +4924,8 @@ export class World {
      */
     private processCompletedWindSuctionCaptures(): void {
         for (const target of this.windSuctionCaptureSystem.consumeCompletedTargets()) {
+            const marble = this.elementalMarbles.find(candidate => candidate === target.body);
+            if (marble) { this.removeElementalMarble(marble); continue; }
             const rock = this.rocks.find((candidate) => candidate === target.body);
             if (rock) {
                 rock.completeSuctionCapture();
@@ -6473,6 +6496,122 @@ export class World {
             }
             if (crate.updateBurn(dt)) crate.beginDestruction("fire");
         }
+    }
+
+    /** M1 temporary, scattered test marbles; replaced by authored/procedural placements in M4. */
+    private createM1TestMarbles(): void {
+        if (!import.meta.env.DEV) return;
+        const geometry = this.runtimeLevel.course.generatedGeometry;
+        const vertices = geometry?.vertices ?? [];
+        if (vertices.length < 3 || !geometry) return;
+        const contains = (x: number, y: number): boolean => {
+            let inside = false;
+            for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+                const a = vertices[i], b = vertices[j];
+                if (((a.y > y) !== (b.y > y)) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+            }
+            return inside;
+        };
+        const distanceSquared = (ax: number, ay: number, bx: number, by: number): number =>
+            (ax - bx) ** 2 + (ay - by) ** 2;
+        const edgeDistanceSquared = (x: number, y: number, ax: number, ay: number, bx: number, by: number): number => {
+            const dx = bx - ax, dy = by - ay;
+            const lengthSquared = dx * dx + dy * dy;
+            const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSquared)) : 0;
+            return distanceSquared(x, y, ax + t * dx, ay + t * dy);
+        };
+        const radius = 7.5;
+        const clearance = radius + 8;
+        const { minimumX, maximumX, minimumY, maximumY } = geometry.bounds;
+        const spawn = this.runtimeLevel.ball;
+        const hole = this.runtimeLevel.hole;
+        const placed: Array<{ x: number; y: number }> = [];
+        const authored = this.runtimeLevel.objects;
+        const isValid = (x: number, y: number): boolean => {
+            if (!contains(x, y)) return false;
+            for (let i = 0; i < vertices.length; i++) {
+                const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+                if (edgeDistanceSquared(x, y, a.x, a.y, b.x, b.y) < clearance ** 2) return false;
+            }
+            if (distanceSquared(x, y, spawn.x, spawn.y) < 65 ** 2) return false;
+            if (distanceSquared(x, y, hole.x, hole.y) < 55 ** 2) return false;
+            if (placed.some(other => distanceSquared(x, y, other.x, other.y) < 65 ** 2)) return false;
+            // Conservative exclusion around authored objects; prevents initial overlaps
+            // with crates, rocks, mechanisms and other objects of unknown footprint.
+            if (authored.some(object => distanceSquared(x, y, object.x, object.y) < 80 ** 2)) return false;
+            return true;
+        };
+        // Distribute candidates across the entire polygon rather than around spawn.
+        // Randomized stratified sampling reduces clustering while keeping retries bounded.
+        const target = 30;
+        const columns = 9, rows = 9;
+        const cells: Array<{ column: number; row: number }> = [];
+        for (let row = 0; row < rows; row++) {
+            for (let column = 0; column < columns; column++) cells.push({ column, row });
+        }
+        for (let i = cells.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [cells[i], cells[j]] = [cells[j], cells[i]];
+        }
+        const tryPlace = (x: number, y: number): boolean => {
+            if (!isValid(x, y)) return false;
+            const index = placed.length;
+            const kind = index % 2 === 0 ? "fire" : "water";
+            const marble = new ElementalMarble(`m1-${index}`, kind, x, y);
+            this.elementalMarbles.push(marble);
+            this.physicsWorld.registerElementalMarble(marble.id, marble);
+            this.windSuctionCaptureSystem.registerTarget({
+                id: `marble-capture-${marble.id}`, body: marble,
+                canCapture: () => !marble.isRemoving(),
+                beginCapture: () => { if (this.marbleDestructionController.beginCapture(marble)) this.deactivateElementalMarble(marble, false); },
+                setCaptureScale: scale => marble.setRemovalScale(scale),
+            });
+            placed.push({ x, y });
+            return true;
+        };
+        // Keep a few marbles reasonably close to the spawn for immediate testing.
+        for (let i = 0; i < 60 && placed.length < 3; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 90 + Math.random() * 150;
+            tryPlace(spawn.x + Math.cos(angle) * distance, spawn.y + Math.sin(angle) * distance);
+        }
+        for (const cell of cells) {
+            if (placed.length >= target) break;
+            for (let attempt = 0; attempt < 8; attempt++) {
+                const x = minimumX + ((cell.column + Math.random()) / columns) * (maximumX - minimumX);
+                const y = minimumY + ((cell.row + Math.random()) / rows) * (maximumY - minimumY);
+                if (tryPlace(x, y)) break;
+            }
+        }
+        // Additional bounded attempts for irregular or concave course layouts.
+        for (let attempt = 0; attempt < 250 && placed.length < target; attempt++) {
+            const x = minimumX + Math.random() * (maximumX - minimumX);
+            const y = minimumY + Math.random() * (maximumY - minimumY);
+            tryPlace(x, y);
+        }
+        console.info(`[ElementalMarble:M1] Spawned ${placed.length}/${target} test marbles`);
+        const instances = [...this.elementalMarbles];
+        const layer = this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects);
+        void ElementalMarble.loadTextures().then(textures => {
+            if (this.worldContainer.destroyed) return;
+            for (const marble of instances) marble.attach(layer, textures[marble.kind]);
+        }).catch((error: unknown) => console.error("Failed to load M1 marble textures:", error));
+    }
+
+    /** M2: stop marble gameplay participation before shrinking; preserve its sprite. */
+    private deactivateElementalMarble(marble: ElementalMarble, unregisterSuction = true): void {
+        this.physicsWorld.unregisterDynamicBody(marble);
+        if (unregisterSuction) this.windSuctionCaptureSystem.unregisterTarget(`marble-capture-${marble.id}`);
+    }
+
+    /** Shared idempotent removal for OOB and completed nozzle capture. */
+    private removeElementalMarble(marble: ElementalMarble): void {
+        const index = this.elementalMarbles.indexOf(marble);
+        if (index < 0) return;
+        this.marbleDestructionController.forget(marble);
+        this.deactivateElementalMarble(marble);
+        this.elementalMarbles.splice(index, 1);
+        marble.destroy();
     }
 
     /** C1: visual-only crates, positioned by level-authored centers. */

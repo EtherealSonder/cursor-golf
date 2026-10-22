@@ -1,3 +1,4 @@
+import { DEFAULT_WATER_GROUND_INTERACTION_DEFINITION } from "../game/config/WaterGroundInteractionDefinition";
 import {
     Graphics,
 } from "pixi.js";
@@ -242,9 +243,7 @@ export class WetSurfaceVisualizer {
                     );
 
             const alpha =
-                this.getAlphaForExcess(
-                    excess,
-                );
+                this.getAlphaForExcess(excess);
 
             if (alpha <= 0) {
                 continue;
@@ -277,6 +276,12 @@ export class WetSurfaceVisualizer {
             ) {
                 continue;
             }
+
+            // Sand uses the same continuous moisture footprint, with a
+            // lower capped opacity so the tiled sand remains legible.
+            const materialAlpha = sample.surfaceType === SurfaceType.Sand
+                ? alpha * DEFAULT_WATER_GROUND_INTERACTION_DEFINITION.sandCompleteAbsorption.visualOpacityMultiplier
+                : alpha;
 
             const color =
                 this.styleBySurfaceType
@@ -358,7 +363,7 @@ export class WetSurfaceVisualizer {
                 )
                 .fill({
                     color,
-                    alpha,
+                    alpha: materialAlpha,
                 });
         }
 

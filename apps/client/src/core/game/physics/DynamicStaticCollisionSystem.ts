@@ -112,13 +112,10 @@ export class DynamicStaticCollisionSystem {
         let resolvedCollisionCount =
             0;
 
-        for (
-            let passIndex = 0;
-            passIndex <
-            this.definition
-                .maximumResolutionPasses;
-            passIndex += 1
-        ) {
+        const resolutionPasses = collidables.some(body => body.getDefinition().material.marbleBounce)
+            ? Math.max(5, this.definition.maximumResolutionPasses)
+            : this.definition.maximumResolutionPasses;
+        for (let passIndex = 0; passIndex < resolutionPasses; passIndex += 1) {
             let overlapFound =
                 false;
 

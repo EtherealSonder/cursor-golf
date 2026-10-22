@@ -9,6 +9,9 @@ export interface PhysicsMaterial {
      * Coulomb-style collision friction coefficient.
      */
     readonly friction: number;
+
+    /** M1 opt-in high-rebound marble contact. Other materials retain minimum restitution. */
+    readonly marbleBounce?: boolean;
 }
 
 export function combineRestitution(
@@ -16,10 +19,11 @@ export function combineRestitution(
     second: PhysicsMaterial,
 ): number {
 
-    return Math.min(
-        first.restitution,
-        second.restitution,
-    );
+    if (first.marbleBounce || second.marbleBounce) {
+        // Opt-in: avoid low-restitution crates/walls suppressing marble ricochets.
+        return Math.max(first.restitution, second.restitution);
+    }
+    return Math.min(first.restitution, second.restitution);
 }
 
 export function combineFriction(

@@ -126,7 +126,7 @@ export const SCORCHED_GRASS_STATE_DEFINITION:
      * Normal Grass, creating a longer-roll route.
      */
     rollingResistanceMultiplier:
-        0.75,
+        0.50,
 
     durationSeconds:
         null,
@@ -145,7 +145,7 @@ export const DRY_SAND_STATE_DEFINITION:
         SurfaceState.Dry,
 
     rollingResistanceMultiplier:
-        2.4,
+        6.00,
 
     durationSeconds:
         null,
@@ -169,7 +169,7 @@ export const WET_SAND_STATE_DEFINITION:
      * while remaining slower than Normal Grass.
      */
     rollingResistanceMultiplier:
-        1.9,
+        2.50,
 
     durationSeconds:
         SURFACE_STATE_TIMERS_ENABLED
