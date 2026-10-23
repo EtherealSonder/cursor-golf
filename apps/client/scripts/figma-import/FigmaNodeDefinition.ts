@@ -41,7 +41,8 @@ export type FigmaGameplayObjectKind =
     | "rotator"
     | "fan" | "waterSprinkler" | "proximityMine"
     | "fireRobot" | "waterRobot" | "windRobot"
-    | "smallRock" | "boulder" | "bush" | "crate";
+    | "smallRock" | "boulder" | "bush" | "crate"
+    | "fireMarble" | "waterMarble";
 
 export interface FigmaObjectIdentity {
     readonly kind: FigmaGameplayObjectKind;

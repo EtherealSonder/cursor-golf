@@ -37,6 +37,7 @@ const PROFILES: Readonly<Record<FigmaGameplayObjectKind, FigmaTransformProfile>>
     fan: CENTER, waterSprinkler: CENTER, proximityMine: CENTER,
     fireRobot: CENTER, waterRobot: CENTER, windRobot: CENTER,
     smallRock: CENTER, boulder: CENTER, bush: CENTER, crate: CENTER,
+    fireMarble: CENTER, waterMarble: CENTER,
 };
 export function getFigmaTransformProfile(kind: FigmaGameplayObjectKind): FigmaTransformProfile {
     return PROFILES[kind];
@@ -63,6 +64,8 @@ const handlers: Partial<Record<FigmaGameplayObjectKind, FigmaLevelObjectHandler>
     smallRock: entry => ({ ...base(entry), type: 'smallRock', radius: Math.min(entry.object.bounds.width, entry.object.bounds.height) / 2, seed: entry.object.identity.index ?? 1 }),
     boulder: entry => ({ ...base(entry), type: 'boulder', radius: Math.min(entry.object.bounds.width, entry.object.bounds.height) / 2, seed: entry.object.identity.index ?? 1 }),
     bush: entry => ({ ...base(entry), type: "bush" }),
+    fireMarble: entry => ({ ...base(entry), type: "fireMarble" }),
+    waterMarble: entry => ({ ...base(entry), type: "waterMarble" }),
     crate: entry => ({ ...base(entry), type: "crate" }),
     rotator: entry => ({
         ...base(entry), type: "rotator",

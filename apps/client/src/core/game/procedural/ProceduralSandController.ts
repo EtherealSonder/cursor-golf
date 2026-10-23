@@ -34,6 +34,7 @@ export class ProceduralSandController {
     }
 
     public getPatches(): readonly ProceduralSandPatch[] { return this.patches; }
+    public getDensity(): ProceduralSandDensity { return this.density; }
 
     /** Register identical polygon footprints used by the texture renderer. */
     public registerSurfaces(surfaceSystem: SurfaceSystem): void {

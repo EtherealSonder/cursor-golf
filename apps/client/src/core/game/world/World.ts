@@ -1,3 +1,9 @@
+import { PortalPreviewRenderer } from "../portal/PortalPreviewRenderer";
+import { DEFAULT_PROCEDURAL_SAND_CONFIG } from "../procedural/ProceduralSandConfig";
+import { rollLevelGeneration } from "../procedural/LevelGenerationRollController";
+import { PROCEDURAL_MARBLE_CONFIG as MARBLE_CONFIG } from "../marble/ProceduralMarbleConfig";
+import { generateProceduralMarbles, isMarblePositionFree, type MarbleExclusion } from "../marble/ProceduralMarblePlacementController";
+import { ElementalMarbleDischargeController } from "../marble/ElementalMarbleDischargeController";
 import { ElementalMarbleDestructionController } from "../marble/ElementalMarbleDestructionController";
 import { ElementalMarble } from "../marble/ElementalMarble";
 import { ProceduralSandDebugControls } from "../procedural/ProceduralSandDebugControls";
@@ -658,7 +664,10 @@ export class World {
     private readonly bushes: Bush[] = [];
     private readonly crates: Crate[] = [];
     private readonly elementalMarbles: ElementalMarble[] = [];
+    private portalPreview: PortalPreviewRenderer | null = null;
+    private portalPreviewCancelled = false;
     private readonly marbleDestructionController: ElementalMarbleDestructionController;
+    private marbleDischargeController!: ElementalMarbleDischargeController;
     private crateDestructionSystem: CrateDestructionSystem | null = null;
     private readonly pendingCrateDestructions = new Set<Crate>();
     private readonly crateRobotUnregister = new Map<string, () => void>();
@@ -968,6 +977,7 @@ export class World {
     /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
     private readonly runtimeLevel: RuntimeLevelDefinition;
     private readonly proceduralSandController: ProceduralSandController;
+    private readonly marbleGenerationRoll = rollLevelGeneration();
     private proceduralSandRenderer: ProceduralSandRenderer | null = null;
     private proceduralSandDebugControls: ProceduralSandDebugControls | null = null;
     /** Resolved level identifier, retained for benchmark identity reporting. */
@@ -1027,7 +1037,10 @@ export class World {
             throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
-        this.proceduralSandController = new ProceduralSandController(this.runtimeLevel);
+        const sandRoll = rollLevelGeneration();
+        this.proceduralSandController = new ProceduralSandController(this.runtimeLevel, {
+            ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity,
+        });
         this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
         if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
         this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
@@ -1245,6 +1258,7 @@ export class World {
                 this.localWindSystem,
             );
 
+        this.marbleDischargeController = new ElementalMarbleDischargeController(this.fireManager, this.waterSourceSystem);
         this.fireSourceSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
         this.fireManager.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
 
@@ -1332,28 +1346,14 @@ export class World {
         );
         this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
         if (import.meta.env.DEV) {
-            const initial = this.proceduralSandController.getDiagnostics();
             this.proceduralSandDebugControls = new ProceduralSandDebugControls(
-                this.screenOverlayContainer, initial.density, (density) => {
-                    if (!this.proceduralSandRenderer) return;
-                    this.proceduralSandController.regenerateLive(
-                        this.surfaceSystem,
-                        patches => this.proceduralSandRenderer?.render(patches),
-                        density,
-                    );
-                    const diagnostics = this.proceduralSandController.getDiagnostics();
-                    this.proceduralSandDebugControls?.updateDiagnostics(
-                        diagnostics.generationCount, diagnostics.seed, diagnostics.patchCount, diagnostics.coveragePercent,
-                    );
-                },
-            );
-            this.proceduralSandDebugControls.updateDiagnostics(
-                initial.generationCount, initial.seed, initial.patchCount, initial.coveragePercent,
+                this.screenOverlayContainer, this.proceduralSandController.getDensity(),
             );
         }
         this.createLevelBushes();
         this.createLevelCrates();
-        this.createM1TestMarbles();
+        this.createLevelMarbles();
+        void this.createPortalPreviews();
         this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.crateFireContact = new CrateFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.bushBallSilhouette = new BushBallSilhouetteRenderer(
@@ -1916,6 +1916,7 @@ export class World {
             number,
     ): void {
 
+        this.portalPreview?.update(deltaTime);
         P3B1.setScope("world-start");
         // O3 presentation culling: snapshot Camera bounds once per frame.
         // Simulation remains world-authoritative and never consumes this query.
@@ -2514,7 +2515,15 @@ export class World {
         );
 
         for (const crate of this.crates) crate.update(deltaTime);
-        for (const marble of this.elementalMarbles) marble.update(deltaTime);
+        for (const marble of [...this.elementalMarbles]) {
+            const wasPopping = marble.isPopping();
+            marble.update(deltaTime);
+            if (!wasPopping && marble.isPopping()) this.deactivateElementalMarble(marble);
+            if (marble.consumeCompletedPop()) {
+                this.marbleDischargeController.discharge(marble);
+                this.removeElementalMarble(marble);
+            }
+        }
         this.marbleDestructionController.update(deltaTime, this.elementalMarbles,
             marble => this.deactivateElementalMarble(marble),
             marble => this.removeElementalMarble(marble),
@@ -2944,6 +2953,9 @@ export class World {
 
     public destroy():
         void {
+        this.portalPreviewCancelled = true;
+        this.portalPreview?.destroy();
+        this.portalPreview = null;
         this.proceduralSandDebugControls?.destroy();
         this.proceduralSandDebugControls = null;
         this.proceduralSandRenderer?.destroy();
@@ -2972,6 +2984,7 @@ export class World {
         }
         this.elementalMarbles.length = 0;
         this.marbleDestructionController.clear();
+        this.marbleDischargeController?.clear();
         for (const crate of this.crates) {
             this.physicsWorld.unregisterDynamicBody(crate);
             crate.destroy();
@@ -6498,66 +6511,63 @@ export class World {
         }
     }
 
-    /** M1 temporary, scattered test marbles; replaced by authored/procedural placements in M4. */
-    private createM1TestMarbles(): void {
-        if (!import.meta.env.DEV) return;
+    /** M4: authored marbles are fixed; remaining density is randomized on each load. */
+    /** P0 preview positions: fractions of the course AABB, visual-only. */
+    private async createPortalPreviews(): Promise<void> {
+        const course = this.runtimeLevel.course;
+        const spanX = course.maximumX - course.minimumX;
+        const spanY = course.maximumY - course.minimumY;
+        const positions = [0.25, 0.5, 0.75].map((fraction, index) => ({
+            x: course.minimumX + spanX * fraction,
+            y: course.minimumY + spanY * (index % 2 === 0 ? 0.35 : 0.65),
+        }));
+        try {
+            const preview = await PortalPreviewRenderer.create(
+                this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects), positions,
+            );
+            if (this.portalPreviewCancelled) preview.destroy();
+            else this.portalPreview = preview;
+        } catch (error) {
+            console.error("[Portal P0] Could not load portal preview assets", error);
+        }
+    }
+
+    private createLevelMarbles(): void {
         const geometry = this.runtimeLevel.course.generatedGeometry;
-        const vertices = geometry?.vertices ?? [];
-        if (vertices.length < 3 || !geometry) return;
-        const contains = (x: number, y: number): boolean => {
-            let inside = false;
-            for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
-                const a = vertices[i], b = vertices[j];
-                if (((a.y > y) !== (b.y > y)) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
-            }
-            return inside;
-        };
-        const distanceSquared = (ax: number, ay: number, bx: number, by: number): number =>
-            (ax - bx) ** 2 + (ay - by) ** 2;
-        const edgeDistanceSquared = (x: number, y: number, ax: number, ay: number, bx: number, by: number): number => {
-            const dx = bx - ax, dy = by - ay;
-            const lengthSquared = dx * dx + dy * dy;
-            const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSquared)) : 0;
-            return distanceSquared(x, y, ax + t * dx, ay + t * dy);
-        };
-        const radius = 7.5;
-        const clearance = radius + 8;
-        const { minimumX, maximumX, minimumY, maximumY } = geometry.bounds;
+        if (!geometry || geometry.vertices.length < 3) return;
         const spawn = this.runtimeLevel.ball;
         const hole = this.runtimeLevel.hole;
-        const placed: Array<{ x: number; y: number }> = [];
-        const authored = this.runtimeLevel.objects;
-        const isValid = (x: number, y: number): boolean => {
-            if (!contains(x, y)) return false;
-            for (let i = 0; i < vertices.length; i++) {
-                const a = vertices[i], b = vertices[(i + 1) % vertices.length];
-                if (edgeDistanceSquared(x, y, a.x, a.y, b.x, b.y) < clearance ** 2) return false;
-            }
-            if (distanceSquared(x, y, spawn.x, spawn.y) < 65 ** 2) return false;
-            if (distanceSquared(x, y, hole.x, hole.y) < 55 ** 2) return false;
-            if (placed.some(other => distanceSquared(x, y, other.x, other.y) < 65 ** 2)) return false;
-            // Conservative exclusion around authored objects; prevents initial overlaps
-            // with crates, rocks, mechanisms and other objects of unknown footprint.
-            if (authored.some(object => distanceSquared(x, y, object.x, object.y) < 80 ** 2)) return false;
-            return true;
-        };
-        // Distribute candidates across the entire polygon rather than around spawn.
-        // Randomized stratified sampling reduces clustering while keeping retries bounded.
-        const target = 30;
-        const columns = 9, rows = 9;
-        const cells: Array<{ column: number; row: number }> = [];
-        for (let row = 0; row < rows; row++) {
-            for (let column = 0; column < columns; column++) cells.push({ column, row });
+        const authored = this.runtimeLevel.objects.filter(object =>
+            object.type === "fireMarble" || object.type === "waterMarble");
+        const exclusions: MarbleExclusion[] = [
+            { x: spawn.x, y: spawn.y, radius: MARBLE_CONFIG.spawnClearance },
+            { x: hole.x, y: hole.y, radius: MARBLE_CONFIG.holeClearance },
+        ];
+        // Conservative physical footprints. Unrecognized mechanisms get a safety radius;
+        // rock/box/crate/bush sizes are handled explicitly to avoid immediate overlaps.
+        for (const object of this.runtimeLevel.objects) {
+            if (object.type === "fireMarble" || object.type === "waterMarble") continue;
+            let radius = 80;
+            if (object.type === "bush") radius = 68;
+            else if (object.type === "crate") radius = 45;
+            else if (object.type === "smallRock" || object.type === "boulder") radius = object.radius;
+            else if (object.type === "staticMetalBox") radius = Math.hypot(object.width, object.height) / 2;
+            exclusions.push({ x: object.x, y: object.y, radius: radius + MARBLE_CONFIG.objectClearance });
         }
-        for (let i = cells.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [cells[i], cells[j]] = [cells[j], cells[i]];
-        }
-        const tryPlace = (x: number, y: number): boolean => {
-            if (!isValid(x, y)) return false;
-            const index = placed.length;
-            const kind = index % 2 === 0 ? "fire" : "water";
-            const marble = new ElementalMarble(`m1-${index}`, kind, x, y);
+        const validAuthored = authored.filter(object => {
+            const valid = isMarblePositionFree(object, geometry, exclusions);
+            if (valid) exclusions.push({ x: object.x, y: object.y, radius: MARBLE_CONFIG.radius + MARBLE_CONFIG.marbleClearance });
+            else console.warn(`[ElementalMarble:M4] Skipping invalid authored placement ${object.id}`);
+            return valid;
+        });
+        const generated = generateProceduralMarbles(geometry, exclusions, validAuthored.length, Math.random, this.marbleGenerationRoll.value);
+        const fireExtra = Math.random() < 0.5;
+        const placements = [
+            ...validAuthored.map(object => ({ id: object.id, kind: object.type === "fireMarble" ? "fire" as const : "water" as const, x: object.x, y: object.y })),
+            ...generated.positions.map((point, index) => ({ id: `procedural-marble-${index}`, kind: index % 2 === (fireExtra ? 0 : 1) ? "fire" as const : "water" as const, x: point.x, y: point.y })),
+        ];
+        for (const placement of placements) {
+            const marble = new ElementalMarble(placement.id, placement.kind, placement.x, placement.y);
             this.elementalMarbles.push(marble);
             this.physicsWorld.registerElementalMarble(marble.id, marble);
             this.windSuctionCaptureSystem.registerTarget({
@@ -6566,36 +6576,16 @@ export class World {
                 beginCapture: () => { if (this.marbleDestructionController.beginCapture(marble)) this.deactivateElementalMarble(marble, false); },
                 setCaptureScale: scale => marble.setRemovalScale(scale),
             });
-            placed.push({ x, y });
-            return true;
-        };
-        // Keep a few marbles reasonably close to the spawn for immediate testing.
-        for (let i = 0; i < 60 && placed.length < 3; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 90 + Math.random() * 150;
-            tryPlace(spawn.x + Math.cos(angle) * distance, spawn.y + Math.sin(angle) * distance);
         }
-        for (const cell of cells) {
-            if (placed.length >= target) break;
-            for (let attempt = 0; attempt < 8; attempt++) {
-                const x = minimumX + ((cell.column + Math.random()) / columns) * (maximumX - minimumX);
-                const y = minimumY + ((cell.row + Math.random()) / rows) * (maximumY - minimumY);
-                if (tryPlace(x, y)) break;
-            }
-        }
-        // Additional bounded attempts for irregular or concave course layouts.
-        for (let attempt = 0; attempt < 250 && placed.length < target; attempt++) {
-            const x = minimumX + Math.random() * (maximumX - minimumX);
-            const y = minimumY + Math.random() * (maximumY - minimumY);
-            tryPlace(x, y);
-        }
-        console.info(`[ElementalMarble:M1] Spawned ${placed.length}/${target} test marbles`);
+        this.proceduralSandDebugControls?.updateMarbleDiagnostics(generated.area, generated.target,
+            this.elementalMarbles.filter(marble => marble.kind === "fire").length,
+            this.elementalMarbles.filter(marble => marble.kind === "water").length);
         const instances = [...this.elementalMarbles];
         const layer = this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects);
         void ElementalMarble.loadTextures().then(textures => {
             if (this.worldContainer.destroyed) return;
             for (const marble of instances) marble.attach(layer, textures[marble.kind]);
-        }).catch((error: unknown) => console.error("Failed to load M1 marble textures:", error));
+        }).catch((error: unknown) => console.error("Failed to load marble textures:", error));
     }
 
     /** M2: stop marble gameplay participation before shrinking; preserve its sprite. */
@@ -6612,6 +6602,10 @@ export class World {
         this.deactivateElementalMarble(marble);
         this.elementalMarbles.splice(index, 1);
         marble.destroy();
+        this.proceduralSandDebugControls?.updateMarbleRemaining(
+            this.elementalMarbles.filter(item => item.kind === "fire").length,
+            this.elementalMarbles.filter(item => item.kind === "water").length,
+        );
     }
 
     /** C1: visual-only crates, positioned by level-authored centers. */

@@ -21,6 +21,8 @@ for (const entry of FIGMA_GAMEPLAY_CATALOG) {
     assert.equal(serialized.y, 80);
 }
 assert.equal(identifyFigmaObject('bush_3')?.id, 'bush-3');
+assert.equal(identifyFigmaObject('fire_marble_1')?.kind, 'fireMarble');
+assert.equal(identifyFigmaObject('water_marble_2')?.id, 'water-marble-2');
 assert.equal(identifyFigmaObject('rotator_clockwise_1')?.kind, 'rotator');
 assert.equal(identifyFigmaObject('rotator_anticlockwise_2')?.direction, 'anticlockwise');
 assert.equal(getFigmaTransformProfile('rotator').strategy, 'center');

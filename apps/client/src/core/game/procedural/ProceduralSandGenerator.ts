@@ -7,6 +7,7 @@ import { validateSandPlacement } from "./ProceduralSandPlacementValidator";
 export interface SandGenerationResult { readonly patches: readonly SandShape[]; readonly attempts: number; readonly rejected: number; readonly coveragePercent: number; }
 export function generateProceduralSand(context: ProceduralSandLevelContext, config: ProceduralSandConfig, density: ProceduralSandDensity, random: SeededRandom): SandGenerationResult {
     const target = context.playableArea * config.targetCoverage[density];
+    const shape = config.intensityShapePresets[density];
     const patches: SandShape[] = [];
     let area = 0, attempts = 0;
     const maxAttempts = 600;
@@ -14,8 +15,8 @@ export function generateProceduralSand(context: ProceduralSandLevelContext, conf
     while (area < target && attempts < maxAttempts && patches.length < maxPatches) {
         attempts++;
         const center = { x: random.nextRange(context.bounds.minimumX,context.bounds.maximumX), y: random.nextRange(context.bounds.minimumY,context.bounds.maximumY) };
-        const diameter = random.nextRange(config.minimumPatchDiameter, config.maximumPatchDiameter);
-        const candidate = generateSandShape(random,center,diameter);
+        const diameter = random.nextRange(shape.minimumDiameter, shape.maximumDiameter);
+        const candidate = generateSandShape(random,center,diameter,shape);
         if (!validateSandPlacement(candidate,context,patches,config.minimumPatchSeparation,config.spawnClearance,config.holeClearance)) continue;
         patches.push(candidate);
         area += candidate.area;

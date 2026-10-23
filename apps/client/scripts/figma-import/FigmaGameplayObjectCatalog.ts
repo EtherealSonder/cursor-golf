@@ -18,6 +18,8 @@ export const FIGMA_GAMEPLAY_CATALOG: readonly GameplayCatalogEntry[] = [
     { prefix: 'small_rock', kind: 'smallRock', levelType: 'smallRock' },
     { prefix: 'boulder', kind: 'boulder', levelType: 'boulder' },
     { prefix: 'bush', kind: 'bush', levelType: 'bush', assetBasename: 'bush' },
+    { prefix: 'fire_marble', kind: 'fireMarble', levelType: 'fireMarble', assetBasename: 'fire_marble' },
+    { prefix: 'water_marble', kind: 'waterMarble', levelType: 'waterMarble', assetBasename: 'water_marble' },
     { prefix: 'crate', kind: 'crate', levelType: 'crate', assetBasename: 'crate' },
     { prefix: 'conveyer_belt_bg', kind: 'conveyorBelt', levelType: 'conveyorBelt', assetBasename: 'conveyer_belt_bg' },
 ];

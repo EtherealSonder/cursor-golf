@@ -389,6 +389,8 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                 case "proximityMine":
                 case "bush":
                 case "crate":
+                case "fireMarble":
+                case "waterMarble":
                     break;
             }
         });

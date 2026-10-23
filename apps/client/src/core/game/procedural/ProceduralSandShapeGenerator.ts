@@ -8,17 +8,20 @@ export function polygonArea(vertices: readonly WorldPosition[]): number {
     return Math.abs(sum) * 0.5;
 }
 /** Low-frequency periodic radial harmonics produce rounded, star-shaped amoebas without self-intersections. */
-export function generateSandShape(random: SeededRandom, center: WorldPosition, diameter: number): SandShape {
-    const aspect = random.nextRange(0.73, 1.25);
+export interface SandShapeOptions { readonly aspectMinimum: number; readonly aspectMaximum: number; readonly lobeMinimum: number; readonly lobeMaximum: number; readonly irregularity: number }
+export function generateSandShape(random: SeededRandom, center: WorldPosition, diameter: number, options: SandShapeOptions = {
+    aspectMinimum: 0.73, aspectMaximum: 1.25, lobeMinimum: 3, lobeMaximum: 6, irregularity: 1,
+}): SandShape {
+    const aspect = random.nextRange(options.aspectMinimum, options.aspectMaximum);
     const width = diameter * aspect, height = diameter / aspect;
     const rotation = random.nextRange(0, Math.PI * 2);
     const phaseA = random.nextRange(0, Math.PI * 2), phaseB = random.nextRange(0, Math.PI * 2);
     const phaseC = random.nextRange(0, Math.PI * 2);
-    const lobes = random.nextInteger(3, 6);
+    const lobes = random.nextInteger(options.lobeMinimum, options.lobeMaximum);
     const vertices: WorldPosition[] = [];
     for (let i = 0; i < 64; i++) {
         const t = i * Math.PI * 2 / 64;
-        const radius = 1 + 0.13 * Math.sin(lobes * t + phaseA) + 0.075 * Math.sin((lobes - 1) * t + phaseB) + 0.045 * Math.cos(2 * t + phaseC);
+        const radius = 1 + options.irregularity * (0.13 * Math.sin(lobes * t + phaseA) + 0.075 * Math.sin((lobes - 1) * t + phaseB) + 0.045 * Math.cos(2 * t + phaseC));
         const x = Math.cos(t) * width * 0.5 * radius, y = Math.sin(t) * height * 0.5 * radius;
         vertices.push({ x: center.x + x * Math.cos(rotation) - y * Math.sin(rotation), y: center.y + x * Math.sin(rotation) + y * Math.cos(rotation) });
     }

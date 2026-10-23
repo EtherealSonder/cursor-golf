@@ -168,6 +168,9 @@ export interface BushPlacement extends BaseObjectPlacement {
 export interface CratePlacement extends BaseObjectPlacement {
     readonly type: "crate";
 }
+/** Optional Figma-authored elemental marble; counts toward procedural density. */
+export interface FireMarblePlacement extends BaseObjectPlacement { readonly type: "fireMarble"; }
+export interface WaterMarblePlacement extends BaseObjectPlacement { readonly type: "waterMarble"; }
 
 export interface ProximityMinePlacement extends BaseObjectPlacement {
     readonly type: "proximityMine";
@@ -226,6 +229,8 @@ export type LevelObjectPlacement =
     | ProximityMinePlacement
     | BushPlacement
     | CratePlacement
+    | FireMarblePlacement
+    | WaterMarblePlacement
     | StaticMetalBoxPlacement
     | SmallRockPlacement
     | BoulderPlacement
@@ -257,6 +262,8 @@ export const LEVEL_OBJECT_TYPES = [
     "proximityMine",
     "bush",
     "crate",
+    "fireMarble",
+    "waterMarble",
     "staticMetalBox",
     "smallRock",
     "boulder",
