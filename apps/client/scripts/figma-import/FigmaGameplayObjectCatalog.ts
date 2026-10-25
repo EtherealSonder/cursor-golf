@@ -9,6 +9,9 @@ export interface GameplayCatalogEntry {
     readonly assetBasename?: string;
 }
 export const FIGMA_GAMEPLAY_CATALOG: readonly GameplayCatalogEntry[] = [
+    { prefix: 'portal_1', kind: 'portal1', levelType: 'portal1', assetBasename: 'portal_1' },
+    { prefix: 'portal_2', kind: 'portal2', levelType: 'portal2', assetBasename: 'portal_2' },
+    { prefix: 'portal_3', kind: 'portal3', levelType: 'portal3', assetBasename: 'portal_3' },
     { prefix: 'fan', kind: 'fan', levelType: 'fan', assetBasename: 'fan_body' },
     { prefix: 'water_sprinkler', kind: 'waterSprinkler', levelType: 'sprinkler' },
     { prefix: 'proximity_mine', kind: 'proximityMine', levelType: 'proximityMine' },

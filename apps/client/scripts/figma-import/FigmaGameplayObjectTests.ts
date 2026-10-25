@@ -20,6 +20,20 @@ for (const entry of FIGMA_GAMEPLAY_CATALOG) {
     assert.equal(serialized.x, 70);
     assert.equal(serialized.y, 80);
 }
+for (const variant of [1, 2, 3]) {
+    for (const instance of [1, 2]) {
+        const identity = identifyFigmaObject(`portal_${variant}_${instance}`);
+        assert.equal(identity?.kind, `portal${variant}`);
+        assert.equal(identity?.id, `portal-${variant}-${instance}`);
+        assert.equal(getFigmaTransformProfile(identity!.kind).strategy, 'center');
+        const serialized = getFigmaLevelObjectHandler(identity!.kind)!({
+            object: { identity, bounds: { x: 0, y: 0, width: 320, height: 103.4 } },
+            transform: { position: { x: 200, y: 300 }, rotationRadians: Math.PI / 4 },
+        } as FigmaConvertedObject);
+        assert.equal("rotation" in serialized ? serialized.rotation : undefined, Math.PI / 4);
+        assert.equal(serialized.id, `portal-${variant}-${instance}`);
+    }
+}
 assert.equal(identifyFigmaObject('bush_3')?.id, 'bush-3');
 assert.equal(identifyFigmaObject('fire_marble_1')?.kind, 'fireMarble');
 assert.equal(identifyFigmaObject('water_marble_2')?.id, 'water-marble-2');

@@ -6,6 +6,7 @@ import type {
 
 import {
     detectDynamicCollidableAgainstFixedCollision,
+    getCompoundContactPart,
 } from "./DynamicCollidableCollision";
 
 import type {
@@ -112,6 +113,8 @@ export class DynamicStaticCollisionSystem {
         let resolvedCollisionCount =
             0;
 
+        // Portal compound primitives are tested individually by the shared
+        // narrow phase, then resolved against a zero-inverse-mass fixed body.
         const resolutionPasses = collidables.some(body => body.getDefinition().material.marbleBounce)
             ? Math.max(5, this.definition.maximumResolutionPasses)
             : this.definition.maximumResolutionPasses;
@@ -143,7 +146,7 @@ export class DynamicStaticCollisionSystem {
                     const result =
                         resolveDynamicCollision(
                             this.createDynamicBody(
-                                collidable,
+                                collidable, getCompoundContactPart(manifold, "first"),
                             ),
                             this.createFixedBody(
                                 fixedShape,
@@ -247,6 +250,7 @@ export class DynamicStaticCollisionSystem {
     private createDynamicBody(
         collidable:
             DynamicCollidable,
+        partId?: string,
     ): DynamicCollisionBody {
 
         return {
@@ -267,8 +271,7 @@ export class DynamicStaticCollisionSystem {
                 collidable
                     .getInverseMass(),
             inverseMomentOfInertia:
-                collidable
-                    .getInverseMomentOfInertia(),
+                collidable.getContactInverseMomentOfInertia?.(partId) ?? collidable.getInverseMomentOfInertia(),
             applyImpulseAtWorldPoint:
                 (
                     impulseX:
@@ -280,13 +283,11 @@ export class DynamicStaticCollisionSystem {
                     contactPointY:
                         number,
                 ): void => {
-                    collidable
-                        .applyImpulseAtWorldPoint(
-                            impulseX,
-                            impulseY,
-                            contactPointX,
-                            contactPointY,
-                        );
+                    if (collidable.applyContactImpulseAtWorldPoint) {
+                        collidable.applyContactImpulseAtWorldPoint(impulseX, impulseY, contactPointX, contactPointY, partId);
+                    } else {
+                        collidable.applyImpulseAtWorldPoint(impulseX, impulseY, contactPointX, contactPointY);
+                    }
                 },
             translate:
                 (

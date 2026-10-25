@@ -422,6 +422,20 @@
       "x": 360,
       "y": 900,
       "roamRadius": 75
+    },
+    {
+      "id": "portal-1-1",
+      "x": 315,
+      "y": 965,
+      "type": "portal1",
+      "rotation": 0
+    },
+    {
+      "id": "portal-1-2",
+      "x": 705,
+      "y": 1100,
+      "type": "portal1",
+      "rotation": 0
     }
   ]
 }

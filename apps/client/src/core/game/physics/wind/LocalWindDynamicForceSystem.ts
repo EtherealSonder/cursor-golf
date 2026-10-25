@@ -47,7 +47,7 @@ export class LocalWindDynamicForceSystem {
         );
     }
 
-    /** Bodies such as Ball deliberately live outside PhysicsWorld's dynamic list. */
+    /** Bodies such as Ball and P2-B1 portals deliberately live outside PhysicsWorld's collision list. */
     public registerAdditionalBody(body: LocalWindForceTarget): void {
         this.additionalBodies.add(body);
     }

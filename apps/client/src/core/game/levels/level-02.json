@@ -138,13 +138,6 @@
       "type": "bush"
     },
     {
-      "id": "directional-bumper-1",
-      "x": 1411.9909666914677,
-      "y": 671.1022315485326,
-      "type": "directionalBumper",
-      "rotation": 2.0737304040495825
-    },
-    {
       "id": "rotator-anticlockwise-1",
       "x": 670,
       "y": 763.5,
@@ -201,6 +194,20 @@
       "y": 1367.5,
       "type": "rotator",
       "direction": "clockwise"
+    },
+    {
+      "id": "portal-1-1",
+      "x": 1254,
+      "y": 694.5,
+      "type": "portal1",
+      "rotation": 0
+    },
+    {
+      "id": "portal-1-2",
+      "x": 2070,
+      "y": 1748.5,
+      "type": "portal1",
+      "rotation": 0
     }
   ]
 }

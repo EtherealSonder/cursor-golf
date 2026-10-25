@@ -90,6 +90,9 @@ export function detectDynamicCollidableCollision(
     second: DynamicCollidable,
 ): DynamicCollisionManifold | null {
 
+    if (first.getCompoundCollisionGeometry || second.getCompoundCollisionGeometry) {
+        return detectCompoundPair(first, second);
+    }
     return detectShapePair(
         first.getX(),
         first.getY(),
@@ -112,6 +115,9 @@ export function detectDynamicCollidableAgainstFixedCollision(
     fixed: FixedCollisionShape,
 ): DynamicCollisionManifold | null {
 
+    if (dynamic.getCompoundCollisionGeometry) {
+        return detectCompoundAgainstFixed(dynamic, fixed);
+    }
     const dynamicDefinition =
         dynamic.getDefinition();
 
@@ -1054,4 +1060,68 @@ function clamp(
             maximum,
         ),
     );
+}
+
+// P2-B2A: detection only. No new collision registrations or response calls.
+// Expand each local-space compound shape into existing supported narrow-phase
+// primitives, then select one manifold to avoid duplicate impulses at arc joints.
+interface PrimitiveInstance {
+    readonly partId?: string;
+    readonly x: number; readonly y: number; readonly rotation: number;
+    readonly definition: DynamicObstacleDefinition;
+}
+function getPrimitiveInstances(body: DynamicCollidable): PrimitiveInstance[] {
+    const definition = body.getDefinition();
+    const compound = body.getCompoundCollisionGeometry?.();
+    if (!compound) return [{x:body.getX(),y:body.getY(),rotation:body.getRotationRadians(),definition}];
+    const angle = body.getRotationRadians(), cos = Math.cos(angle), sin = Math.sin(angle);
+    const transform = (x:number,y:number) => ({x:body.getX()+x*cos-y*sin,y:body.getY()+x*sin+y*cos});
+    const instances: PrimitiveInstance[] = [];
+    const add = (id:string,x:number,y:number,rotation:number,shape: "circle" | "rectangle",a:number,b=0,partId=id) => {
+        const d: DynamicObstacleDefinition = shape === "circle"
+            ? {...definition,id:`${definition.id}/${id}`,shape:"circle",radius:a}
+            : {...definition,id:`${definition.id}/${id}`,shape:"rectangle",width:a,height:b};
+        instances.push({x,y,rotation,definition:d,partId});
+    };
+    for (const primitive of compound) {
+        if (primitive.kind === "rectangle") {
+            const p = transform(primitive.x,primitive.y);
+            add(primitive.id,p.x,p.y,angle+(primitive.rotationRadians??0),"rectangle",primitive.width,primitive.height);
+        } else {
+            const p1=transform(primitive.x1,primitive.y1),p2=transform(primitive.x2,primitive.y2);
+            const dx=p2.x-p1.x,dy=p2.y-p1.y,length=Math.hypot(dx,dy);
+            if (length>1e-6) add(primitive.id+"/spine",(p1.x+p2.x)/2,(p1.y+p2.y)/2,Math.atan2(dy,dx),"rectangle",length,primitive.radius*2,primitive.id);
+            add(primitive.id+"/start",p1.x,p1.y,0,"circle",primitive.radius,0,primitive.id);
+            add(primitive.id+"/end",p2.x,p2.y,0,"circle",primitive.radius,0,primitive.id);
+        }
+    }
+    return instances;
+}
+function selectContact(best:DynamicCollisionManifold|null, candidate:DynamicCollisionManifold|null):DynamicCollisionManifold|null {
+    return candidate && (!best || candidate.penetrationDepth>best.penetrationDepth) ? candidate : best;
+}
+/** Compound contact identity is metadata, not part of the legacy manifold contract. */
+export type CompoundContactManifold = DynamicCollisionManifold & { readonly firstPartId?: string; readonly secondPartId?: string };
+export function getCompoundContactPart(manifold: DynamicCollisionManifold, side: "first" | "second"): string | undefined {
+    const contact = manifold as CompoundContactManifold;
+    return side === "first" ? contact.firstPartId : contact.secondPartId;
+}
+function detectCompoundPair(first:DynamicCollidable,second:DynamicCollidable):DynamicCollisionManifold|null {
+    let best:DynamicCollisionManifold|null=null;
+    for (const a of getPrimitiveInstances(first)) for (const b of getPrimitiveInstances(second)) {
+        const hit = detectShapePair(a.x,a.y,a.rotation,a.definition,b.x,b.y,b.rotation,b.definition);
+        best=selectContact(best,hit ? {...hit,firstPartId:a.partId,secondPartId:b.partId} : null);
+    }
+    return best;
+}
+function detectCompoundAgainstFixed(dynamic:DynamicCollidable,fixed:FixedCollisionShape):DynamicCollisionManifold|null {
+    let best:DynamicCollisionManifold|null=null;
+    for (const a of getPrimitiveInstances(dynamic)) {
+        const b:DynamicObstacleDefinition = fixed.shape === "circle"
+            ? {...a.definition,id:fixed.id,shape:"circle",radius:fixed.radius,material:fixed.material}
+            : {...a.definition,id:fixed.id,shape:"rectangle",width:fixed.width,height:fixed.height,material:fixed.material};
+        const hit = detectShapePair(a.x,a.y,a.rotation,a.definition,fixed.positionX,fixed.positionY,fixed.shape==="rectangle"?fixed.rotationRadians:0,b);
+        best=selectContact(best,hit ? {...hit,firstPartId:a.partId} : null);
+    }
+    return best;
 }

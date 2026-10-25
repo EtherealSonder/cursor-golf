@@ -172,6 +172,12 @@ export interface CratePlacement extends BaseObjectPlacement {
 export interface FireMarblePlacement extends BaseObjectPlacement { readonly type: "fireMarble"; }
 export interface WaterMarblePlacement extends BaseObjectPlacement { readonly type: "waterMarble"; }
 
+/** P1 visual-only authored portal; rotation in radians. */
+export interface PortalPlacement extends BaseObjectPlacement {
+    readonly type: "portal1" | "portal2" | "portal3";
+    readonly rotation: number;
+}
+
 export interface ProximityMinePlacement extends BaseObjectPlacement {
     readonly type: "proximityMine";
 }
@@ -219,6 +225,7 @@ export interface WindRobotPlacement extends BaseRobotPlacement {
  * rules, simulation constants, VFX settings, and runtime-generated state.
  */
 export type LevelObjectPlacement =
+    | PortalPlacement
     | FanPlacement
     | SprinklerPlacement
     | RadialBumperPlacement
@@ -252,6 +259,7 @@ export const ROTATING_PADDLE_DIRECTIONS = [
     "counterClockwise",
 ] as const;
 export const LEVEL_OBJECT_TYPES = [
+    "portal1", "portal2", "portal3",
     "fan",
     "sprinkler",
     "radialBumper",

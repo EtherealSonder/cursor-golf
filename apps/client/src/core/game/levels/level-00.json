@@ -36,5 +36,20 @@
     "y": 500
   },
   "terrain": [],
-  "objects": []
+  "objects": [
+    {
+      "id": "portal-1-1",
+      "x": 450,
+      "y": 691.5,
+      "type": "portal1",
+      "rotation": 0
+    },
+    {
+      "id": "portal-1-2",
+      "x": 1438,
+      "y": 281.5,
+      "type": "portal1",
+      "rotation": 0
+    }
+  ]
 }

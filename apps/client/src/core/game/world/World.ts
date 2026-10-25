@@ -1,4 +1,6 @@
+import { Portal } from "../portal/Portal";
 import { PortalPreviewRenderer } from "../portal/PortalPreviewRenderer";
+import { selectValidPortalPairs } from "../portal/PortalPairController";
 import { DEFAULT_PROCEDURAL_SAND_CONFIG } from "../procedural/ProceduralSandConfig";
 import { rollLevelGeneration } from "../procedural/LevelGenerationRollController";
 import { PROCEDURAL_MARBLE_CONFIG as MARBLE_CONFIG } from "../marble/ProceduralMarbleConfig";
@@ -665,6 +667,7 @@ export class World {
     private readonly crates: Crate[] = [];
     private readonly elementalMarbles: ElementalMarble[] = [];
     private portalPreview: PortalPreviewRenderer | null = null;
+    private readonly portalBodies: Portal[] = [];
     private portalPreviewCancelled = false;
     private readonly marbleDestructionController: ElementalMarbleDestructionController;
     private marbleDischargeController!: ElementalMarbleDischargeController;
@@ -1916,6 +1919,11 @@ export class World {
             number,
     ): void {
 
+        // P2-C1: integrate angular-only motion around each authored fixed pivot.
+        for (const portal of this.portalBodies) {
+            portal.update(deltaTime);
+            this.portalPreview?.setTransform(portal.id, portal.getX(), portal.getY(), portal.getRotation());
+        }
         this.portalPreview?.update(deltaTime);
         P3B1.setScope("world-start");
         // O3 presentation culling: snapshot Camera bounds once per frame.
@@ -2703,6 +2711,11 @@ export class World {
                 }
             }
             this.dynamicStaticCollisionSystem.resolve(this.physicsWorld);
+            // Contact corrections happen after P2-B1's integration step. Update
+            // presentation again so the housing/vortex never lag the rigid body.
+            for (const portal of this.portalBodies) {
+                this.portalPreview?.setTransform(portal.id, portal.getX(), portal.getY(), portal.getRotation());
+            }
             this.flushCrateDestructions();
             // B6: resolve bushes only against movable rigid bodies, never Ball.
             this.bushObjectCollisionSystem.resolve(
@@ -2953,6 +2966,10 @@ export class World {
 
     public destroy():
         void {
+        for (const portal of this.portalBodies) {
+            this.physicsWorld.unregisterDynamicBody(portal);
+        }
+        this.portalBodies.length = 0;
         this.portalPreviewCancelled = true;
         this.portalPreview?.destroy();
         this.portalPreview = null;
@@ -6511,16 +6528,30 @@ export class World {
         }
     }
 
-    /** M4: authored marbles are fixed; remaining density is randomized on each load. */
-    /** P0 preview positions: fractions of the course AABB, visual-only. */
+    /** P2-A: render authored portal pairs with non-interactive collider debug overlays. */
     private async createPortalPreviews(): Promise<void> {
-        const course = this.runtimeLevel.course;
-        const spanX = course.maximumX - course.minimumX;
-        const spanY = course.maximumY - course.minimumY;
-        const positions = [0.25, 0.5, 0.75].map((fraction, index) => ({
-            x: course.minimumX + spanX * fraction,
-            y: course.minimumY + spanY * (index % 2 === 0 ? 0.35 : 0.65),
-        }));
+        const authored = this.runtimeLevel.objects.filter(
+            (object): object is Extract<typeof object, { type: "portal1" | "portal2" | "portal3" }> =>
+                object.type === "portal1" || object.type === "portal2" || object.type === "portal3",
+        );
+        const positions = selectValidPortalPairs(authored, this.runtimeLevel.id);
+        if (!positions.length) return;
+        for (const position of positions) {
+            const portal = new Portal(position);
+            this.portalBodies.push(portal);
+            // Register with the existing rigid-body population. Ball receives
+            // this stable array by reference, so no Ball-specific registry needed.
+            // The portal is registered only once; C3 will provide handle wind torque.
+            this.physicsWorld.registerDynamicCollidable(`portal-physics-${portal.id}`, portal, {
+                participation: {
+                    rigidBody: true,
+                    hose: false,
+                    groundWater: false,
+                    airborneWater: false,
+                    impactAwareness: false,
+                },
+            });
+        }
         try {
             const preview = await PortalPreviewRenderer.create(
                 this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects), positions,
@@ -6528,7 +6559,7 @@ export class World {
             if (this.portalPreviewCancelled) preview.destroy();
             else this.portalPreview = preview;
         } catch (error) {
-            console.error("[Portal P0] Could not load portal preview assets", error);
+            console.error("[Portal P1] Could not load portal assets", error);
         }
     }
 

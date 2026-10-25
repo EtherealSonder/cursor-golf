@@ -42,6 +42,8 @@ import {
     detectBallObstacleCollision,
 } from "../physics/StaticObstacleCollision";
 
+import { detectDynamicCollidableAgainstFixedCollision, getCompoundContactPart } from "../physics/DynamicCollidableCollision";
+
 import {
     resolveDynamicCollision,
 } from "../physics/DynamicCollisionResponse";
@@ -2709,8 +2711,30 @@ export class Ball extends Entity {
             const obstacleDefinition =
                 obstacle.getDefinition();
 
-            const detectedManifold =
-                detectBallDynamicObstacleCollision(
+            // A portal's outer bounds are NOT solid: use its local housing and
+            // handle primitives, with the center left completely open.
+            // The compound detector returns a normal pointing toward the portal
+            // (its first body), so reverse it for Ball as the first solver body.
+            const compoundContact = obstacle.getCompoundCollisionGeometry
+                ? detectDynamicCollidableAgainstFixedCollision(obstacle, {
+                    id: "ball-contact",
+                    shape: "circle",
+                    positionX: this.getX(),
+                    positionY: this.getY(),
+                    radius: this.radius,
+                    material: {
+                        restitution: this.physicsDefinition.obstacleRestitution,
+                        friction: this.physicsDefinition.obstacleFriction,
+                    },
+                })
+                : null;
+            const detectedManifold = obstacle.getCompoundCollisionGeometry
+                ? (compoundContact ? {
+                    ...compoundContact,
+                    normalX: -compoundContact.normalX,
+                    normalY: -compoundContact.normalY,
+                } : null)
+                : detectBallDynamicObstacleCollision(
                     this.getX(),
                     this.getY(),
                     this.radius,
@@ -2726,10 +2750,11 @@ export class Ball extends Entity {
                 continue;
             }
 
-            const dynamicManifold =
-                this.createCombinedDynamicManifold(
-                    detectedManifold,
-                );
+            // Compound detection already combines both materials; legacy
+            // obstacle detection still needs the Ball material combination.
+            const dynamicManifold = obstacle.getCompoundCollisionGeometry
+                ? detectedManifold
+                : this.createCombinedDynamicManifold(detectedManifold);
 
             const speedBeforeCollision =
                 this.getSpeed();
@@ -2749,7 +2774,7 @@ export class Ball extends Entity {
                     this.createBallCollisionBody(),
 
                     this.createObstacleCollisionBody(
-                        obstacle,
+                        obstacle, getCompoundContactPart(dynamicManifold, "first"),
                     ),
 
                     dynamicManifold,
@@ -2977,6 +3002,7 @@ export class Ball extends Entity {
     private createObstacleCollisionBody(
         obstacle:
             DynamicCollidable,
+        partId?: string,
     ): DynamicCollisionBody {
 
         return {
@@ -3001,8 +3027,7 @@ export class Ball extends Entity {
                     .getInverseMass(),
 
             inverseMomentOfInertia:
-                obstacle
-                    .getInverseMomentOfInertia(),
+                obstacle.getContactInverseMomentOfInertia?.(partId) ?? obstacle.getInverseMomentOfInertia(),
 
             applyImpulseAtWorldPoint:
                 (
@@ -3035,8 +3060,9 @@ export class Ball extends Entity {
                                 .maximumCollisionImpulse /
                             impulseMagnitude;
 
-                        obstacle
-                            .applyImpulseAtWorldPoint(
+                        (obstacle.applyContactImpulseAtWorldPoint
+                            ? (ix: number, iy: number, px: number, py: number) => obstacle.applyContactImpulseAtWorldPoint!(ix, iy, px, py, partId)
+                            : (ix: number, iy: number, px: number, py: number) => obstacle.applyImpulseAtWorldPoint(ix, iy, px, py))(
                                 impulseX *
                                 scale,
 
@@ -3051,8 +3077,9 @@ export class Ball extends Entity {
                         return;
                     }
 
-                    obstacle
-                        .applyImpulseAtWorldPoint(
+                    (obstacle.applyContactImpulseAtWorldPoint
+                        ? (ix: number, iy: number, px: number, py: number) => obstacle.applyContactImpulseAtWorldPoint!(ix, iy, px, py, partId)
+                        : (ix: number, iy: number, px: number, py: number) => obstacle.applyImpulseAtWorldPoint(ix, iy, px, py))(
                             impulseX,
                             impulseY,
                             contactPointX,

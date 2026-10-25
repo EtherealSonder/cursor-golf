@@ -308,7 +308,14 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
             }
 
             const objectId = nonEmptyString(object.id) ? object.id : undefined;
-            registerId(object.id, path, objectId);
+            // Portal duplicates invalidate only their pair; do not block the level.
+            if (object.type === "portal1" || object.type === "portal2" || object.type === "portal3") {
+                if (nonEmptyString(object.id)) {
+                    const previous = usedIds.get(object.id);
+                    if (previous) warning("DUPLICATE_PORTAL_ID", `Portal id "${object.id}" is already used at ${previous}; pair will be skipped.`, path, object.id);
+                    else usedIds.set(object.id, path);
+                } else warning("INVALID_PORTAL_ID", "Portal id must be non-empty; pair will be skipped.", path);
+            } else registerId(object.id, path, objectId);
 
             if (!isLevelObjectType(object.type)) {
                 error("UNKNOWN_OBJECT_TYPE", "Unknown level object type.", `${path}.type`, objectId);
@@ -331,6 +338,9 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
             }
 
             switch (object.type) {
+                case "portal1":
+                case "portal2":
+                case "portal3":
                 case "fan":
                 case "sprinkler":
                 case "directionalBumper":
@@ -394,6 +404,24 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
                     break;
             }
         });
+    }
+
+    // P1: incomplete/oversized portal groups are warnings, never fatal to the level.
+    // Runtime pair selection independently excludes all members of invalid groups.
+    if (Array.isArray(input.objects)) {
+        for (const variant of [1, 2, 3] as const) {
+            const group = input.objects.filter((object): object is UnknownRecord =>
+                isRecord(object) && object.type === `portal${variant}`);
+            if (group.length === 0) continue;
+            const ids = group.map(object => String(object.id));
+            const expected = [`portal-${variant}-1`, `portal-${variant}-2`];
+            if (group.length !== 2 || new Set(ids).size !== 2 ||
+                !expected.every(id => ids.includes(id))) {
+                warning("INVALID_PORTAL_PAIR",
+                    `Portal ${variant} requires exactly portal_${variant}_1 and portal_${variant}_2; found: ${ids.join(", ")}. Entire group will be skipped.`,
+                    "objects");
+            }
+        }
     }
 
     // R6: validate the full rotating footprint, not just the mechanism center.
