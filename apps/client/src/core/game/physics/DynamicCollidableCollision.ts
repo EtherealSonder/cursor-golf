@@ -1,3 +1,4 @@
+import { PortalPerformanceDiagnosticController as PortalDiag } from "../debug/PortalPerformanceDiagnosticController";
 import type {
     DynamicObstacleDefinition,
 } from "../config/ObstacleDefinition";
@@ -1109,7 +1110,9 @@ export function getCompoundContactPart(manifold: DynamicCollisionManifold, side:
 function detectCompoundPair(first:DynamicCollidable,second:DynamicCollidable):DynamicCollisionManifold|null {
     let best:DynamicCollisionManifold|null=null;
     for (const a of getPrimitiveInstances(first)) for (const b of getPrimitiveInstances(second)) {
+        PortalDiag.active?.count("compoundPrimitiveTests");
         const hit = detectShapePair(a.x,a.y,a.rotation,a.definition,b.x,b.y,b.rotation,b.definition);
+        if (hit) PortalDiag.active?.count("compoundContacts");
         best=selectContact(best,hit ? {...hit,firstPartId:a.partId,secondPartId:b.partId} : null);
     }
     return best;
@@ -1120,8 +1123,34 @@ function detectCompoundAgainstFixed(dynamic:DynamicCollidable,fixed:FixedCollisi
         const b:DynamicObstacleDefinition = fixed.shape === "circle"
             ? {...a.definition,id:fixed.id,shape:"circle",radius:fixed.radius,material:fixed.material}
             : {...a.definition,id:fixed.id,shape:"rectangle",width:fixed.width,height:fixed.height,material:fixed.material};
+        PortalDiag.active?.count("compoundPrimitiveTests");
         const hit = detectShapePair(a.x,a.y,a.rotation,a.definition,fixed.positionX,fixed.positionY,fixed.shape==="rectangle"?fixed.rotationRadians:0,b);
+        if (hit) PortalDiag.active?.count("compoundContacts");
         best=selectContact(best,hit ? {...hit,firstPartId:a.partId} : null);
     }
     return best;
+}
+
+/** C4: test a proposed orientation through the existing compound narrow phase. */
+export function detectCompoundAtRotation(
+    body: DynamicCollidable,
+    rotation: number,
+    fixed: FixedCollisionShape,
+): DynamicCollisionManifold | null {
+    const proxy: DynamicCollidable = {
+        ...body,
+        getDefinition: () => body.getDefinition(),
+        getX: () => body.getX(),
+        getY: () => body.getY(),
+        getRotationRadians: () => rotation,
+        getCompoundCollisionGeometry: () => body.getCompoundCollisionGeometry?.() ?? [],
+        getVelocityX: () => body.getVelocityX(),
+        getVelocityY: () => body.getVelocityY(),
+        getAngularVelocity: () => body.getAngularVelocity(),
+        getInverseMass: () => body.getInverseMass(),
+        getInverseMomentOfInertia: () => body.getInverseMomentOfInertia(),
+        applyImpulseAtWorldPoint: (ix,iy,x,y) => body.applyImpulseAtWorldPoint(ix,iy,x,y),
+        translate: (dx,dy) => body.translate(dx,dy),
+    };
+    return detectDynamicCollidableAgainstFixedCollision(proxy, fixed);
 }

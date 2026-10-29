@@ -39,16 +39,44 @@
   "objects": [
     {
       "id": "portal-1-1",
-      "x": 450,
-      "y": 691.5,
+      "x": 500,
+      "y": 288.5,
       "type": "portal1",
       "rotation": 0
     },
     {
       "id": "portal-1-2",
-      "x": 1438,
-      "y": 281.5,
+      "x": 500,
+      "y": 668.5,
       "type": "portal1",
+      "rotation": 0
+    },
+    {
+      "id": "portal-2-1",
+      "x": 900,
+      "y": 288.5,
+      "type": "portal2",
+      "rotation": 0
+    },
+    {
+      "id": "portal-2-2",
+      "x": 900,
+      "y": 668.5,
+      "type": "portal2",
+      "rotation": 0
+    },
+    {
+      "id": "portal-3-1",
+      "x": 1300,
+      "y": 288.5,
+      "type": "portal3",
+      "rotation": 0
+    },
+    {
+      "id": "portal-3-2",
+      "x": 1300,
+      "y": 668.5,
+      "type": "portal3",
       "rotation": 0
     }
   ]

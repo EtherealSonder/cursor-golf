@@ -1,3 +1,7 @@
+import { isPortalDiagnosticLevel } from "../debug/PortalPerformanceDiagnosticDefinition";
+import { PortalPerformanceDiagnosticController } from "../debug/PortalPerformanceDiagnosticController";
+import { PortalPerformanceDiagnosticOverlay } from "../debug/PortalPerformanceDiagnosticOverlay";
+import { PORTAL_BODY } from "../config/PortalPhysicsDefinition";
 import { Portal } from "../portal/Portal";
 import { PortalPreviewRenderer } from "../portal/PortalPreviewRenderer";
 import { selectValidPortalPairs } from "../portal/PortalPairController";
@@ -668,6 +672,9 @@ export class World {
     private readonly elementalMarbles: ElementalMarble[] = [];
     private portalPreview: PortalPreviewRenderer | null = null;
     private readonly portalBodies: Portal[] = [];
+    private readonly portalDiagnostic = new PortalPerformanceDiagnosticController();
+    private portalDiagnosticOverlay: PortalPerformanceDiagnosticOverlay | null = null;
+    private portalDiagnosticEnabled = false;
     private portalPreviewCancelled = false;
     private readonly marbleDestructionController: ElementalMarbleDestructionController;
     private marbleDischargeController!: ElementalMarbleDischargeController;
@@ -1040,6 +1047,8 @@ export class World {
             throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
+        this.portalDiagnosticEnabled = isPortalDiagnosticLevel(this.runtimeLevel.id);
+        if (this.portalDiagnosticEnabled) PortalPerformanceDiagnosticController.active = this.portalDiagnostic;
         const sandRoll = rollLevelGeneration();
         this.proceduralSandController = new ProceduralSandController(this.runtimeLevel, {
             ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity,
@@ -1340,23 +1349,27 @@ export class World {
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
         this.createCourse();
-        this.proceduralSandController.registerSurfaces(this.surfaceSystem);
+        if (!this.portalDiagnosticEnabled) this.proceduralSandController.registerSurfaces(this.surfaceSystem);
         this.proceduralSandRenderer = new ProceduralSandRenderer(
             this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain),
             AssetLoader.getTexture(this.courseVisualDefinition.sandTextureKey),
             this.courseVisualDefinition.sandTileScale,
             this.courseVisualDefinition.terrainAlpha,
         );
-        this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
-        if (import.meta.env.DEV) {
+        if (!this.portalDiagnosticEnabled) this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
+        if (import.meta.env.DEV && !this.portalDiagnosticEnabled) {
             this.proceduralSandDebugControls = new ProceduralSandDebugControls(
                 this.screenOverlayContainer, this.proceduralSandController.getDensity(),
             );
         }
         this.createLevelBushes();
         this.createLevelCrates();
-        this.createLevelMarbles();
+        if (!this.portalDiagnosticEnabled) this.createLevelMarbles();
         void this.createPortalPreviews();
+        if (this.portalDiagnosticEnabled) {
+            this.portalDiagnosticOverlay = new PortalPerformanceDiagnosticOverlay();
+            this.screenOverlayContainer.addChild(this.portalDiagnosticOverlay.container);
+        }
         this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.crateFireContact = new CrateFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.bushBallSilhouette = new BushBallSilhouetteRenderer(
@@ -1921,7 +1934,15 @@ export class World {
 
         // P2-C1: integrate angular-only motion around each authored fixed pivot.
         for (const portal of this.portalBodies) {
-            portal.update(deltaTime);
+            portal.update(deltaTime, (candidateAngle, previousAngle) =>
+                this.dynamicStaticCollisionSystem.blocksAnchoredRotation(
+                    this.physicsWorld, portal, candidateAngle, previousAngle,
+                    PORTAL_BODY.rotationContactTolerance,
+                ) || this.dynamicCollisionSystem.blocksAnchoredRotation(
+                    portal, this.physicsWorld.getRigidDynamicCollidables(),
+                    candidateAngle, previousAngle, PORTAL_BODY.rotationContactTolerance,
+                ),
+            );
             this.portalPreview?.setTransform(portal.id, portal.getX(), portal.getY(), portal.getRotation());
         }
         this.portalPreview?.update(deltaTime);
@@ -2954,6 +2975,10 @@ export class World {
         }
 
 
+        if (this.portalDiagnosticEnabled) {
+            this.portalDiagnostic.frame(deltaTime);
+            if (this.portalDiagnostic.shouldRefreshOverlay() || this.portalDiagnostic.isFinished()) this.portalDiagnosticOverlay?.update(this.portalDiagnostic);
+        }
         P3B1.setScope("outside-world-update");
     }    /** Read-only workload snapshot for the P3-A1 frame profiler. */
     public getP3A1Workload(): {waterPackets:number;fireParticles:number;windParticles:number} {
@@ -2967,9 +2992,14 @@ export class World {
     public destroy():
         void {
         for (const portal of this.portalBodies) {
+            this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-left`);
+            this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-right`);
             this.physicsWorld.unregisterDynamicBody(portal);
         }
         this.portalBodies.length = 0;
+        this.portalDiagnosticOverlay?.destroy();
+        this.portalDiagnosticOverlay = null;
+        this.portalDiagnostic.destroy();
         this.portalPreviewCancelled = true;
         this.portalPreview?.destroy();
         this.portalPreview = null;
@@ -3615,6 +3645,7 @@ export class World {
         pixiRenderMilliseconds: number,
     ): void {
 
+        if (this.portalDiagnosticEnabled) this.portalDiagnostic.recordPresentation(gameUpdateMilliseconds,pixiRenderMilliseconds);
         this.waterPerformanceProfiler
             .recordFramePresentationDiagnostics(
                 gameUpdateMilliseconds,
@@ -6539,6 +6570,20 @@ export class World {
         for (const position of positions) {
             const portal = new Portal(position);
             this.portalBodies.push(portal);
+            if (this.portalDiagnosticEnabled) this.portalDiagnostic.setPortalCount(this.portalBodies.length);
+            // Two independent moving water targets: the housing and vortex
+            // do not generate environmental torque.
+            for (const side of ["left", "right"] as const) {
+                this.airborneWaterSystem.registerImpactAwareTarget({
+                    id: `portal-water-${portal.id}-${side}`,
+                    radius: PORTAL_BODY.waterHandleTargetRadius,
+                    getX: () => portal.getHandleWorldPosition(side).x,
+                    getY: () => portal.getHandleWorldPosition(side).y,
+                    notifyImpact: () => { /* torque is handled by applyWaterImpulse */ },
+                    applyWaterImpulse: (vx, vy, amount) =>
+                        portal.applyWaterHandleImpulse(side, vx, vy, amount),
+                });
+            }
             // Register with the existing rigid-body population. Ball receives
             // this stable array by reference, so no Ball-specific registry needed.
             // The portal is registered only once; C3 will provide handle wind torque.

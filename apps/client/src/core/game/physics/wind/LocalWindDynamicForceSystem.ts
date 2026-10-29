@@ -23,6 +23,7 @@ interface LocalWindForceTarget {
     getX(): number;
     getY(): number;
     getInverseMass(): number;
+    applyFixedPivotWind?(wind: LocalWindSystem, deltaTime: number, referenceMass: number): void;
     applyLocalWindImpulse?(
         impulseX: number, impulseY: number, wind: LocalWindSystem,
         sourceIds: readonly string[], deltaTime: number,
@@ -62,12 +63,21 @@ export class LocalWindDynamicForceSystem {
             return;
         }
 
-        const bodies = [
+        // A body registered through both paths must receive wind only once.
+        const bodies = new Set<LocalWindForceTarget>([
             ...this.physicsWorld.getRigidDynamicCollidables(),
             ...this.additionalBodies,
-        ];
+        ]);
 
         for (const body of bodies) {
+            // Anchored mechanisms cannot accept center-sampled linear impulses.
+            // They sample wind at their own handles and convert it to torque.
+            if (body.applyFixedPivotWind) {
+                body.applyFixedPivotWind(
+                    this.localWindSystem, deltaTime, this.definition.referenceMass,
+                );
+                continue;
+            }
             const inverseMass = body.getInverseMass();
 
             // Static/kinematic registrations cannot be displaced by Wind.

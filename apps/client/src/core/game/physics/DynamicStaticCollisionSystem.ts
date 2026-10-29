@@ -1,3 +1,4 @@
+import { PortalPerformanceDiagnosticController as PortalDiag } from "../debug/PortalPerformanceDiagnosticController";
 import type { StaticObstacleDefinition } from "../config/ObstacleDefinition";
 
 import type {
@@ -7,6 +8,7 @@ import type {
 import {
     detectDynamicCollidableAgainstFixedCollision,
     getCompoundContactPart,
+    detectCompoundAtRotation,
 } from "./DynamicCollidableCollision";
 
 import type {
@@ -65,10 +67,11 @@ export class DynamicStaticCollisionSystem {
             definition;
     }
 
-    public resolve(
-        physicsWorld:
-            PhysicsWorld,
-    ): number {
+    public resolve(physicsWorld: PhysicsWorld): number {
+        const diag = PortalDiag.active;
+        return diag ? diag.measure("staticCollision",()=>this.resolveCore(physicsWorld)) : this.resolveCore(physicsWorld);
+    }
+    private resolveCore(physicsWorld: PhysicsWorld): number {
 
         const collidables =
             physicsWorld
@@ -175,6 +178,32 @@ export class DynamicStaticCollisionSystem {
         }
 
         return resolvedCollisionCount;
+    }
+
+    /** C4: compare penetration at the previous and proposed angle. Existing overlaps
+     * are not allowed to worsen, but rotation away remains possible. */
+    public blocksAnchoredRotation(physicsWorld: PhysicsWorld, body: DynamicCollidable, nextAngle: number, previousAngle: number, tolerance = 0.025): boolean {
+        const diag = PortalDiag.active;
+        return diag ? diag.measure("portalRotationStatic",()=>this.blocksAnchoredRotationCore(physicsWorld,body,nextAngle,previousAngle,tolerance)) : this.blocksAnchoredRotationCore(physicsWorld,body,nextAngle,previousAngle,tolerance);
+    }
+    private blocksAnchoredRotationCore(
+        physicsWorld: PhysicsWorld,
+        body: DynamicCollidable,
+        nextAngle: number,
+        previousAngle: number,
+        tolerance = 0.025,
+    ): boolean {
+        const fixed: FixedCollisionShape[] = [...physicsWorld.getRigidFixedShapes()];
+        for (const definition of physicsWorld.getRigidStaticDefinitions()) {
+            const shape = this.convertStaticObstacle(definition);
+            if (shape) fixed.push(shape);
+        }
+        for (const shape of fixed) {
+            const previous = detectCompoundAtRotation(body, previousAngle, shape)?.penetrationDepth ?? 0;
+            const next = detectCompoundAtRotation(body, nextAngle, shape)?.penetrationDepth ?? 0;
+            if (next > tolerance && next > previous + 0.00001) return true;
+        }
+        return false;
     }
 
     private convertStaticObstacle(

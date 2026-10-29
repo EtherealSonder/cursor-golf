@@ -1,3 +1,4 @@
+import { PortalPerformanceDiagnosticController as PortalDiag } from "../debug/PortalPerformanceDiagnosticController";
 import { Assets, Container, Graphics, Sprite, type Texture } from "pixi.js";
 import portal1Url from "../../../assets/sprites/portals/portal_1.png";
 import portal2Url from "../../../assets/sprites/portals/portal_2.png";
@@ -81,7 +82,9 @@ export class PortalPreviewRenderer {
     }
     public update(dt: number): void {
         if (this.disposed) return;
-        for (const p of this.previews) if (p.animation.update(dt)) p.vortex.texture = p.frames[p.animation.getFrameIndex()];
+        const run = (): void => { for (const p of this.previews) if (p.animation.update(dt)) p.vortex.texture = p.frames[p.animation.getFrameIndex()]; };
+        const diag = PortalDiag.active;
+        if (diag) { diag.setAnimationCount(this.previews.length); diag.measure("portalAnimation",run); } else run();
     }
     public destroy(): void {
         this.disposed = true;

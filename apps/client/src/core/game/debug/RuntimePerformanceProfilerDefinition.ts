@@ -1,3 +1,4 @@
+import { PORTAL_DIAGNOSTIC } from "./PortalPerformanceDiagnosticDefinition";
 export interface RuntimePerformanceProfilerDefinition {
     readonly enabled: boolean;
     readonly sampleWindowFrames: number;
@@ -15,7 +16,7 @@ export const DEFAULT_RUNTIME_PERFORMANCE_PROFILER_DEFINITION:
     sampleWindowFrames: 300,
     overlayRefreshSeconds: 0.25,
     slowSectionWarningMilliseconds: 4,
-    frameBudgetMilliseconds: 16.67,
+    frameBudgetMilliseconds: PORTAL_DIAGNOSTIC.frameBudgetMilliseconds,
     consoleReportingEnabled: false,
     consoleReportIntervalSeconds: 2,
     maximumDisplayedSections: 12,

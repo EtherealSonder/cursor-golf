@@ -32,7 +32,21 @@ export const PORTAL_BODY = {
     maximumLinearSpeed: 500,
     maximumAngularSpeed: 4.0,
     /** Reserved for C3 handle-only wind torque; not applied in C1. */
-    windImpulseMultiplier: 0.7,
+    windImpulseMultiplier: 8.0,
+    windMinimumAcceleration: 0.005,
+    windMaximumAngularImpulsePerStep: 950,
+    waterImpulseMultiplier: 0.045,
+    waterMinimumMomentum: 0.025,
+    waterMaximumAngularImpulsePerHit: 1400,
+    /** Approximate circular water packet target at each handle. */
+    waterHandleTargetRadius: 15,
+    /** Maximum angle tested at once to prevent long handles tunnelling through walls. */
+    maximumRotationStepRadians: 0.025,
+    /** Probe only newly created penetration, allowing authored overlapping placements to escape. */
+    rotationContactTolerance: 0.025,
+    /** Blocked contacts cancel angular velocity into the obstruction. */
+    blockedAngularVelocityRetention: 0,
+
     /** Contact coefficients for the compound housing and handles. */
     restitution: 0.25,
     friction: 0.55,

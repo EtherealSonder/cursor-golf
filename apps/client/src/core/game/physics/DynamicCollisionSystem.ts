@@ -1,3 +1,4 @@
+import { PortalPerformanceDiagnosticController as PortalDiag } from "../debug/PortalPerformanceDiagnosticController";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type {
     DynamicCollidable,
@@ -67,10 +68,45 @@ export class DynamicCollisionSystem {
             definition;
     }
 
-    public resolve(
-        collidables:
-            readonly DynamicCollidable[],
-    ): number {
+    /** C4: prevent two fixed-pivot mechanisms rotating farther into one another.
+     * Freely movable objects continue to be handled by the impulse solver. */
+    public blocksAnchoredRotation(body: DynamicCollidable, candidates: readonly DynamicCollidable[], nextAngle: number, previousAngle: number, tolerance = 0.025): boolean {
+        const diag = PortalDiag.active;
+        return diag ? diag.measure("portalRotationDynamic",()=>this.blocksAnchoredRotationCore(body,candidates,nextAngle,previousAngle,tolerance)) : this.blocksAnchoredRotationCore(body,candidates,nextAngle,previousAngle,tolerance);
+    }
+    private blocksAnchoredRotationCore(
+        body: DynamicCollidable,
+        candidates: readonly DynamicCollidable[],
+        nextAngle: number,
+        previousAngle: number,
+        tolerance = 0.025,
+    ): boolean {
+        const proxyAt = (angle: number): DynamicCollidable => ({
+            getDefinition: () => body.getDefinition(),
+            getX: () => body.getX(), getY: () => body.getY(),
+            getRotationRadians: () => angle,
+            getCompoundCollisionGeometry: () => body.getCompoundCollisionGeometry?.() ?? [],
+            getVelocityX: () => body.getVelocityX(), getVelocityY: () => body.getVelocityY(),
+            getAngularVelocity: () => body.getAngularVelocity(),
+            getInverseMass: () => body.getInverseMass(),
+            getInverseMomentOfInertia: () => body.getInverseMomentOfInertia(),
+            applyImpulseAtWorldPoint: (ix,iy,x,y) => body.applyImpulseAtWorldPoint(ix,iy,x,y),
+            translate: (dx,dy) => body.translate(dx,dy),
+        });
+        for (const other of candidates) {
+            if (other === body || !other.isFixedPivot?.()) continue;
+            const before = detectDynamicCollidableCollision(proxyAt(previousAngle), other)?.penetrationDepth ?? 0;
+            const after = detectDynamicCollidableCollision(proxyAt(nextAngle), other)?.penetrationDepth ?? 0;
+            if (after > tolerance && after > before + 0.00001) return true;
+        }
+        return false;
+    }
+
+    public resolve(collidables: readonly DynamicCollidable[]): number {
+        const diag = PortalDiag.active;
+        return diag ? diag.measure("dynamicCollision",()=>this.resolveCore(collidables)) : this.resolveCore(collidables);
+    }
+    private resolveCore(collidables: readonly DynamicCollidable[]): number {
         PassBCounters.passB("dynamicCollisionPasses");
 
         if (
