@@ -7,6 +7,7 @@ import type {
 import {
     detectDynamicCollidableCollision,
     getCompoundContactPart,
+    mayCollidablesOverlap,
 } from "./DynamicCollidableCollision";
 
 import type {
@@ -95,6 +96,8 @@ export class DynamicCollisionSystem {
         });
         for (const other of candidates) {
             if (other === body || !other.isFixedPivot?.()) continue;
+            // Rotation-invariant bound applies to both proposed orientations.
+            if (!mayCollidablesOverlap(body, other)) continue;
             const before = detectDynamicCollidableCollision(proxyAt(previousAngle), other)?.penetrationDepth ?? 0;
             const after = detectDynamicCollidableCollision(proxyAt(nextAngle), other)?.penetrationDepth ?? 0;
             if (after > tolerance && after > before + 0.00001) return true;
@@ -151,6 +154,9 @@ export class DynamicCollisionSystem {
                         collidables[
                         secondIndex
                         ];
+
+                    // Reject distant pairs before constructing compound primitives.
+                    if (!mayCollidablesOverlap(first, second)) continue;
 
                     const manifold =
                         detectDynamicCollidableCollision(

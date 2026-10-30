@@ -25,16 +25,33 @@ export interface PortalCompoundGeometry {
 export function createPortalCollisionGeometry(): PortalCompoundGeometry {
     const d = PORTAL_COLLIDER;
     const housing: PortalColliderSegment[] = [];
-    // Two elliptical half-arcs, open at the left and right sides.
+    // Upper and lower elliptical housing arcs. Clip each segment at the
+    // entrance's *capsule-surface* boundary, rather than dropping whole
+    // segments. This keeps the physical opening predictable at any resolution.
+    const capsuleRadius = d.arcThickness / 2;
+    const centerlineCutoff = d.entranceHalfWidth + capsuleRadius;
     for (const [kind, sign] of [["upperHousing", -1], ["lowerHousing", 1]] as const) {
         for (let i = 0; i < d.arcSegments; i++) {
             const a = Math.PI - i * Math.PI / d.arcSegments;
             const b = Math.PI - (i + 1) * Math.PI / d.arcSegments;
-            housing.push({kind,
-                x1: Math.cos(a) * d.arcRadiusX, y1: sign * Math.sin(a) * d.arcRadiusY,
-                x2: Math.cos(b) * d.arcRadiusX, y2: sign * Math.sin(b) * d.arcRadiusY,
-                radius: d.arcThickness / 2,
-            });
+            const ax = Math.cos(a) * d.arcRadiusX;
+            const ay = sign * Math.sin(a) * d.arcRadiusY;
+            const bx = Math.cos(b) * d.arcRadiusX;
+            const by = sign * Math.sin(b) * d.arcRadiusY;
+            // Each original segment is monotonic in x, from left to right.
+            // Keep only the portion wholly outside the centerline cutoff.
+            for (const side of [-1, 1] as const) {
+                const minX = side === -1 ? -Infinity : centerlineCutoff;
+                const maxX = side === -1 ? -centerlineCutoff : Infinity;
+                const dx = bx - ax;
+                if (Math.abs(dx) < 1e-10) continue;
+                const lo = Math.max(0, (minX - ax) / dx);
+                const hi = Math.min(1, (maxX - ax) / dx);
+                if (hi - lo <= 1e-8) continue;
+                const x1 = ax + dx * lo, y1 = ay + (by - ay) * lo;
+                const x2 = ax + dx * hi, y2 = ay + (by - ay) * hi;
+                housing.push({ kind, x1, y1, x2, y2, radius: capsuleRadius });
+            }
         }
     }
     const handles: PortalColliderBox[] = [

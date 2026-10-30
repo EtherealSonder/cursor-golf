@@ -58,11 +58,15 @@ export class PortalPerformanceDiagnosticController {
         const fps = f.average > 0 ? 1000/f.average : 0;
         const slow = this.frames.filter(ms=>ms>PORTAL_DIAGNOSTIC.frameBudgetMilliseconds).length;
         const sections = [...this.totals.entries()].map(([name,s])=>`${name}: ${(s.milliseconds/Math.max(1,this.frames.length)).toFixed(3)} ms/frame (${s.calls} calls)`).join("\n");
-        const counters = [...this.counters.entries()].map(([k,v])=>`${k}: ${v}`).join(" | ");
+        const staticKeys = ["staticPairsTested", "staticPairsRejected", "staticPairsAccepted", "staticStationaryAnchorsSkipped", "rotationStaticPairsTested", "rotationStaticPairsRejected", "rotationStaticNarrowPhaseChecks"];
+        const staticCounters = staticKeys.map(k=>`${k}: ${this.counters.get(k) ?? 0}`).join(" | ");
+        const portalKeys = ["portalOuterVortexEntries","portalCentralEntryAttempts","portalCentralEntryEligible","portalHousingContacts","portalCollisionEntryRejected","portalTeleports","portalEdgeRejections","portalStuckEjections","portalExitBlocked","portalReentryPrevented"];
+        const portalCounters = portalKeys.map(k=>`${k}: ${this.counters.get(k) ?? 0}`).join(" | ");
+        const counters = [...this.counters.entries()].filter(([k])=>!staticKeys.includes(k)).map(([k,v])=>`${k}: ${v}`).join(" | ");
         return `PORTAL P2-C5 ${this.finished?'COMPLETE':'RECORDING'} ${Math.min(30,this.elapsed).toFixed(1)}/30s\n`+
           `Portals ${this.portalCount} | animated ${this.animationCount} | frames ${this.frames.length}\n`+
           `FPS ${fps.toFixed(1)} | frame avg ${f.average.toFixed(2)}ms p95 ${f.p95.toFixed(2)}ms max ${f.max.toFixed(2)}ms | over budget ${slow}\n`+
-          `Game update avg ${u.average.toFixed(2)}ms | Pixi render avg ${r.average.toFixed(2)}ms\n${sections}\n${counters}`;
+          `Game update avg ${u.average.toFixed(2)}ms | Pixi render avg ${r.average.toFixed(2)}ms\n${sections}\n${staticCounters}\n${portalCounters}\n${counters}`;
     }
     public isFinished(): boolean { return this.finished; }
     public shouldRefreshOverlay(): boolean {

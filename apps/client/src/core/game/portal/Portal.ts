@@ -50,6 +50,8 @@ export class Portal implements DynamicCollidable {
             rigidBody: this.body.getDefinition(),
         };
     }
+    /** Exact collision primitives used by the physics solver. */
+    public getDebugCollisionGeometry(): readonly DynamicCompoundPrimitive[] { return this.getCompoundCollisionGeometry(); }
     public getCompoundCollisionGeometry(): readonly DynamicCompoundPrimitive[] {
         return Portal.collisionPrimitives;
     }
@@ -70,6 +72,8 @@ export class Portal implements DynamicCollidable {
     public getX(): number { return this.x; }
     public getY(): number { return this.y; }
     public getRotation(): number { return this.rotation; }
+    /** P3 authoritative interaction transform. */
+    public getInteractionTransform(): {x:number;y:number;rotation:number} {return {x:this.x,y:this.y,rotation:this.rotation};}
     public getInverseMass(): number { return 0; }
     public getVelocityX(): number { return 0; }
     public getVelocityY(): number { return 0; }

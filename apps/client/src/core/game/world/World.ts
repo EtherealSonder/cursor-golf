@@ -1,8 +1,12 @@
+import { PortalTeleportDiagnosticController as TeleportDebug } from "../debug/PortalTeleportDiagnosticController";
+import { PORTAL_DIAGNOSTIC } from "../debug/PortalPerformanceDiagnosticDefinition";
+import { PortalCollisionDebugRenderer } from "../debug/PortalCollisionDebugRenderer";
 import { isPortalDiagnosticLevel } from "../debug/PortalPerformanceDiagnosticDefinition";
 import { PortalPerformanceDiagnosticController } from "../debug/PortalPerformanceDiagnosticController";
 import { PortalPerformanceDiagnosticOverlay } from "../debug/PortalPerformanceDiagnosticOverlay";
 import { PORTAL_BODY } from "../config/PortalPhysicsDefinition";
 import { Portal } from "../portal/Portal";
+import { PortalBallInteractionController } from "../portal/PortalBallInteractionController";
 import { PortalPreviewRenderer } from "../portal/PortalPreviewRenderer";
 import { selectValidPortalPairs } from "../portal/PortalPairController";
 import { DEFAULT_PROCEDURAL_SAND_CONFIG } from "../procedural/ProceduralSandConfig";
@@ -671,7 +675,9 @@ export class World {
     private readonly crates: Crate[] = [];
     private readonly elementalMarbles: ElementalMarble[] = [];
     private portalPreview: PortalPreviewRenderer | null = null;
+    private portalCollisionDebug: PortalCollisionDebugRenderer | null = null;
     private readonly portalBodies: Portal[] = [];
+    private portalBallInteractions: PortalBallInteractionController | null = null;
     private readonly portalDiagnostic = new PortalPerformanceDiagnosticController();
     private portalDiagnosticOverlay: PortalPerformanceDiagnosticOverlay | null = null;
     private portalDiagnosticEnabled = false;
@@ -986,7 +992,7 @@ export class World {
 
     /** LD-6: authoritative resolved runtime level. World owns integration, not placement data. */
     private readonly runtimeLevel: RuntimeLevelDefinition;
-    private readonly proceduralSandController: ProceduralSandController;
+    private readonly proceduralSandController: ProceduralSandController | null;
     private readonly marbleGenerationRoll = rollLevelGeneration();
     private proceduralSandRenderer: ProceduralSandRenderer | null = null;
     private proceduralSandDebugControls: ProceduralSandDebugControls | null = null;
@@ -1048,11 +1054,20 @@ export class World {
         }
         this.runtimeLevel = levelLoad.level;
         this.portalDiagnosticEnabled = isPortalDiagnosticLevel(this.runtimeLevel.id);
-        if (this.portalDiagnosticEnabled) PortalPerformanceDiagnosticController.active = this.portalDiagnostic;
-        const sandRoll = rollLevelGeneration();
-        this.proceduralSandController = new ProceduralSandController(this.runtimeLevel, {
-            ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity,
-        });
+        // P3-D2: disable the old P2-C5 recording/console output, retain the
+        // level-00 sandbox setup and dedicated event-driven portal logs.
+        PortalPerformanceDiagnosticController.active = null;
+        TeleportDebug.reset();
+        // Do not instantiate the generator in the isolated portal benchmark.
+        // Its constructor generates sand immediately, even without rendering.
+        if (this.portalDiagnosticEnabled) {
+            this.proceduralSandController = null;
+        } else {
+            const sandRoll = rollLevelGeneration();
+            this.proceduralSandController = new ProceduralSandController(this.runtimeLevel, {
+                ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity,
+            });
+        }
         this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
         if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
         this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
@@ -1349,15 +1364,15 @@ export class World {
             this.screenOverlayContainer.addChild(this.performanceInvestigation.getContainer());
         }
         this.createCourse();
-        if (!this.portalDiagnosticEnabled) this.proceduralSandController.registerSurfaces(this.surfaceSystem);
+        this.proceduralSandController?.registerSurfaces(this.surfaceSystem);
         this.proceduralSandRenderer = new ProceduralSandRenderer(
             this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain),
             AssetLoader.getTexture(this.courseVisualDefinition.sandTextureKey),
             this.courseVisualDefinition.sandTileScale,
             this.courseVisualDefinition.terrainAlpha,
         );
-        if (!this.portalDiagnosticEnabled) this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
-        if (import.meta.env.DEV && !this.portalDiagnosticEnabled) {
+        if (this.proceduralSandController) this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
+        if (import.meta.env.DEV && this.proceduralSandController) {
             this.proceduralSandDebugControls = new ProceduralSandDebugControls(
                 this.screenOverlayContainer, this.proceduralSandController.getDensity(),
             );
@@ -1366,7 +1381,16 @@ export class World {
         this.createLevelCrates();
         if (!this.portalDiagnosticEnabled) this.createLevelMarbles();
         void this.createPortalPreviews();
-        if (this.portalDiagnosticEnabled) {
+        if (this.portalDiagnosticEnabled && PORTAL_DIAGNOSTIC.showPortalColliders) {
+            this.portalCollisionDebug = new PortalCollisionDebugRenderer();
+            // WorldPresentationLayers sorts its children by zIndex. A direct child of
+            // worldContainer defaults to zIndex 0 and renders BEHIND the terrain.
+            // The dedicated Debug layer (900) is camera-transformed with the world
+            // and always renders above portal sprites and gameplay actors.
+            this.presentationLayers.getLayer(WorldRenderLayer.Debug)
+                .addChild(this.portalCollisionDebug.container);
+        }
+        if (false && this.portalDiagnosticEnabled) {
             this.portalDiagnosticOverlay = new PortalPerformanceDiagnosticOverlay();
             this.screenOverlayContainer.addChild(this.portalDiagnosticOverlay.container);
         }
@@ -1637,6 +1661,8 @@ export class World {
             this.ball,
             WorldRenderLayer.GameplayActors,
         );
+        // P3-T2: the ball is constructed after portal setup begins. Bind now if ready.
+        this.bindBallPortalInteractions();
 
         this.ball.setRetrySpawnPosition(
             this.runtimeLevel.ball.x,
@@ -1932,6 +1958,11 @@ export class World {
             number,
     ): void {
 
+        // P3: capture the pre-integration ball center for swept portal entry.
+        this.ball?.capturePortalFrameStart();
+        if (this.portalBodies.length) {
+            TeleportDebug.event("WORLD_PORTAL_HEARTBEAT",{ballExists:!!this.ball,portalCount:this.portalBodies.length,controllerExists:!!this.portalBallInteractions},"world-heartbeat",3000);
+        }
         // P2-C1: integrate angular-only motion around each authored fixed pivot.
         for (const portal of this.portalBodies) {
             portal.update(deltaTime, (candidateAngle, previousAngle) =>
@@ -1946,6 +1977,8 @@ export class World {
             this.portalPreview?.setTransform(portal.id, portal.getX(), portal.getY(), portal.getRotation());
         }
         this.portalPreview?.update(deltaTime);
+        // Collider outlines are opt-in; P3-T1 keeps the diagnostic counters active.
+        this.portalCollisionDebug?.update(this.portalBodies, this.ball);
         P3B1.setScope("world-start");
         // O3 presentation culling: snapshot Camera bounds once per frame.
         // Simulation remains world-authoritative and never consumes this query.
@@ -2696,6 +2729,11 @@ export class World {
          * Collision consumers now obtain their populations from PhysicsWorld.
          * Registration is centralized; collision mathematics is unchanged.
          */
+        // P3: detect central entry before housing collision resolution can bounce
+        // the ball out of the narrow opening during this physics frame.
+        // Portal entry is evaluated within Ball movement, before its own
+        // compound housing collision response. Do not run a second sweep here.
+
         this.waterPerformanceProfiler.measure("dynamicCollisions", (): void => {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("dynamicCollisions")!==false)this.dynamicCollisionSystem.resolve(
                 this.physicsWorld.getRigidDynamicCollidables(),
@@ -2975,7 +3013,7 @@ export class World {
         }
 
 
-        if (this.portalDiagnosticEnabled) {
+        if (false && this.portalDiagnosticEnabled) {
             this.portalDiagnostic.frame(deltaTime);
             if (this.portalDiagnostic.shouldRefreshOverlay() || this.portalDiagnostic.isFinished()) this.portalDiagnosticOverlay?.update(this.portalDiagnostic);
         }
@@ -2996,7 +3034,11 @@ export class World {
             this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-right`);
             this.physicsWorld.unregisterDynamicBody(portal);
         }
+        this.ball?.setPortalPreContactHandler(null);
         this.portalBodies.length = 0;
+        this.portalBallInteractions = null;
+        this.portalCollisionDebug?.destroy();
+        this.portalCollisionDebug = null;
         this.portalDiagnosticOverlay?.destroy();
         this.portalDiagnosticOverlay = null;
         this.portalDiagnostic.destroy();
@@ -3008,7 +3050,7 @@ export class World {
         this.proceduralSandRenderer?.destroy();
         this.proceduralSandRenderer = null;
         this.surfaceSystem.clearProceduralPolygonZones();
-        this.proceduralSandController.destroy();
+        this.proceduralSandController?.destroy();
         this.bushFireContact = null;
         this.crateFireContact = null;
         this.bushRobotUnregisterById.clear();
@@ -3425,6 +3467,9 @@ export class World {
             return;
         }
 
+        // Retry must retain the portal pre-contact integration.
+        this.bindBallPortalInteractions();
+
         this.ball
             .resetToInitialPosition();
 
@@ -3645,7 +3690,7 @@ export class World {
         pixiRenderMilliseconds: number,
     ): void {
 
-        if (this.portalDiagnosticEnabled) this.portalDiagnostic.recordPresentation(gameUpdateMilliseconds,pixiRenderMilliseconds);
+        if (false && this.portalDiagnosticEnabled) this.portalDiagnostic.recordPresentation(gameUpdateMilliseconds,pixiRenderMilliseconds);
         this.waterPerformanceProfiler
             .recordFramePresentationDiagnostics(
                 gameUpdateMilliseconds,
@@ -6559,6 +6604,25 @@ export class World {
         }
     }
 
+    /** P3-T2: idempotent, lifecycle-safe connection between ball and portal controller. */
+    private bindBallPortalInteractions(): void {
+        const ball = this.ball;
+        const controller = this.portalBallInteractions;
+        if (!ball || !controller) {
+            TeleportDebug.event("WORLD_CALLBACK_PENDING", {
+                ballExists: !!ball, controllerExists: !!controller,
+            }, "world-callback-pending", 1500);
+            return;
+        }
+        if (ball.hasPortalPreContactHandler()) return;
+        ball.setPortalPreContactHandler((dt, from) => controller.update(dt, ball, from));
+        TeleportDebug.event("WORLD_CALLBACK_BOUND", {
+            portalCount: this.portalBodies.length,
+            ballX: ball.getX(), ballY: ball.getY(),
+            registered: ball.hasPortalPreContactHandler(),
+        }, "world-callback-bound", 0);
+    }
+
     /** P2-A: render authored portal pairs with non-interactive collider debug overlays. */
     private async createPortalPreviews(): Promise<void> {
         const authored = this.runtimeLevel.objects.filter(
@@ -6566,7 +6630,12 @@ export class World {
                 object.type === "portal1" || object.type === "portal2" || object.type === "portal3",
         );
         const positions = selectValidPortalPairs(authored, this.runtimeLevel.id);
+        TeleportDebug.event("WORLD_PORTAL_SETUP",{level:this.runtimeLevel.id,portalPositions:positions.length,ballExists:!!this.ball},"world-portal-setup",0);
         if (!positions.length) return;
+        this.portalBallInteractions = new PortalBallInteractionController(this.portalBodies,(x,y,radius)=> {
+            // Conservative portal exit clearance; other static obstacles are handled by the normal solver.
+            return this.portalBodies.every(p=>Math.hypot(p.getX()-x,p.getY()-y)>radius+20);
+        });
         for (const position of positions) {
             const portal = new Portal(position);
             this.portalBodies.push(portal);
@@ -6597,6 +6666,8 @@ export class World {
                 },
             });
         }
+        // Portal setup can finish before or after ball construction.
+        this.bindBallPortalInteractions();
         try {
             const preview = await PortalPreviewRenderer.create(
                 this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects), positions,

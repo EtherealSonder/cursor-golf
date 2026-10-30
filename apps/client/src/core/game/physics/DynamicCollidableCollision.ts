@@ -72,6 +72,66 @@ export type FixedCollisionShape =
 const SUPPORT_EPSILON = 0.0001;
 const GEOMETRY_EPSILON = 0.000001;
 
+/** Conservative, rotation-invariant bounds for compound geometry. The local
+ * primitives are immutable for portals, so cache by geometry-array identity. */
+const compoundRadiusCache = new WeakMap<readonly import("./DynamicCollidable").DynamicCompoundPrimitive[], number>();
+
+export function getCollidableBoundingRadius(body: DynamicCollidable): number {
+    const compound = body.getCompoundCollisionGeometry?.();
+    if (compound) {
+        const cached = compoundRadiusCache.get(compound);
+        if (cached !== undefined) return cached;
+        let radius = 0;
+        for (const primitive of compound) {
+            if (primitive.kind === "capsule") {
+                radius = Math.max(radius,
+                    Math.hypot(primitive.x1, primitive.y1) + primitive.radius,
+                    Math.hypot(primitive.x2, primitive.y2) + primitive.radius);
+            } else {
+                // Rectangle corners remain within this circle at every local angle.
+                radius = Math.max(radius,
+                    Math.hypot(primitive.x, primitive.y) +
+                    Math.hypot(primitive.width, primitive.height) * 0.5);
+            }
+        }
+        compoundRadiusCache.set(compound, radius);
+        return radius;
+    }
+    const definition = body.getDefinition();
+    if (definition.shape === "circle") return definition.radius;
+    if (definition.shape === "rectangle") return Math.hypot(definition.width, definition.height) * 0.5;
+    // Unsupported primitive: never reject it in the broad phase.
+    return Number.POSITIVE_INFINITY;
+}
+
+/** Conservative, rotation-invariant fixed-shape radius. */
+export function getFixedShapeBoundingRadius(shape: FixedCollisionShape): number {
+    return shape.shape === "circle" ? shape.radius : Math.hypot(shape.width, shape.height) * 0.5;
+}
+
+/** A false result guarantees separation at every orientation of the dynamic body. */
+export function mayCollidableOverlapFixed(body: DynamicCollidable, shape: FixedCollisionShape): boolean {
+    const combined = getCollidableBoundingRadius(body) + getFixedShapeBoundingRadius(shape);
+    const dx = body.getX() - shape.positionX;
+    const dy = body.getY() - shape.positionY;
+    return dx * dx + dy * dy <= combined * combined;
+}
+
+/** True means a pair MAY overlap. False guarantees separation. */
+export function mayCollidablesOverlap(first: DynamicCollidable, second: DynamicCollidable): boolean {
+    const sum = getCollidableBoundingRadius(first) + getCollidableBoundingRadius(second);
+    const dx = first.getX() - second.getX();
+    const dy = first.getY() - second.getY();
+    const possible = dx * dx + dy * dy <= sum * sum;
+    const diag = PortalDiag.active;
+    if (diag && (first.getCompoundCollisionGeometry || second.getCompoundCollisionGeometry)) {
+        diag.count("broadPhasePairsTested");
+        diag.count(possible ? "broadPhasePairsAccepted" : "broadPhasePairsRejected");
+    }
+    return possible;
+}
+
+
 /**
  * General narrow-phase collision detection for the current sandbox collider
  * primitives. Object identity is deliberately irrelevant. Any
@@ -92,6 +152,7 @@ export function detectDynamicCollidableCollision(
 ): DynamicCollisionManifold | null {
 
     if (first.getCompoundCollisionGeometry || second.getCompoundCollisionGeometry) {
+        if (!mayCollidablesOverlap(first, second)) return null;
         return detectCompoundPair(first, second);
     }
     return detectShapePair(
@@ -116,6 +177,7 @@ export function detectDynamicCollidableAgainstFixedCollision(
     fixed: FixedCollisionShape,
 ): DynamicCollisionManifold | null {
 
+    if (!mayCollidableOverlapFixed(dynamic, fixed)) return null;
     if (dynamic.getCompoundCollisionGeometry) {
         return detectCompoundAgainstFixed(dynamic, fixed);
     }

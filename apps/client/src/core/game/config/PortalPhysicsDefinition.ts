@@ -8,6 +8,9 @@ export const PORTAL_COLLIDER = {
     arcRadiusY: 39,
     arcThickness: 17,
     arcSegments: 12,
+    /** Half-width of the unobstructed top/bottom approach corridor, measured
+     * to the nearest capsule surface (not merely its centerline). */
+    entranceHalfWidth: 53,
     /** Handles are represented by local, axis-aligned boxes. */
     handleCenterX: 125,
     handleWidth: 67,

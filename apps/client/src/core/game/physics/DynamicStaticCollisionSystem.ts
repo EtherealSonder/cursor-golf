@@ -9,6 +9,7 @@ import {
     detectDynamicCollidableAgainstFixedCollision,
     getCompoundContactPart,
     detectCompoundAtRotation,
+    mayCollidableOverlapFixed,
 } from "./DynamicCollidableCollision";
 
 import type {
@@ -72,6 +73,7 @@ export class DynamicStaticCollisionSystem {
         return diag ? diag.measure("staticCollision",()=>this.resolveCore(physicsWorld)) : this.resolveCore(physicsWorld);
     }
     private resolveCore(physicsWorld: PhysicsWorld): number {
+        const diag = PortalDiag.active;
 
         const collidables =
             physicsWorld
@@ -129,10 +131,23 @@ export class DynamicStaticCollisionSystem {
                 const collidable
                 of collidables
             ) {
+                // A stationary fixed-pivot mechanism has no positional correction
+                // or contact impulse to resolve against immovable world geometry.
+                // Rotation obstruction is handled separately before integration.
+                if (collidable.isFixedPivot?.() && Math.abs(collidable.getAngularVelocity()) < 1e-8) {
+                    diag?.count("staticStationaryAnchorsSkipped");
+                    continue;
+                }
                 for (
                     const fixedShape
                     of fixedShapes
                 ) {
+                    diag?.count("staticPairsTested");
+                    if (!mayCollidableOverlapFixed(collidable, fixedShape)) {
+                        diag?.count("staticPairsRejected");
+                        continue;
+                    }
+                    diag?.count("staticPairsAccepted");
                     const manifold =
                         detectDynamicCollidableAgainstFixedCollision(
                             collidable,
@@ -193,12 +208,19 @@ export class DynamicStaticCollisionSystem {
         previousAngle: number,
         tolerance = 0.025,
     ): boolean {
+        const diag = PortalDiag.active;
         const fixed: FixedCollisionShape[] = [...physicsWorld.getRigidFixedShapes()];
         for (const definition of physicsWorld.getRigidStaticDefinitions()) {
             const shape = this.convertStaticObstacle(definition);
             if (shape) fixed.push(shape);
         }
         for (const shape of fixed) {
+            diag?.count("rotationStaticPairsTested");
+            if (!mayCollidableOverlapFixed(body, shape)) {
+                diag?.count("rotationStaticPairsRejected");
+                continue;
+            }
+            diag?.count("rotationStaticNarrowPhaseChecks", 2);
             const previous = detectCompoundAtRotation(body, previousAngle, shape)?.penetrationDepth ?? 0;
             const next = detectCompoundAtRotation(body, nextAngle, shape)?.penetrationDepth ?? 0;
             if (next > tolerance && next > previous + 0.00001) return true;
