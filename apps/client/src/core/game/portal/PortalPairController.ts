@@ -23,8 +23,9 @@ export function selectValidPortalPairs(
 
 /** Bidirectional lookup over validated instantiated portal pairs. */
 export function getPairedPortal<T extends {readonly id:string}>(portals:readonly T[], source:T):T|null {
+    if ("isActive" in source && typeof source.isActive === "function" && !source.isActive()) return null;
     const match=/^portal-([123])-([12])$/.exec(source.id);
     if(!match) return null;
     const destinationId=`portal-${match[1]}-${match[2]==="1"?"2":"1"}`;
-    return portals.find(p=>p.id===destinationId)??null;
+    return portals.find(p=>p.id===destinationId && (!("isActive" in p) || typeof p.isActive !== "function" || p.isActive()))??null;
 }

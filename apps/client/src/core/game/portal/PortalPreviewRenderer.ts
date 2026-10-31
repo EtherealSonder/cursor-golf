@@ -80,6 +80,17 @@ export class PortalPreviewRenderer {
         preview.root.position.set(x, y);
         preview.root.rotation = rotation;
     }
+    public setVoidScale(id: string, scale: number): void {
+        const preview = this.previews.find(p => p.id === id);
+        if (preview) preview.root.scale.set(Math.max(0, scale));
+    }
+    public remove(id: string): void {
+        const index = this.previews.findIndex(p => p.id === id);
+        if (index < 0) return;
+        const [preview] = this.previews.splice(index, 1);
+        preview.root.removeFromParent();
+        preview.root.destroy({ children: true });
+    }
     public update(dt: number): void {
         if (this.disposed) return;
         const run = (): void => { for (const p of this.previews) if (p.animation.update(dt)) p.vortex.texture = p.frames[p.animation.getFrameIndex()]; };

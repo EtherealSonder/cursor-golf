@@ -22,6 +22,7 @@ export class WorldPresentationLayers {
             WorldRenderLayer.StandingWater,
             WorldRenderLayer.RotatorMechanisms,
             WorldRenderLayer.WaterEffects,
+            WorldRenderLayer.PortalPresentation,
             WorldRenderLayer.PhysicalObjects,
             WorldRenderLayer.HazardEffects,
             WorldRenderLayer.GameplayActors,

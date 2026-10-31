@@ -187,6 +187,21 @@ export class Robot extends Entity {
         };
     }
     public getRotationRadians(): number { return this.visualRoot.rotation; }
+    /** P4-B: reset navigation from the new position while preserving AI identity. */
+    public canPortalTeleport(): boolean { return !this.voidRemoving && !this.isDestroyed(); }
+
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        if (!this.canPortalTeleport()) return;
+        this.setPosition(x, y);
+        this.externalRigidBody.setVelocity(vx, vy);
+        this.destination = null;
+        this.avoidingObstacle = false;
+        this.avoidanceProbePoint = null;
+        this.stuckSeconds = 0;
+        this.locomotion?.resetAfterTeleport();
+        this.conveyorTransportSeconds = 0;
+    }
+
     public getVelocityX(): number { return this.externalRigidBody.getVelocityX(); }
     public getVelocityY(): number { return this.externalRigidBody.getVelocityY(); }
     public getAngularVelocity(): number { return this.externalRigidBody.getAngularVelocity(); }

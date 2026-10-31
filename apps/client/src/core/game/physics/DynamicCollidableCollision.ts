@@ -1163,7 +1163,7 @@ function getPrimitiveInstances(body: DynamicCollidable): PrimitiveInstance[] {
 function selectContact(best:DynamicCollisionManifold|null, candidate:DynamicCollisionManifold|null):DynamicCollisionManifold|null {
     return candidate && (!best || candidate.penetrationDepth>best.penetrationDepth) ? candidate : best;
 }
-/** Compound contact identity is metadata, not part of the legacy manifold contract. */
+/** Compound contact identity is optional metadata on the shared manifold contract. */
 export type CompoundContactManifold = DynamicCollisionManifold & { readonly firstPartId?: string; readonly secondPartId?: string };
 export function getCompoundContactPart(manifold: DynamicCollisionManifold, side: "first" | "second"): string | undefined {
     const contact = manifold as CompoundContactManifold;

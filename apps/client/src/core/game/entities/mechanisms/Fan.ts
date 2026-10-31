@@ -187,6 +187,15 @@ export class Fan extends Entity {
         return this.rotationRadians;
     }
 
+    /** P4-B: relocate the rigid body without resetting source emission state. */
+    public canPortalTeleport(): boolean { return !this.voidRemoving && !this.isDestroyed(); }
+
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        if (!this.canPortalTeleport()) return;
+        this.setPosition(x, y);
+        this.rigidBody.setVelocity(vx, vy);
+    }
+
     public getVelocityX(): number {
         return this.rigidBody.getVelocityX();
     }

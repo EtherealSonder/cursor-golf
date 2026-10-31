@@ -8,6 +8,7 @@ export class WorldObjectVoidController {
     private readonly pending = new Map<Entity, { elapsed: number; originalScaleX: number; originalScaleY: number }>();
     public constructor(private readonly boundary: CourseEnvironmentBoundary, private readonly durationSeconds = 0.25) {}
 
+    public getRemovalDurationSeconds(): number { return this.durationSeconds; }
     public isPending(entity: Entity): boolean { return this.pending.has(entity); }
     public update(deltaSeconds: number, candidates: readonly Entity[], deactivate: (entity: Entity) => void, remove: (entity: Entity) => void, footprintOf?: (entity: Entity) => CourseFootprint): void {
         for (const entity of candidates) {

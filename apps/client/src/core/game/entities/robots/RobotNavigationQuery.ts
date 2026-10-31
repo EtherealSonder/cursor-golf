@@ -100,17 +100,25 @@ export class RobotNavigationQuery {
         for (const blocker of this.registry.getNavigationBlockers()) {
             if (blocker.id === this.excludedId || !this.intersects(x, y, clearanceRadius, blocker)) continue;
             const cx = blocker.getX(), cy = blocker.getY();
-            if (blocker.shape.kind === "circle") {
+            const shape = blocker.getShape?.() ?? blocker.shape;
+            if (shape.kind === "capsule") {
+                const dx = shape.x2 - shape.x1, dy = shape.y2 - shape.y1;
+                const t = Math.max(0, Math.min(1, ((x - shape.x1) * dx + (y - shape.y1) * dy) / Math.max(1e-9, dx * dx + dy * dy)));
+                const nx = x - (shape.x1 + t * dx), ny = y - (shape.y1 + t * dy);
+                const length = Math.hypot(nx, ny);
+                return length > 1e-5 ? { x: nx / length, y: ny / length } : { x: -dy / Math.max(1e-9, Math.hypot(dx, dy)), y: dx / Math.max(1e-9, Math.hypot(dx, dy)) };
+            }
+            if (shape.kind === "circle") {
                 const dx = x - cx, dy = y - cy;
                 const length = Math.hypot(dx, dy);
                 return length > 0.001 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
             }
-            const angle = blocker.shape.kind === "orientedRectangle" ? blocker.shape.rotation : 0;
+            const angle = shape.kind === "orientedRectangle" ? shape.rotation : 0;
             const c = Math.cos(angle), sn = Math.sin(angle);
             const dx = x - cx, dy = y - cy;
             const lx = dx * c + dy * sn, ly = -dx * sn + dy * c;
-            const remainingX = blocker.shape.width / 2 + clearanceRadius - Math.abs(lx);
-            const remainingY = blocker.shape.height / 2 + clearanceRadius - Math.abs(ly);
+            const remainingX = shape.width / 2 + clearanceRadius - Math.abs(lx);
+            const remainingY = shape.height / 2 + clearanceRadius - Math.abs(ly);
             const ex = remainingX <= remainingY ? (lx < 0 ? -1 : 1) : 0;
             const ey = remainingX > remainingY ? (ly < 0 ? -1 : 1) : 0;
             return { x: ex * c - ey * sn, y: ex * sn + ey * c };
@@ -119,17 +127,23 @@ export class RobotNavigationQuery {
     }
 
     private intersects(x: number, y: number, radius: number, entry: RobotInteractionEntry): boolean {
-        if (entry.shape.kind === "circle") {
+        const shape = entry.getShape?.() ?? entry.shape;
+        if (shape.kind === "capsule") {
+            const dx = shape.x2 - shape.x1, dy = shape.y2 - shape.y1;
+            const t = Math.max(0, Math.min(1, ((x - shape.x1) * dx + (y - shape.y1) * dy) / Math.max(1e-9, dx * dx + dy * dy)));
+            return Math.hypot(x - (shape.x1 + t * dx), y - (shape.y1 + t * dy)) < radius + shape.radius;
+        }
+        if (shape.kind === "circle") {
             const dx = x - entry.getX(); const dy = y - entry.getY();
-            const combined = radius + entry.shape.radius;
+            const combined = radius + shape.radius;
             return dx * dx + dy * dy < combined * combined;
         }
-        const angle = entry.shape.kind === "orientedRectangle" ? entry.shape.rotation : 0;
+        const angle = shape.kind === "orientedRectangle" ? shape.rotation : 0;
         const c = Math.cos(angle), sn = Math.sin(angle);
         const worldDx = x - entry.getX(), worldDy = y - entry.getY();
         const localX = worldDx * c + worldDy * sn;
         const localY = -worldDx * sn + worldDy * c;
-        const halfWidth = entry.shape.width / 2, halfHeight = entry.shape.height / 2;
+        const halfWidth = shape.width / 2, halfHeight = shape.height / 2;
         const dx = localX - Math.max(-halfWidth, Math.min(localX, halfWidth));
         const dy = localY - Math.max(-halfHeight, Math.min(localY, halfHeight));
         return dx * dx + dy * dy < radius * radius;

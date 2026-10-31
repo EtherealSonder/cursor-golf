@@ -12,6 +12,10 @@ export class Portal implements DynamicCollidable {
     private static readonly collisionPrimitives = createPortalCompoundCollisionPrimitives();
     public readonly id: string;
     public readonly body: RigidBody2D;
+    private lifecycle: "active" | "void-removing" | "removed" = "active";
+    public isActive(): boolean { return this.lifecycle === "active"; }
+    public beginVoidRemoval(): boolean { if (!this.isActive()) return false; this.lifecycle = "void-removing"; this.body.setAngularVelocity(0); return true; }
+    public finishVoidRemoval(): void { this.lifecycle = "removed"; }
     private x: number;
     private y: number;
     private rotation: number;
@@ -79,6 +83,7 @@ export class Portal implements DynamicCollidable {
     public getVelocityY(): number { return 0; }
     public getAngularVelocity(): number { return this.body.getAngularVelocity(); }
     public applyImpulseAtWorldPoint(ix: number, iy: number, px: number, py: number): void {
+        if (!this.isActive()) return;
         // Angular-only impulse. RigidBody2D.applyImpulseAtWorldPoint would
         // also add linear velocity, which violates the fixed-pivot constraint.
         const torqueImpulse = (px - this.anchorX) * iy - (py - this.anchorY) * ix;
@@ -115,7 +120,7 @@ export class Portal implements DynamicCollidable {
     public applyFixedPivotWind(
         wind: LocalWindSystem, dt: number, referenceMass: number,
     ): void {
-        if (!(dt > 0) || !Number.isFinite(dt)) return;
+        if (!this.isActive() || !(dt > 0) || !Number.isFinite(dt)) return;
         const d = PORTAL_BODY;
         for (const side of ["left", "right"] as const) {
             const handle = this.getHandleWorldPosition(side);
@@ -134,7 +139,7 @@ export class Portal implements DynamicCollidable {
         side: "left" | "right", velocityX: number, velocityY: number,
         waterAmount: number,
     ): void {
-        if (!Number.isFinite(waterAmount) || waterAmount <= 0) return;
+        if (!this.isActive() || !Number.isFinite(waterAmount) || waterAmount <= 0) return;
         const momentumX = velocityX * waterAmount;
         const momentumY = velocityY * waterAmount;
         if (Math.hypot(momentumX, momentumY) < PORTAL_BODY.waterMinimumMomentum) return;
@@ -158,6 +163,7 @@ export class Portal implements DynamicCollidable {
 
     /** Angular-only integration with optional swept obstruction callback. */
     public update(dt: number, blocked?: (candidateAngle: number, previousAngle: number) => boolean): void {
+        if (!this.isActive()) return;
         const movement = PortalDiag.active?.measure("portalIntegration", () => this.body.integrate(dt)) ?? this.body.integrate(dt);
         this.x = this.anchorX;
         this.y = this.anchorY;

@@ -16,6 +16,12 @@ export class CratePhysicsController {
         this.body = new RigidBody2D(definition.rigidBody, inertia);
     }
 
+    /** P4-B: preserve angular state while relocating the authoritative body. */
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        this.x = x; this.y = y;
+        this.body.setVelocity(vx, vy);
+    }
+
     public update(dt: number): void {
         const movement = this.body.integrate(dt);
         this.x += movement.positionDeltaX;

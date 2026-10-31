@@ -12,6 +12,8 @@ export enum WorldRenderLayer {
     /** R5: motorized rotators sit above puddles but below airborne splashes. */
     RotatorMechanisms = 350,
     WaterEffects = 400,
+    /** Portal housing and vortex above ground-level water and fire. */
+    PortalPresentation = 450,
     PhysicalObjects = 500,
     /** Presentation-only hazards that must remain readable below actors. */
     HazardEffects = 550,

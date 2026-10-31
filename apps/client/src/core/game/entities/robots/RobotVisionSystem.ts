@@ -80,12 +80,32 @@ export class RobotVisionSystem {
     }
 
     private segmentHitT(ax: number, ay: number, bx: number, by: number, entry: RobotInteractionEntry): number | null {
-        if (entry.shape.kind === "circle") {
+        const shape = entry.getShape?.() ?? entry.shape;
+        if (shape.kind === "capsule") {
+            const intersects = (t: number): boolean => {
+                const px = ax + (bx - ax) * t, py = ay + (by - ay) * t;
+                const dx = shape.x2 - shape.x1, dy = shape.y2 - shape.y1;
+                const u = Math.max(0, Math.min(1, ((px - shape.x1) * dx + (py - shape.y1) * dy) / Math.max(1e-9, dx * dx + dy * dy)));
+                return Math.hypot(px - shape.x1 - u * dx, py - shape.y1 - u * dy) <= shape.radius;
+            };
+            // Conservative continuous coverage: sample no farther apart than half the housing thickness.
+            const count = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / Math.max(1, shape.radius * 0.5)));
+            if (intersects(0)) return 0;
+            for (let i = 1; i <= count; i++) {
+                const t = i / count;
+                if (!intersects(t)) continue;
+                let lo = (i - 1) / count, hi = t;
+                for (let k = 0; k < 10; k++) { const mid = (lo + hi) / 2; if (intersects(mid)) hi = mid; else lo = mid; }
+                return hi;
+            }
+            return null;
+        }
+        if (shape.kind === "circle") {
             const dx = bx - ax; const dy = by - ay;
             const fx = ax - entry.getX(); const fy = ay - entry.getY();
             const a = dx * dx + dy * dy;
             const b = 2 * (fx * dx + fy * dy);
-            const c = fx * fx + fy * fy - entry.shape.radius * entry.shape.radius;
+            const c = fx * fx + fy * fy - shape.radius * shape.radius;
             const discriminant = b * b - 4 * a * c;
             if (discriminant < 0 || a <= 0) return null;
             const root = Math.sqrt(discriminant);
@@ -94,10 +114,15 @@ export class RobotVisionSystem {
             if (t2 >= 0 && t2 <= 1) return t2;
             return null;
         }
-        const minX = entry.getX() - entry.shape.width / 2;
-        const maxX = entry.getX() + entry.shape.width / 2;
-        const minY = entry.getY() - entry.shape.height / 2;
-        const maxY = entry.getY() + entry.shape.height / 2;
+        const angle = shape.kind === "orientedRectangle" ? shape.rotation : 0;
+        const c = Math.cos(angle), sn = Math.sin(angle);
+        const toLocal = (x: number, y: number) => ({ x: (x - entry.getX()) * c + (y - entry.getY()) * sn, y: -(x - entry.getX()) * sn + (y - entry.getY()) * c });
+        const aLocal = toLocal(ax, ay), bLocal = toLocal(bx, by);
+        ax = aLocal.x; ay = aLocal.y; bx = bLocal.x; by = bLocal.y;
+        const minX = -shape.width / 2;
+        const maxX = shape.width / 2;
+        const minY = -shape.height / 2;
+        const maxY = shape.height / 2;
         const dx = bx - ax; const dy = by - ay;
         let tMin = 0; let tMax = 1;
         for (const [p, q] of [[-dx, ax - minX], [dx, maxX - ax], [-dy, ay - minY], [dy, maxY - ay]] as const) {

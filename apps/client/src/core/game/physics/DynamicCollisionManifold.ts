@@ -1,6 +1,10 @@
 export interface DynamicCollisionManifold {
     readonly obstacleId: string;
 
+    /** Optional compound-collider primitive identifiers for contact diagnostics. */
+    readonly firstPartId?: string;
+    readonly secondPartId?: string;
+
     /**
      * Unit normal pointing from the obstacle
      * toward the Ball.

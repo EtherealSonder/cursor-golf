@@ -1,4 +1,3 @@
-import { PortalTeleportDiagnosticController as TeleportDebug } from "../debug/PortalTeleportDiagnosticController";
 import { PortalCollisionDebugRenderer } from "../debug/PortalCollisionDebugRenderer";
 import { PortalPerformanceDiagnosticController as PortalDiag } from "../debug/PortalPerformanceDiagnosticController";
 import { BallDeathPhysicsLock } from "../death/BallDeathPhysicsLock";
@@ -1096,7 +1095,7 @@ export class Ball extends Entity {
     private portalPreContactHandler: ((dt:number,from:{x:number;y:number})=>boolean) | null = null;
     public setPortalPreContactHandler(handler: ((dt:number,from:{x:number;y:number})=>boolean) | null):void {
         this.portalPreContactHandler=handler;
-        TeleportDebug.event("BALL_CALLBACK_REGISTRATION", {registered:handler!==null,x:this.getX(),y:this.getY()}, "ball-callback-registration", 0);
+
     }
 
     /** The callback is preserved through ordinary resets; only World destruction clears it. */
@@ -1113,10 +1112,11 @@ export class Ball extends Entity {
     public teleportThroughPortal(x:number,y:number,vx:number,vy:number):void {
         if(this.isDeathPhysicsLocked || this.gameplayState!==BallGameplayState.Active) return;
         if(![x,y,vx,vy].every(Number.isFinite)) return;
-        TeleportDebug.event("BALL_TRANSFER_BEFORE",{x:this.getX(),y:this.getY(),vx:this.velocityX,vy:this.velocityY},"ball-before",0);
+
         this.setPosition(x,y);
         this.applyDirectionalBumperVelocity(vx,vy);
-        TeleportDebug.event("BALL_TRANSFER_AFTER",{x:this.getX(),y:this.getY(),vx:this.velocityX,vy:this.velocityY},"ball-after",0);
+        this.portalFrameStart={x,y};
+
     }
 
     public getVelocityX():
@@ -1891,11 +1891,6 @@ export class Ball extends Entity {
         );
         // The Ball resolves compound housing collisions internally. Give the
         // central void first refusal before any housing bounce is applied.
-        if (this.portalPreContactHandler) {
-            TeleportDebug.event("BALL_PRE_CONTACT_CALLBACK", {dt:deltaTime,from:portalMovementStart,to:{x:this.getX(),y:this.getY()},speed:this.getSpeed()}, "ball-precontact", 2500);
-        } else {
-            TeleportDebug.event("BALL_CALLBACK_MISSING", {dt:deltaTime,x:this.getX(),y:this.getY(),speed:this.getSpeed()}, "ball-missing", 2500);
-        }
         if(this.portalPreContactHandler?.(deltaTime,portalMovementStart)) {
             // The destination position is authoritative for this physics step.
             // Never run source-portal housing response after teleporting.
@@ -2795,11 +2790,7 @@ export class Ball extends Entity {
             ) {
                 continue;
             }
-            if (obstacle.id.startsWith("portal")) {
-                TeleportDebug.event("HOUSING_CONTACT",{portal:obstacle.id,
-                    x:this.getX(),y:this.getY(),speed:this.getSpeed(),
-                    contactX:detectedManifold.contactPointX,contactY:detectedManifold.contactPointY,
-                    part:getCompoundContactPart(detectedManifold,"first")??"unknown"},`contact:${obstacle.id}`,500);
+            if (typeof obstacleDefinition.id === "string" && obstacleDefinition.id.startsWith("portal")) {
                 PortalCollisionDebugRenderer.active?.recordContact(detectedManifold.contactPointX, detectedManifold.contactPointY, detectedManifold.normalX, detectedManifold.normalY, getCompoundContactPart(detectedManifold, "first") ?? "unknown");
                 PortalDiag.active?.count("portalHousingContacts");
                 PortalDiag.active?.count("portalCollisionEntryRejected");

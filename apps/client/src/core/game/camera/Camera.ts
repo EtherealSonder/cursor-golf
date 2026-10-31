@@ -476,6 +476,11 @@ export class Camera {
         );
     }
 
+    /** A successful teleport invalidates pre-transfer camera motion and framing. */
+    public followTeleportDestination(worldX:number,worldY:number):void {
+        this.snapToWorldPoint(worldX,worldY);
+    }
+
     public resetToInitialPosition():
         void {
 

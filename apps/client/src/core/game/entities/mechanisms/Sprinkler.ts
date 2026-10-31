@@ -123,6 +123,15 @@ export class Sprinkler extends Entity {
         return this.collisionDefinition;
     }
 
+    /** P4-B: relocate the rigid body without resetting source emission state. */
+    public canPortalTeleport(): boolean { return !this.suctionCapturing && !this.suctionCaptureComplete && !this.isDestroyed(); }
+
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        if (!this.canPortalTeleport()) return;
+        this.setPosition(x, y);
+        this.rigidBody.setVelocity(vx, vy);
+    }
+
     public getVelocityX(): number {
         return this.rigidBody
             .getVelocityX();

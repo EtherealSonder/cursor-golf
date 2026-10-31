@@ -57,6 +57,12 @@ export class ElementalMarble implements DynamicCollidable {
         this.popCompleted = false;
         return true;
     }
+    /** P4-B: retain activation and elemental state while moving the physics body. */
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        if (this.isRemoving()) return;
+        this.physics.teleportTo(x, y, vx, vy);
+        this.syncSprite();
+    }
     public syncSprite(): void { if (this.sprite) { this.sprite.position.set(this.physics.x, this.physics.y); this.sprite.rotation = this.physics.rotation; this.sprite.scale.set(this.visualScale * (ELEMENTAL_MARBLE_PHYSICS.radius * 2 / this.sprite.texture.width), this.visualScale * (ELEMENTAL_MARBLE_PHYSICS.radius * 2 / this.sprite.texture.height)); } }
     public beginRemoval(): boolean { if (this.disposed || this.removing || this.pop) return false; this.removing = true; return true; }
     public isRemoving(): boolean { return this.removing || this.disposed || this.pop !== null; }

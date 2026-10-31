@@ -70,6 +70,9 @@ export class FireVfxPool {
     private readonly container =
         new Container();
 
+    /** Ground-origin flames are rendered beneath portal artwork. */
+    private readonly groundContainer = new Container();
+
     private readonly particles:
         FireVfxParticle[] = [];
 
@@ -138,6 +141,8 @@ export class FireVfxPool {
         return this.container;
     }
 
+    public getGroundContainer(): Container { return this.groundContainer; }
+
     public acquire(
         texture: Texture,
         activation:
@@ -171,6 +176,14 @@ export class FireVfxPool {
         this.performanceAcquireSuccesses += 1;
         if (activation.presentationOrigin === "ground") {
             this.activeGroundCount += 1;
+        }
+
+        // A pooled particle can switch between ground and directional ownership.
+        // Reparent before activation so its visible sprite follows that ownership.
+        const targetContainer = activation.presentationOrigin === "ground"
+            ? this.groundContainer : this.container;
+        if (particle.getSprite().parent !== targetContainer) {
+            targetContainer.addChild(particle.getSprite());
         }
 
         particle.activate(
@@ -324,9 +337,8 @@ export class FireVfxPool {
         this.activeParticles.clear();
         this.activeGroundCount = 0;
 
-        this.container.destroy({
-            children: false,
-        });
+        this.container.destroy({ children: false });
+        this.groundContainer.destroy({ children: false });
     }
 
     private createParticle(

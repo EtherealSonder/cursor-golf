@@ -65,6 +65,12 @@ export class Crate implements DynamicCollidable {
         this.definition = createCrateCollisionDefinition(this.id, placement.x, placement.y);
         this.physics = new CratePhysicsController(this.definition);
     }
+    /** P4-B: a crate retains its burning and destruction controllers across relocation. */
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        if (this.destroyed || this.voidRemoving) return;
+        this.physics.teleportTo(x, y, vx, vy);
+        this.syncSprite();
+    }
     public get x(): number { return this.physics.x; }
     public get y(): number { return this.physics.y; }
     public get isDestroyed(): boolean { return this.destroyed; }

@@ -299,6 +299,7 @@ export class FireVfxSystem {
             this.scorchRenderer
                 .getContainer(),
         );
+        this.groundContainer.addChild(this.pool.getGroundContainer());
 
         this.airborneContainer.addChild(
             this.pool.getContainer(),
@@ -353,6 +354,7 @@ export class FireVfxSystem {
         this.diagnosticFlamesEnabled = enabled;
         if (!enabled) this.resetActiveFireOnly();
         this.airborneContainer.visible = enabled;
+        this.pool.getGroundContainer().visible = enabled;
     }
 
     /** Run scorch presentation without allocating/updating flame particles. */

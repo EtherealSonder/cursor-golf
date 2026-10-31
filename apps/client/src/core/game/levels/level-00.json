@@ -78,6 +78,82 @@
       "y": 668.5,
       "type": "portal3",
       "rotation": 0
+    },
+    {
+      "id": "p4-test-rock-1",
+      "type": "smallRock",
+      "x": 470,
+      "y": 420,
+      "radius": 17,
+      "seed": 101
+    },
+    {
+      "id": "p4-test-rock-2",
+      "type": "smallRock",
+      "x": 530,
+      "y": 420,
+      "radius": 18,
+      "seed": 102
+    },
+    {
+      "id": "p4-test-rock-3",
+      "type": "smallRock",
+      "x": 880,
+      "y": 425,
+      "radius": 17,
+      "seed": 103
+    },
+    {
+      "id": "p4-test-rock-4",
+      "type": "smallRock",
+      "x": 920,
+      "y": 430,
+      "radius": 18,
+      "seed": 104
+    },
+    {
+      "id": "p4-test-rock-5",
+      "type": "smallRock",
+      "x": 1280,
+      "y": 415,
+      "radius": 16,
+      "seed": 105
+    },
+    {
+      "id": "p4-test-rock-6",
+      "type": "smallRock",
+      "x": 1320,
+      "y": 422,
+      "radius": 18,
+      "seed": 106
+    },
+    {
+      "id": "p4-test-rock-7",
+      "type": "smallRock",
+      "x": 750,
+      "y": 550,
+      "radius": 18,
+      "seed": 107
+    },
+    {
+      "id": "p4-test-rock-8",
+      "type": "smallRock",
+      "x": 1070,
+      "y": 550,
+      "radius": 17,
+      "seed": 108
+    },
+    {
+      "id": "p4-test-fire-marble",
+      "type": "fireMarble",
+      "x": 650,
+      "y": 625
+    },
+    {
+      "id": "p4-test-water-marble",
+      "type": "waterMarble",
+      "x": 1150,
+      "y": 625
     }
   ]
 }

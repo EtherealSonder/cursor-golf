@@ -37,3 +37,18 @@ export const DEFAULT_PROCEDURAL_SAND_CONFIG: ProceduralSandConfig = {
 export function createProceduralSandSeed(): number {
     return Math.floor(Math.random() * 0x100000000) >>> 0;
 }
+
+/** Interactive portal test course: always create visible, randomized sand.
+ * Other levels retain the original roll-dependent density and defaults. */
+export const LEVEL_00_PROCEDURAL_SAND_CONFIG: ProceduralSandConfig = {
+    ...DEFAULT_PROCEDURAL_SAND_CONFIG,
+    density: "high",
+    minimumPatchDiameter: 70,
+    maximumPatchDiameter: 230,
+    minimumPatchSeparation: 12,
+    targetCoverage: { ...DEFAULT_PROCEDURAL_SAND_CONFIG.targetCoverage, high: 0.11 },
+    intensityShapePresets: {
+        ...DEFAULT_PROCEDURAL_SAND_CONFIG.intensityShapePresets,
+        high: { minimumDiameter: 90, maximumDiameter: 220, aspectMinimum: 0.65, aspectMaximum: 1.5, lobeMinimum: 4, lobeMaximum: 7, irregularity: 1.2 },
+    },
+};

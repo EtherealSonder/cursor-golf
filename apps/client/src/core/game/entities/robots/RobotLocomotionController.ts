@@ -43,6 +43,9 @@ export class RobotLocomotionController {
         this.applyPlantedPose();
     }
 
+    /** P4-B: discard an unfinished gait after discontinuous world relocation. */
+    public resetAfterTeleport(): void { this.reset(); }
+
     public update(deltaTime: number, maximumDistance: number): RobotLocomotionAdvance {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0 || maximumDistance <= 0 || !Number.isFinite(maximumDistance)) {
             return { distance: 0, phase: this.phase, activeLeg: this.getActiveLeg() };

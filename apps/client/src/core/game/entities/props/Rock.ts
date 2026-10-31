@@ -158,6 +158,17 @@ export class Rock extends Entity implements DynamicCollidable {
         return this.rotationRadians;
     }
 
+    /** P4-B: only small, uncaptured rigid rocks can cross portals. */
+    public canPortalTeleport(): boolean {
+        return this.rigidBody !== null && this.getInverseMass() > 0 && !this.suctionCaptured && !this.voidRemoving && !this.isDestroyed();
+    }
+
+    public teleportTo(x: number, y: number, vx: number, vy: number): void {
+        if (!this.canPortalTeleport() || !this.rigidBody) return;
+        this.setPosition(x, y);
+        this.rigidBody.setVelocity(vx, vy);
+    }
+
     public getVelocityX(): number {
         return this.rigidBody?.getVelocityX() ?? 0;
     }

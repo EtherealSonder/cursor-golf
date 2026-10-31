@@ -9,13 +9,16 @@ export interface RobotInteractionCapabilities {
 export type RobotInteractionShape =
     | { readonly kind: "circle"; readonly radius: number }
     | { readonly kind: "rectangle"; readonly width: number; readonly height: number }
-    | { readonly kind: "orientedRectangle"; readonly width: number; readonly height: number; readonly rotation: number };
+    | { readonly kind: "orientedRectangle"; readonly width: number; readonly height: number; readonly rotation: number }
+    | { readonly kind: "capsule"; readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number; readonly radius: number };
 
 export interface RobotInteractionEntry {
     readonly id: string;
     readonly label: string;
     readonly capabilities: RobotInteractionCapabilities;
     readonly shape: RobotInteractionShape;
+    /** Optional live geometry for moving and rotating compound obstacles. */
+    readonly getShape?: () => RobotInteractionShape;
     readonly getX: () => number;
     readonly getY: () => number;
 }

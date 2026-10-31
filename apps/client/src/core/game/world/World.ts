@@ -1,3 +1,4 @@
+import { createPortalCollisionGeometry } from "../portal/PortalCollisionGeometry";
 import { PortalTeleportDiagnosticController as TeleportDebug } from "../debug/PortalTeleportDiagnosticController";
 import { PORTAL_DIAGNOSTIC } from "../debug/PortalPerformanceDiagnosticDefinition";
 import { PortalCollisionDebugRenderer } from "../debug/PortalCollisionDebugRenderer";
@@ -7,9 +8,14 @@ import { PortalPerformanceDiagnosticOverlay } from "../debug/PortalPerformanceDi
 import { PORTAL_BODY } from "../config/PortalPhysicsDefinition";
 import { Portal } from "../portal/Portal";
 import { PortalBallInteractionController } from "../portal/PortalBallInteractionController";
+import { PortalDynamicAdapterRegistry } from "../portal/PortalDynamicAdapterRegistry";
+import { rockPortalAdapter, cratePortalAdapter, marblePortalAdapter, fanPortalAdapter, sprinklerPortalAdapter, robotPortalAdapter } from "../portal/PortalGameplayObjectAdapters";
+import type { PortalTeleportAdapter } from "../portal/PortalTeleportAdapter";
+import { PortalDynamicInteractionController } from "../portal/PortalDynamicInteractionController";
 import { PortalPreviewRenderer } from "../portal/PortalPreviewRenderer";
+import { PortalPairVoidController } from "../portal/PortalPairVoidController";
 import { selectValidPortalPairs } from "../portal/PortalPairController";
-import { DEFAULT_PROCEDURAL_SAND_CONFIG } from "../procedural/ProceduralSandConfig";
+import { DEFAULT_PROCEDURAL_SAND_CONFIG, LEVEL_00_PROCEDURAL_SAND_CONFIG } from "../procedural/ProceduralSandConfig";
 import { rollLevelGeneration } from "../procedural/LevelGenerationRollController";
 import { PROCEDURAL_MARBLE_CONFIG as MARBLE_CONFIG } from "../marble/ProceduralMarbleConfig";
 import { generateProceduralMarbles, isMarblePositionFree, type MarbleExclusion } from "../marble/ProceduralMarblePlacementController";
@@ -677,7 +683,110 @@ export class World {
     private portalPreview: PortalPreviewRenderer | null = null;
     private portalCollisionDebug: PortalCollisionDebugRenderer | null = null;
     private readonly portalBodies: Portal[] = [];
+    private readonly portalRobotUnregister = new Map<string, Array<() => void>>();
+    private portalPairVoidController: PortalPairVoidController | null = null;
     private portalBallInteractions: PortalBallInteractionController | null = null;
+    /** P4-B: register only bodies that are still physically active. */
+    private synchronizePortalGameplayAdapters(): void {
+        const activeBodies = new Set(this.physicsWorld.getMovableRigidDynamicCollidables());
+        const activeIds = new Set<string>();
+        const include = (adapter: PortalTeleportAdapter): void => {
+            activeIds.add(adapter.id);
+            if (!this.portalAdapterCache.has(adapter.id)) {
+                this.portalAdapterCache.set(adapter.id, adapter);
+                this.portalDynamicAdapters.register(adapter);
+            }
+        };
+        for (const rock of this.rocks) if (activeBodies.has(rock)) include(rockPortalAdapter(rock));
+        for (const crate of this.crates) if (activeBodies.has(crate) && !crate.isDestroyed && !crate.isVoidRemoving) include(cratePortalAdapter(crate));
+        for (const marble of this.elementalMarbles) if (activeBodies.has(marble) && !marble.isRemoving()) include(marblePortalAdapter(marble));
+        for (const fan of this.fans) if (activeBodies.has(fan) && fan.canPortalTeleport()) include(fanPortalAdapter(fan));
+        for (const sprinkler of this.sprinklers) if (activeBodies.has(sprinkler) && sprinkler.canPortalTeleport()) include(sprinklerPortalAdapter(sprinkler));
+        for (const robot of [this.fireRobot, this.secondFireRobot, this.waterRobot, this.secondWaterRobot, this.windRobot, this.secondWindRobot]) {
+            if (robot && activeBodies.has(robot) && robot.canPortalTeleport()) include(robotPortalAdapter(robot));
+        }
+        for (const id of this.portalAdapterCache.keys()) {
+            if (!activeIds.has(id)) {
+                this.portalDynamicAdapters.unregister(id);
+                this.portalAdapterCache.delete(id);
+            }
+        }
+    }
+
+    /** P4-F: test actual fixed geometry rather than bounding circles. */
+    private readonly portalClearanceLogKeys = new Set<string>();
+    private tracePortalClearance(id: string, reason: string, _x: number, _y: number): void {
+        const key = `${id}:${reason}`;
+        if (this.portalClearanceLogKeys.has(key)) return;
+        this.portalClearanceLogKeys.add(key);
+        // Normal gameplay does not emit portal-clearance diagnostics.
+    }
+
+    private isPortalDynamicExitClear(x: number, y: number, radius: number, objectId: string): boolean {
+        if (![x, y, radius].every(Number.isFinite) || radius <= 0) {
+            this.tracePortalClearance(objectId, "INVALID_EXIT", x, y);
+            return false;
+        }
+        const margin = 2;
+        const circleHitsRectangle = (cx: number, cy: number, width: number, height: number, angle: number): boolean => {
+            const dx = x - cx, dy = y - cy;
+            const c = Math.cos(angle), sn = Math.sin(angle);
+            const lx = dx * c + dy * sn, ly = -dx * sn + dy * c;
+            const qx = Math.max(-width / 2, Math.min(width / 2, lx));
+            const qy = Math.max(-height / 2, Math.min(height / 2, ly));
+            return Math.hypot(lx - qx, ly - qy) < radius + margin;
+        };
+        const circleHitsTriangle = (cx: number, cy: number, points: readonly { x: number; y: number }[]): boolean => {
+            const px = x - cx, py = y - cy;
+            let inside = true;
+            let sign = 0;
+            for (let i = 0; i < points.length; i++) {
+                const a = points[i], b = points[(i + 1) % points.length];
+                const dx = b.x - a.x, dy = b.y - a.y;
+                const cross = dx * (py - a.y) - dy * (px - a.x);
+                if (Math.abs(cross) > 1e-8) {
+                    if (!sign) sign = Math.sign(cross);
+                    else if (Math.sign(cross) !== sign) inside = false;
+                }
+                const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / (dx * dx + dy * dy || 1)));
+                if (Math.hypot(px - a.x - t * dx, py - a.y - t * dy) < radius + margin) return true;
+            }
+            return inside;
+        };
+        for (const fixed of this.physicsWorld.getRigidFixedShapes()) {
+            const blocked = fixed.shape === "circle"
+                ? Math.hypot(x - fixed.positionX, y - fixed.positionY) < radius + fixed.radius + margin
+                : circleHitsRectangle(fixed.positionX, fixed.positionY, fixed.width, fixed.height, fixed.rotationRadians);
+            if (blocked) {
+                this.tracePortalClearance(objectId, `FIXED_OBSTACLE:${fixed.id}`, x, y);
+                return false;
+            }
+        }
+        for (const fixed of this.physicsWorld.getRigidStaticDefinitions()) {
+            const blocked = fixed.shape === "circle"
+                ? Math.hypot(x - fixed.positionX, y - fixed.positionY) < radius + fixed.radius + margin
+                : fixed.shape === "rectangle"
+                    ? circleHitsRectangle(fixed.positionX, fixed.positionY, fixed.width, fixed.height, fixed.rotationRadians ?? 0)
+                    : circleHitsTriangle(fixed.positionX, fixed.positionY, fixed.points);
+            if (blocked) {
+                this.tracePortalClearance(objectId, `STATIC_OBSTACLE:${fixed.id}`, x, y);
+                return false;
+            }
+        }
+        for (const adapter of this.portalDynamicAdapters.values()) {
+            if (adapter.id === objectId || !adapter.canTeleport()) continue;
+            const other = adapter.getPose();
+            if (Math.hypot(x - other.x, y - other.y) < radius + adapter.getCollisionRadius() + margin) {
+                this.tracePortalClearance(objectId, `DYNAMIC_OBSTACLE:${adapter.id}`, x, y);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private readonly portalDynamicAdapters = new PortalDynamicAdapterRegistry();
+    private readonly portalAdapterCache = new Map<string, PortalTeleportAdapter>();
+    private portalDynamicInteractions: PortalDynamicInteractionController | null = null;
     private readonly portalDiagnostic = new PortalPerformanceDiagnosticController();
     private portalDiagnosticOverlay: PortalPerformanceDiagnosticOverlay | null = null;
     private portalDiagnosticEnabled = false;
@@ -1060,18 +1169,21 @@ export class World {
         TeleportDebug.reset();
         // Do not instantiate the generator in the isolated portal benchmark.
         // Its constructor generates sand immediately, even without rendering.
-        if (this.portalDiagnosticEnabled) {
+        if (this.portalDiagnosticEnabled && this.runtimeLevel.id !== "level-00") {
             this.proceduralSandController = null;
         } else {
             const sandRoll = rollLevelGeneration();
-            this.proceduralSandController = new ProceduralSandController(this.runtimeLevel, {
-                ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity,
-            });
+            this.proceduralSandController = new ProceduralSandController(this.runtimeLevel,
+                this.runtimeLevel.id === "level-00"
+                    ? LEVEL_00_PROCEDURAL_SAND_CONFIG
+                    : { ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity },
+            );
         }
         this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
         if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
         this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
         this.objectVoidController = new WorldObjectVoidController(this.courseEnvironmentBoundary);
+        this.portalPairVoidController = new PortalPairVoidController(this.courseEnvironmentBoundary, this.objectVoidController.getRemovalDurationSeconds());
         this.marbleDestructionController = new ElementalMarbleDestructionController(this.courseEnvironmentBoundary);
         if (import.meta.env.DEV) assertCourseObjectVoidValidation();
         if (import.meta.env.DEV) {
@@ -1379,7 +1491,12 @@ export class World {
         }
         this.createLevelBushes();
         this.createLevelCrates();
-        if (!this.portalDiagnosticEnabled) this.createLevelMarbles();
+        // level-00 is an interactive P4 test course, even in diagnostic mode.
+        if (!this.portalDiagnosticEnabled || this.runtimeLevel.id === "level-00") this.createLevelMarbles();
+        this.portalDynamicInteractions = new PortalDynamicInteractionController(
+            this.portalBodies, this.portalDynamicAdapters,
+            (x, y, radius, id) => this.isPortalDynamicExitClear(x, y, radius, id),
+        );
         void this.createPortalPreviews();
         if (this.portalDiagnosticEnabled && PORTAL_DIAGNOSTIC.showPortalColliders) {
             this.portalCollisionDebug = new PortalCollisionDebugRenderer();
@@ -1391,8 +1508,9 @@ export class World {
                 .addChild(this.portalCollisionDebug.container);
         }
         if (false && this.portalDiagnosticEnabled) {
-            this.portalDiagnosticOverlay = new PortalPerformanceDiagnosticOverlay();
-            this.screenOverlayContainer.addChild(this.portalDiagnosticOverlay.container);
+            const overlay = new PortalPerformanceDiagnosticOverlay();
+            this.portalDiagnosticOverlay = overlay;
+            this.screenOverlayContainer.addChild(overlay.container);
         }
         this.bushFireContact = new BushFireContactSystem(this.fireManager, this.fireSourceSystem);
         this.crateFireContact = new CrateFireContactSystem(this.fireManager, this.fireSourceSystem);
@@ -1632,7 +1750,14 @@ export class World {
         ];
 
         for (const placement of rockPresentationPlacements) {
-            this.addRockEntity(new Rock(placement));
+            // P4-B level-00 sandbox: jitter authored test rocks on each load.
+            // The centers remain well away from portal housings and course edges.
+            const sandboxRock = this.runtimeLevel.id === "level-00" && placement.id.startsWith("p4-test-rock-");
+            this.addRockEntity(new Rock(sandboxRock ? {
+                ...placement,
+                x: placement.x + (Math.random() - 0.5) * 24,
+                y: placement.y + (Math.random() - 0.5) * 24,
+            } : placement));
         }
 
         // ---------------------------------------------------
@@ -1958,11 +2083,23 @@ export class World {
             number,
     ): void {
 
+        this.portalPairVoidController?.update(deltaTime, this.portalBodies,
+            portal => {
+                this.physicsWorld.unregisterDynamicBody(portal);
+                this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-left`);
+                this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-right`);
+                for (const unregister of this.portalRobotUnregister.get(portal.id) ?? []) unregister();
+                this.portalRobotUnregister.delete(portal.id);
+            },
+            (portal, scale) => this.portalPreview?.setVoidScale(portal.id, scale),
+            portal => {
+                this.portalPreview?.remove(portal.id);
+                const index = this.portalBodies.indexOf(portal);
+                if (index >= 0) this.portalBodies.splice(index, 1);
+            },
+        );
         // P3: capture the pre-integration ball center for swept portal entry.
         this.ball?.capturePortalFrameStart();
-        if (this.portalBodies.length) {
-            TeleportDebug.event("WORLD_PORTAL_HEARTBEAT",{ballExists:!!this.ball,portalCount:this.portalBodies.length,controllerExists:!!this.portalBallInteractions},"world-heartbeat",3000);
-        }
         // P2-C1: integrate angular-only motion around each authored fixed pivot.
         for (const portal of this.portalBodies) {
             portal.update(deltaTime, (candidateAngle, previousAngle) =>
@@ -2734,6 +2871,10 @@ export class World {
         // Portal entry is evaluated within Ball movement, before its own
         // compound housing collision response. Do not run a second sweep here.
 
+        // P4-B: synchronize against authoritative physics registrations after integration.
+        this.synchronizePortalGameplayAdapters();
+        this.portalDynamicInteractions?.update(deltaTime);
+
         this.waterPerformanceProfiler.measure("dynamicCollisions", (): void => {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("dynamicCollisions")!==false)this.dynamicCollisionSystem.resolve(
                 this.physicsWorld.getRigidDynamicCollidables(),
@@ -3035,6 +3176,14 @@ export class World {
             this.physicsWorld.unregisterDynamicBody(portal);
         }
         this.ball?.setPortalPreContactHandler(null);
+        this.portalPairVoidController?.clear();
+        this.portalPairVoidController = null;
+        for (const callbacks of this.portalRobotUnregister.values()) for (const unregister of callbacks) unregister();
+        this.portalRobotUnregister.clear();
+        this.portalDynamicInteractions?.dispose();
+        this.portalDynamicInteractions = null;
+        this.portalDynamicAdapters.clear();
+        this.portalAdapterCache.clear();
         this.portalBodies.length = 0;
         this.portalBallInteractions = null;
         this.portalCollisionDebug?.destroy();
@@ -5961,9 +6110,8 @@ export class World {
             .getLayer(WorldRenderLayer.GroundState)
             .addChild(this.fireVfxSystem.getGroundContainer());
 
-        // FireVfxPool particles (including point and directional fire) live in
-        // airborneContainer, NOT groundContainer. Place the actual particle
-        // container above the bush sprites, but below aiming and HUD.
+        // Ground-origin flames stay in GroundState, below portal presentation.
+        // Directional flames remain in the airborne foreground above foliage.
         const fireParticles = this.fireVfxSystem.getAirborneContainer();
         fireParticles.zIndex = 20;
         this.presentationLayers.getBushForegroundLayer().addChild(fireParticles);
@@ -6609,18 +6757,10 @@ export class World {
         const ball = this.ball;
         const controller = this.portalBallInteractions;
         if (!ball || !controller) {
-            TeleportDebug.event("WORLD_CALLBACK_PENDING", {
-                ballExists: !!ball, controllerExists: !!controller,
-            }, "world-callback-pending", 1500);
             return;
         }
         if (ball.hasPortalPreContactHandler()) return;
         ball.setPortalPreContactHandler((dt, from) => controller.update(dt, ball, from));
-        TeleportDebug.event("WORLD_CALLBACK_BOUND", {
-            portalCount: this.portalBodies.length,
-            ballX: ball.getX(), ballY: ball.getY(),
-            registered: ball.hasPortalPreContactHandler(),
-        }, "world-callback-bound", 0);
     }
 
     /** P2-A: render authored portal pairs with non-interactive collider debug overlays. */
@@ -6630,15 +6770,48 @@ export class World {
                 object.type === "portal1" || object.type === "portal2" || object.type === "portal3",
         );
         const positions = selectValidPortalPairs(authored, this.runtimeLevel.id);
-        TeleportDebug.event("WORLD_PORTAL_SETUP",{level:this.runtimeLevel.id,portalPositions:positions.length,ballExists:!!this.ball},"world-portal-setup",0);
         if (!positions.length) return;
         this.portalBallInteractions = new PortalBallInteractionController(this.portalBodies,(x,y,radius)=> {
             // Conservative portal exit clearance; other static obstacles are handled by the normal solver.
             return this.portalBodies.every(p=>Math.hypot(p.getX()-x,p.getY()-y)>radius+20);
+        }, () => ({ x: this.camera.getPositionX(), y: this.camera.getPositionY() }), (x,y) => {
+            this.camera.followTeleportDestination(x,y);
+            this.applyCameraTransform();
         });
         for (const position of positions) {
             const portal = new Portal(position);
             this.portalBodies.push(portal);
+            const robotUnregister: Array<() => void> = [];
+            this.portalRobotUnregister.set(portal.id, robotUnregister);
+            // P4-C: register only the physical housing. Live geometry follows portal translation and rotation.
+            const housing = createPortalCollisionGeometry();
+            const transform = (lx: number, ly: number) => {
+                const angle = portal.getRotation(), c = Math.cos(angle), sn = Math.sin(angle);
+                return { x: portal.getX() + lx * c - ly * sn, y: portal.getY() + lx * sn + ly * c };
+            };
+            const capabilities = { navigationBlocker: true, attackTarget: false, visionOccluder: true } as const;
+            housing.housing.forEach((segment, index) => {
+                robotUnregister.push(this.robotInteractionRegistry.register({
+                    id: `portal-robot-${portal.id}-${segment.kind}-${index}`,
+                    label: "Portal housing", capabilities,
+                    shape: { kind: "capsule", x1: 0, y1: 0, x2: 0, y2: 0, radius: segment.radius },
+                    getX: () => portal.getX(), getY: () => portal.getY(),
+                    getShape: () => {
+                        const a = transform(segment.x1, segment.y1), b = transform(segment.x2, segment.y2);
+                        return { kind: "capsule" as const, x1: a.x, y1: a.y, x2: b.x, y2: b.y, radius: segment.radius };
+                    },
+                }));
+            });
+            housing.handles.forEach((handle) => {
+                robotUnregister.push(this.robotInteractionRegistry.register({
+                    id: `portal-robot-${portal.id}-${handle.kind}`,
+                    label: "Portal handle", capabilities,
+                    shape: { kind: "orientedRectangle", width: handle.width, height: handle.height, rotation: 0 },
+                    getX: () => transform(handle.x, handle.y).x,
+                    getY: () => transform(handle.x, handle.y).y,
+                    getShape: () => ({ kind: "orientedRectangle", width: handle.width, height: handle.height, rotation: portal.getRotation() }),
+                }));
+            });
             if (this.portalDiagnosticEnabled) this.portalDiagnostic.setPortalCount(this.portalBodies.length);
             // Two independent moving water targets: the housing and vortex
             // do not generate environmental torque.
@@ -6670,10 +6843,17 @@ export class World {
         this.bindBallPortalInteractions();
         try {
             const preview = await PortalPreviewRenderer.create(
-                this.presentationLayers.getLayer(WorldRenderLayer.PhysicalObjects), positions,
+                // Portal housing/vortex are below rocks, marbles and other physical actors.
+                this.presentationLayers.getLayer(WorldRenderLayer.PortalPresentation), positions,
             );
             if (this.portalPreviewCancelled) preview.destroy();
-            else this.portalPreview = preview;
+            else {
+                this.portalPreview = preview;
+                // Asset loading may finish after pair removal has already begun.
+                for (const position of positions) {
+                    if (!this.portalBodies.some(portal => portal.id === position.id)) preview.remove(position.id);
+                }
+            }
         } catch (error) {
             console.error("[Portal P1] Could not load portal assets", error);
         }
@@ -6707,7 +6887,8 @@ export class World {
             else console.warn(`[ElementalMarble:M4] Skipping invalid authored placement ${object.id}`);
             return valid;
         });
-        const generated = generateProceduralMarbles(geometry, exclusions, validAuthored.length, Math.random, this.marbleGenerationRoll.value);
+        const generated = generateProceduralMarbles(geometry, exclusions, validAuthored.length, Math.random,
+            this.runtimeLevel.id === "level-00" ? 100 : this.marbleGenerationRoll.value);
         const fireExtra = Math.random() < 0.5;
         const placements = [
             ...validAuthored.map(object => ({ id: object.id, kind: object.type === "fireMarble" ? "fire" as const : "water" as const, x: object.x, y: object.y })),
