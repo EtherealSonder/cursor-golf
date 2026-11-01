@@ -15,7 +15,10 @@ export interface ProceduralSandPatch {
 
 export class ProceduralSandController {
     public readonly context: ProceduralSandLevelContext;
-    private readonly config: ProceduralSandConfig;
+    private config: ProceduralSandConfig;
+    private readonly originalConfig: ProceduralSandConfig;
+    private readonly originalSeed: number;
+    private readonly originalDensity: ProceduralSandDensity;
     private random: SeededRandom;
     private seed: number;
     private density: ProceduralSandDensity;
@@ -26,8 +29,11 @@ export class ProceduralSandController {
     constructor(level: RuntimeLevelDefinition, config: ProceduralSandConfig = DEFAULT_PROCEDURAL_SAND_CONFIG) {
         this.context = adaptProceduralSandLevel(level);
         this.config = config;
+        this.originalConfig = config;
         this.seed = config.seed === undefined ? createProceduralSandSeed() : config.seed >>> 0;
         this.density = config.density;
+        this.originalSeed = this.seed;
+        this.originalDensity = this.density;
         this.random = new SeededRandom(this.seed);
         this.generate();
         if (import.meta.env.DEV) console.info("[ProceduralSand:P2] Initialized", this.getDiagnostics());
@@ -35,6 +41,20 @@ export class ProceduralSandController {
 
     public getPatches(): readonly ProceduralSandPatch[] { return this.patches; }
     public getDensity(): ProceduralSandDensity { return this.density; }
+    public getOriginalConfig(): ProceduralSandConfig { return this.originalConfig; }
+    public isDuneSurge(): boolean { return this.config.duneSurge === true; }
+
+    /** Rebuild the sand footprint with the original seed for reversible debug switching. */
+    public setDuneSurge(enabled: boolean, duneConfig: ProceduralSandConfig, surfaceSystem?: SurfaceSystem,
+        render?: (patches: readonly ProceduralSandPatch[]) => void): void {
+        this.assertAlive();
+        if (this.isDuneSurge() === enabled) return;
+        this.config = enabled ? duneConfig : this.originalConfig;
+        this.regenerate(this.originalSeed, this.originalDensity);
+        if (surfaceSystem) this.registerSurfaces(surfaceSystem);
+        if (render) render(this.patches);
+        if (import.meta.env.DEV) console.info("[WM-3] Dune Surge terrain switched", { enabled, ...this.getDiagnostics() });
+    }
 
     /** Register identical polygon footprints used by the texture renderer. */
     public registerSurfaces(surfaceSystem: SurfaceSystem): void {
@@ -47,6 +67,8 @@ export class ProceduralSandController {
         return {
             levelId: this.context.levelId,
             density: this.density,
+            duneSurge: this.isDuneSurge(),
+            targetCoveragePercent: this.config.targetCoverage[this.density] * 100,
             seed: this.seed,
             vertexCount: this.context.polygon.length,
             playableArea: this.context.playableArea,
@@ -89,6 +111,7 @@ export class ProceduralSandController {
     private generate(): void {
         const result = generateProceduralSand(this.context, this.config, this.density, this.random);
         this.patches = result.patches.map((patch, index) => ({ id: `sand-${this.seed}-${index}`, vertices: patch.vertices }));
+        if (import.meta.env.DEV && this.isDuneSurge()) console.info("[WM-3] DUNE SURGE GENERATION", { targetCoveragePercent: this.config.targetCoverage[this.density] * 100, achievedCoveragePercent: result.coveragePercent, patches: result.patches.length, attempts: result.attempts, rejected: result.rejected, stopReason: result.coveragePercent >= this.config.targetCoverage[this.density] * 100 ? "Target reached" : result.attempts >= (this.config.maxPlacementAttempts ?? 600) ? "Attempt budget" : "Patch limit" });
         if (import.meta.env.DEV) console.info("[ProceduralSand:P2] Generation complete", { levelId: this.context.levelId, seed: this.seed, density: this.density, patchCount: this.patches.length, coveragePercent: result.coveragePercent, attempted: result.attempts, rejected: result.rejected });
     }
 

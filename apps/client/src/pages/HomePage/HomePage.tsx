@@ -1,3 +1,8 @@
+import { useState } from "react";
+import { WorldModifierHud } from "../../components/hud/WorldModifierHud";
+import { WorldModifierDebugPanel } from "../../components/hud/WorldModifierDebugPanel";
+import type { WorldModifierResolvedState } from "../../core/game/world-modifiers/WorldModifierDefinition";
+import type { WorldModifierDebugSelection } from "../../core/game/world-modifiers/WorldModifierDebugController";
 import {
     useEffect,
     useRef,
@@ -10,6 +15,10 @@ import {
 import "./HomePage.css";
 
 function HomePage() {
+
+    const [modifierState, setModifierState] = useState<WorldModifierResolvedState | null>(null);
+    const gameRef = useRef<Game | null>(null);
+    const applyModifier = (selection: WorldModifierDebugSelection, seed: number) => gameRef.current?.debugSetWorldModifier(selection, seed);
 
     const gameContainerRef =
         useRef<HTMLDivElement>(
@@ -29,6 +38,9 @@ function HomePage() {
                 new Game(
                     container,
                 );
+
+            gameRef.current = game;
+            const unsubscribeModifier = game.subscribeToWorldModifier(setModifierState);
 
             let disposed =
                 false;
@@ -57,6 +69,8 @@ function HomePage() {
                 disposed =
                     true;
 
+                unsubscribeModifier();
+                if (gameRef.current === game) gameRef.current = null;
                 game.stop();
             };
         },
@@ -69,7 +83,10 @@ function HomePage() {
                 ref={gameContainerRef}
                 className="game-container"
                 aria-label="Cursor Golf gameplay"
-            />
+            >
+                <WorldModifierHud state={modifierState} />
+                {import.meta.env.DEV && <WorldModifierDebugPanel state={modifierState} onApply={applyModifier} />}
+            </div>
         </main>
     );
 }

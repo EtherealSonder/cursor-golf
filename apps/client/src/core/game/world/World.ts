@@ -1,3 +1,10 @@
+import { DOWNPOUR_CONFIG } from "../world-modifiers/DownpourConfig";
+import { DownpourController } from "../world-modifiers/DownpourController";
+import { DownpourRainVfx } from "../water-vfx/DownpourRainVfx";
+import { createDuneSurgeSandConfig } from "../world-modifiers/DuneSurgeConfig";
+import { WorldModifierDebugController, type WorldModifierDebugSelection } from "../world-modifiers/WorldModifierDebugController";
+import { WorldModifierController } from "../world-modifiers/WorldModifierController";
+import type { WorldModifierResolvedState } from "../world-modifiers/WorldModifierDefinition";
 import { createPortalCollisionGeometry } from "../portal/PortalCollisionGeometry";
 import { PortalTeleportDiagnosticController as TeleportDebug } from "../debug/PortalTeleportDiagnosticController";
 import { PORTAL_DIAGNOSTIC } from "../debug/PortalPerformanceDiagnosticDefinition";
@@ -518,6 +525,58 @@ import {
 
 
 export class World {
+    private readonly worldModifierController = new WorldModifierController();
+    private downpourController: DownpourController | null = null;
+    private downpourRainVfx: DownpourRainVfx | null = null;
+
+    public getWorldModifierRolledState(): WorldModifierResolvedState {
+        return this.worldModifierController.getRolledState();
+    }
+
+    public getWorldModifierState(): WorldModifierResolvedState {
+        return this.worldModifierController.getState();
+    }
+
+    public debugSetWorldModifier(selection: WorldModifierDebugSelection, seed: number): WorldModifierResolvedState {
+        if (!import.meta.env.DEV) return this.getWorldModifierState();
+        const state = this.worldModifierController.debugResolve(
+            WorldModifierDebugController.createConfiguration(selection), seed, this.runtimeLevel.id,
+        );
+        this.updateDuneSurgeTerrain(state.modifier === "dune-surge");
+        this.setDownpourEnabled(state.modifier === "downpour");
+        this.updateDownpourTerrainTextures(state.modifier === "downpour");
+        return state;
+    }
+
+
+
+    /** Presentation-only dry/wet terrain switch. Preserve world-space tile scale and masks. */
+    private updateDownpourTerrainTextures(enabled: boolean): void {
+        if (this.courseBackground) {
+            this.courseBackground.texture = AssetLoader.getTexture(
+                enabled ? "grassTerrainWet" : this.courseVisualDefinition.grassTextureKey,
+            );
+        }
+        this.proceduralSandRenderer?.setTexture(AssetLoader.getTexture(
+            enabled ? "sandTerrainWet" : this.courseVisualDefinition.sandTextureKey,
+        ));
+    }
+
+    private setDownpourEnabled(enabled: boolean): void {
+        this.downpourController?.setEnabled(enabled);
+        this.downpourRainVfx?.setEnabled(enabled && DOWNPOUR_CONFIG.enableRainVfx);
+        this.wetGroundRenderer?.setPresentationEnabled(DOWNPOUR_CONFIG.enableWetGroundRendering);
+        this.wetGroundRenderer?.setDownpourOverlayEnabled(enabled);
+        if (DOWNPOUR_CONFIG.enableWetGroundRendering) this.wetGroundRenderer?.redrawImmediately();
+    }
+
+    private updateDuneSurgeTerrain(enabled: boolean): void {
+        const sand = this.proceduralSandController;
+        if (!sand) return;
+        sand.setDuneSurge(enabled, createDuneSurgeSandConfig(sand.getOriginalConfig()),
+            this.proceduralSandRenderer ? this.surfaceSystem : undefined,
+            this.proceduralSandRenderer ? (patches) => this.proceduralSandRenderer?.render(patches) : undefined);
+    }
 
     private readonly app:
         Application;
@@ -1162,6 +1221,9 @@ export class World {
             throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
+        if (import.meta.env.DEV) {
+            this.worldModifierController.logRollDiagnostics(this.runtimeLevel.id);
+        }
         this.portalDiagnosticEnabled = isPortalDiagnosticLevel(this.runtimeLevel.id);
         // P3-D2: disable the old P2-C5 recording/console output, retain the
         // level-00 sandbox setup and dedicated event-driven portal logs.
@@ -1179,6 +1241,7 @@ export class World {
                     : { ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity },
             );
         }
+        this.updateDuneSurgeTerrain(this.getWorldModifierState().modifier === "dune-surge");
         this.technicalBounds = resolveLevelTechnicalBounds(this.runtimeLevel);
         if (!this.runtimeLevel.course.generatedGeometry) throw new Error("E1 requires generated course geometry.");
         this.courseEnvironmentBoundary = new CourseEnvironmentBoundary(this.runtimeLevel.course.generatedGeometry);
@@ -1350,6 +1413,19 @@ export class World {
                 this.environmentField,
                 this.surfaceSystem,
             );
+        this.environmentField.setMoistureFloorBoundaryQuery((x, y) =>
+            this.waterField.isCourseCellCenterValid(x, y, this.environmentField.getDefinition().cellSize),
+        );
+        this.downpourController = new DownpourController(
+            this.environmentField, this.waterGroundInteractionSystem,
+            this.moistureSurfaceBridge, this.surfaceSystem,
+        );
+        this.downpourRainVfx = new DownpourRainVfx((x, y) =>
+            this.waterField.isCourseCellCenterValid(x, y, this.environmentField.getDefinition().cellSize),
+        );
+        this.presentationLayers.getLayer(WorldRenderLayer.WaterEffects)
+            .addChild(this.downpourRainVfx.getContainer());
+        this.setDownpourEnabled(this.getWorldModifierState().modifier === "downpour");
 
         this.waterSourceSystem =
             new WaterSourceSystem();
@@ -1484,6 +1560,7 @@ export class World {
             this.courseVisualDefinition.terrainAlpha,
         );
         if (this.proceduralSandController) this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
+        this.updateDownpourTerrainTextures(this.getWorldModifierState().modifier === "downpour");
         if (import.meta.env.DEV && this.proceduralSandController) {
             this.proceduralSandDebugControls = new ProceduralSandDebugControls(
                 this.screenOverlayContainer, this.proceduralSandController.getDensity(),
@@ -2082,6 +2159,11 @@ export class World {
         deltaTime:
             number,
     ): void {
+        if (DOWNPOUR_CONFIG.enableRainVfx) this.downpourRainVfx?.update(deltaTime, {
+            x: this.camera.getPositionX(), y: this.camera.getPositionY(),
+            width: this.camera.getVisibleWorldWidth(), height: this.camera.getVisibleWorldHeight(),
+        });
+
 
         this.portalPairVoidController?.update(deltaTime, this.portalBodies,
             portal => {
@@ -2384,7 +2466,7 @@ export class World {
             .measure(
                 "wetGround",
                 (): void => {
-                    this.wetGroundRenderer
+                    DOWNPOUR_CONFIG.enableWetGroundRendering && this.wetGroundRenderer
                         ?.update(
                             deltaTime,
                         );
@@ -3170,6 +3252,10 @@ export class World {
 
     public destroy():
         void {
+        this.downpourRainVfx?.destroy();
+        this.downpourRainVfx = null;
+        this.downpourController = null;
+
         for (const portal of this.portalBodies) {
             this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-left`);
             this.airborneWaterSystem.unregisterImpactAwareTarget(`portal-water-${portal.id}-right`);
@@ -6449,8 +6535,11 @@ export class World {
                     .getDisplayObject(),
             );
 
-        this.wetGroundRenderer
-            .redrawImmediately();
+        this.wetGroundRenderer.setPresentationEnabled(DOWNPOUR_CONFIG.enableWetGroundRendering);
+        this.wetGroundRenderer.setDownpourOverlayEnabled(
+            this.getWorldModifierState().modifier === "downpour",
+        );
+        if (DOWNPOUR_CONFIG.enableWetGroundRendering) this.wetGroundRenderer.redrawImmediately();
     }
 
     // -------------------------------------------------------

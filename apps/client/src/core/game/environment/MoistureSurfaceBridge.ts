@@ -47,6 +47,11 @@ const MOISTURE_DERIVED_WET =
  * categorically Scorched while EnvironmentField moisture rises underneath it.
  */
 export class MoistureSurfaceBridge {
+    private persistentMoistureFloor = 0;
+    public setPersistentMoistureFloor(floor: number): void {
+        this.persistentMoistureFloor = Math.max(0, Math.min(1, floor));
+        this.surfaceSystem.notifyDerivedStateChanged();
+    }
     private readonly definition:
         MoistureSurfaceBridgeDefinition;
 
@@ -505,6 +510,13 @@ export class MoistureSurfaceBridge {
 
         if (!profile) {
             return null;
+        }
+
+        if (this.persistentMoistureFloor >= profile.wetThreshold) {
+            const center = this.environmentField.getWorldCenterByIndex(index);
+            if (center && this.environmentField.getMoistureFloorAt(center.x, center.y) >= profile.wetThreshold) {
+                return profile.wetState;
+            }
         }
 
         if (

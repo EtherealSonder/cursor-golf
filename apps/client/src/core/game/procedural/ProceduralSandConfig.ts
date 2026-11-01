@@ -2,6 +2,10 @@ export type ProceduralSandDensity = "low" | "medium" | "high";
 
 export interface ProceduralSandConfig {
     readonly density: ProceduralSandDensity;
+    readonly duneSurge?: boolean;
+    readonly maxPlacementAttempts?: number;
+    readonly maxPatchCount?: number;
+    readonly secondaryPassAttemptFraction?: number;
     /** Optional reproducible seed. Omit for a fresh seed on each level load. */
     readonly seed?: number;
     readonly minimumPatchDiameter: number;

@@ -1,3 +1,5 @@
+import type { WorldModifierResolvedState } from "./world-modifiers/WorldModifierDefinition";
+import type { WorldModifierDebugSelection } from "./world-modifiers/WorldModifierDebugController";
 import { PixiPresentationProfiler as P3C2 } from "./debug/PixiPresentationProfiler";
 import { WaterSubphaseProfiler as P3C1 } from "./debug/WaterSubphaseProfiler";
 import { GeometryQueryAttributionProfiler as P3B1 } from "./debug/GeometryQueryAttributionProfiler";
@@ -68,6 +70,29 @@ import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation
 import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEquivalenceValidation";
 
 export class Game {
+    private readonly worldModifierListeners = new Set<(state: WorldModifierResolvedState | null) => void>();
+    public getWorldModifierState(): WorldModifierResolvedState | null {
+        return this.world?.getWorldModifierState() ?? null;
+    }
+    public subscribeToWorldModifier(listener: (state: WorldModifierResolvedState | null) => void): () => void {
+        this.worldModifierListeners.add(listener);
+        listener(this.getWorldModifierState());
+        return () => { this.worldModifierListeners.delete(listener); };
+    }
+    /** The HUD receives the effective state, including temporary WM-3 override. */
+    public getRolledWorldModifierState(): WorldModifierResolvedState | null {
+        return this.world?.getWorldModifierRolledState() ?? null;
+    }
+    private notifyWorldModifier(): void {
+        const state = this.getWorldModifierState();
+        for (const listener of this.worldModifierListeners) listener(state);
+    }
+    public debugSetWorldModifier(selection: WorldModifierDebugSelection, seed: number): void {
+        if (!import.meta.env.DEV || !this.world) return;
+        this.world.debugSetWorldModifier(selection, seed);
+        this.notifyWorldModifier();
+    }
+
     private readonly p3b1StartedAt = performance.now();
     private readonly p3a2Profiler = isBrowserMainThreadTraceP3A2() ? new BrowserMainThreadTraceProfiler() : null;
     private readonly p3a1Profiler = isFrameStallAttributionP3A1() ? new FrameStallAttributionProfiler() : null;
@@ -231,6 +256,7 @@ export class Game {
             );
 
         this.world.initialize();
+        this.notifyWorldModifier();
         // Explicit, development-only validation; never runs in normal gameplay or benchmarks.
         if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("o2bvalidate") === "1") {
             WaterSimulationEquivalenceValidation.run();
@@ -1223,6 +1249,7 @@ export class Game {
 
         this.world =
             null;
+        this.notifyWorldModifier();
 
         this.inputManager.destroy(
             this.container,

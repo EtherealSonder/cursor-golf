@@ -91,6 +91,11 @@ export interface WaterGroundInteractionWorkload {
  *     )
  */
 export class WaterGroundInteractionSystem {
+    private persistentMoistureFloor = 0;
+    public setPersistentMoistureFloor(floor: number): void {
+        this.persistentMoistureFloor = Math.max(0, Math.min(1, floor));
+    }
+
     private readonly definition:
         WaterGroundInteractionDefinition;
 
@@ -1130,11 +1135,9 @@ export class WaterGroundInteractionSystem {
                 continue;
             }
 
-            const excessMoisture =
-                this.environmentField
-                    .getExcessMoistureByIndex(
-                        index,
-                    );
+            const excessMoisture = Math.max(0,
+                this.environmentField.getMoistureByIndex(index) -
+                Math.max(this.environmentField.getBaselineMoistureByIndex(index), this.environmentField.getPersistentMoistureFloor() > 0 ? this.environmentField.getMoistureByIndex(index) >= this.persistentMoistureFloor ? this.persistentMoistureFloor : 0 : 0));
 
             if (
                 excessMoisture <= 0

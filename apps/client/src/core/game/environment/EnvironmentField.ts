@@ -42,6 +42,30 @@ import {
  * SurfaceSystem the first time a field cell is touched.
  */
 export class EnvironmentField {
+    private persistentMoistureFloor = 0;
+    private moistureFloorBoundaryQuery: ((x: number, y: number) => boolean) | null = null;
+    public setMoistureFloorBoundaryQuery(query: ((x: number, y: number) => boolean) | null): void {
+        this.moistureFloorBoundaryQuery = query;
+    }
+    public getMoistureFloorAt(worldX: number, worldY: number): number {
+        return this.persistentMoistureFloor > 0 &&
+            (!this.moistureFloorBoundaryQuery || this.moistureFloorBoundaryQuery(worldX, worldY))
+            ? this.persistentMoistureFloor : 0;
+    }
+    private getMoistureFloorByIndex(index: number): number {
+        if (this.persistentMoistureFloor <= 0) return 0;
+        const center = this.getWorldCenterByIndex(index);
+        return center ? this.getMoistureFloorAt(center.x, center.y) : 0;
+    }
+    public setPersistentMoistureFloor(value: number): void {
+        this.persistentMoistureFloor = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    }
+    public getPersistentMoistureFloor(): number { return this.persistentMoistureFloor; }
+    public getStoredMoistureByIndex(index: number): number {
+        if (!Number.isInteger(index) || index < 0 || index >= this.cellCount) return 0;
+        this.ensureInitialized(index);
+        return this.moisture[index];
+    }
     private readonly definition:
         EnvironmentFieldDefinition;
 
@@ -796,7 +820,7 @@ export class EnvironmentField {
             );
 
         return cell
-            ? cell.moisture
+            ? Math.max(cell.moisture, this.getMoistureFloorAt(worldX, worldY))
             : 0;
     }
 
@@ -821,9 +845,7 @@ export class EnvironmentField {
             index,
         );
 
-        return this.moisture[
-            index
-        ];
+        return Math.max(this.moisture[index], this.getMoistureFloorByIndex(index));
     }
 
     /**
@@ -998,7 +1020,7 @@ export class EnvironmentField {
             Math.max(
                 0,
                 this.moisture[index] -
-                this.baselineMoisture[index],
+                Math.max(this.baselineMoisture[index], this.getMoistureFloorByIndex(index)),
             );
 
         const removedAmount =
@@ -1014,8 +1036,8 @@ export class EnvironmentField {
         this.moisture[index] =
             Math.max(
                 this.baselineMoisture[index],
-                this.moisture[index] -
-                removedAmount,
+                this.getMoistureFloorByIndex(index),
+                this.moisture[index] - removedAmount,
             );
 
         this.refreshMoistureTracking(

@@ -45,6 +45,8 @@ import windRobotLeg1Texture from "../../assets/sprites/robots/wind_robot_leg1.pn
 import windRobotLeg2Texture from "../../assets/sprites/robots/wind_robot_leg2.png";
 import grassTexture from "../../assets/textures/terrain/grass-texture.png";
 import sandTexture from "../../assets/textures/terrain/sand-texture.png";
+import grassWetTexture from "../../assets/textures/terrain/grass-wet-texture.png";
+import sandWetTexture from "../../assets/textures/terrain/sand-wet-texture.png";
 import metalTilingTexture from "../../assets/textures/environment/metal_tiling_texture.png";
 
 import fireGlowRoundTexture from "../../assets/textures/fire/masks/fire_glow_round.png";
@@ -237,6 +239,9 @@ export class AssetLoader {
             "sandTerrain",
             sandTexture,
         );
+
+        await this.loadTexture("grassTerrainWet", grassWetTexture);
+        await this.loadTexture("sandTerrainWet", sandWetTexture);
 
         await this.loadTexture(
             "metalObstacle",

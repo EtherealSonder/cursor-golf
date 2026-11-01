@@ -24,6 +24,29 @@ import type { WetGroundContour } from "./WetGroundContourBuilder";
  */
 export class WetGroundRenderer {
     private readonly container = new Container();
+    private readonly downpourOverlay = new Graphics();
+    private downpourOverlayEnabled = false;
+    private presentationEnabled = true;
+    /** Disable all wet-ground graphics and contour work, without altering moisture data. */
+    public setPresentationEnabled(enabled: boolean): void {
+        if (this.destroyed || this.presentationEnabled === enabled) return;
+        this.presentationEnabled = enabled;
+        this.container.visible = enabled && this.definition.enabled;
+        if (!enabled) {
+            this.clear();
+            this.downpourOverlay.visible = false;
+        } else {
+            this.downpourOverlay.visible = this.downpourOverlayEnabled;
+            this.redrawImmediately();
+        }
+    }
+    private readonly validCourseCell: ((x: number, y: number, size: number) => boolean) | null;
+    public setDownpourOverlayEnabled(enabled: boolean): void {
+        if (this.downpourOverlayEnabled === enabled) return;
+        this.downpourOverlayEnabled = enabled;
+        this.downpourOverlay.visible = enabled && this.presentationEnabled;
+        if (this.presentationEnabled) this.redrawImmediately();
+    }
     private readonly graphicsBySurfaceType = new Map<SurfaceType, Graphics>();
     private readonly contourBuilder = new WetGroundContourBuilder();
     /** Per-material presentation membership. Value is remaining grace refreshes. */
@@ -57,7 +80,19 @@ export class WetGroundRenderer {
         private readonly performanceProfiler: WaterPerformanceProfiler | null = null,
         private readonly contourRefreshScheduler: ContourRefreshScheduler | null = null,
         private readonly presentationVisibilityQuery: PresentationVisibilityQuery | null = null,
+        validCourseCell: ((x: number, y: number, size: number) => boolean) | null = null,
+        courseVertices: readonly { x: number; y: number }[] = [],
     ) {
+        this.validCourseCell = validCourseCell;
+        this.downpourOverlay.visible = false;
+        if (courseVertices.length >= 3) {
+            this.downpourOverlay.moveTo(courseVertices[0].x, courseVertices[0].y);
+            for (let i = 1; i < courseVertices.length; i += 1) {
+                this.downpourOverlay.lineTo(courseVertices[i].x, courseVertices[i].y);
+            }
+            this.downpourOverlay.closePath().fill({ color: 0x388e80, alpha: 0.22 });
+        }
+        this.container.addChild(this.downpourOverlay);
         validateWetSurfaceVisualDefinition(definition);
         this.container.visible = definition.enabled;
 
@@ -77,7 +112,7 @@ export class WetGroundRenderer {
     }
 
     public update(deltaTime: number): void {
-        if (this.destroyed || !this.definition.enabled) return;
+        if (this.destroyed || !this.definition.enabled || !this.presentationEnabled) return;
         if (!Number.isFinite(deltaTime) || deltaTime < 0) return;
 
         this.refreshAccumulator += deltaTime;
@@ -93,7 +128,7 @@ export class WetGroundRenderer {
     }
 
     public redrawImmediately(): void {
-        if (this.destroyed || !this.definition.enabled) return;
+        if (this.destroyed || !this.definition.enabled || !this.presentationEnabled) return;
         this.refreshAccumulator = 0;
         this.secondsSinceContourRebuildBySurfaceType.forEach((_seconds, surfaceType) => {
             this.secondsSinceContourRebuildBySurfaceType.set(
@@ -125,6 +160,7 @@ export class WetGroundRenderer {
         this.seenCellsBySurfaceType.clear();
         this.contourSignatureBySurfaceType.clear();
         this.secondsSinceContourRebuildBySurfaceType.clear();
+        this.downpourOverlay.destroy();
         this.container.destroy({ children: false });
     }
 
@@ -159,6 +195,7 @@ export class WetGroundRenderer {
 
             const center = this.environmentField.getWorldCenterByIndex(index);
             if (!center) continue;
+            if (this.validCourseCell && !this.validCourseCell(center.x, center.y, cellSize)) continue;
             if (
                 this.presentationVisibilityQuery &&
                 !this.presentationVisibilityQuery.intersectsExpandedViewport(
