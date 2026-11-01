@@ -18,10 +18,6 @@ export class DownpourRainVfx {
     private accumulator = 0;
     private frameAccumulator = 0;
     private enabled = false;
-    private diagnosticElapsed = 0;
-    private diagnosticAttempts = 0;
-    private diagnosticAccepted = 0;
-    private diagnosticRejected = 0;
     public constructor(private readonly validPosition: (x: number, y: number) => boolean) {
         for (let i = 0; i < C.maximumImpacts; i++) {
             const graphic = new Graphics();
@@ -35,7 +31,6 @@ export class DownpourRainVfx {
         if (this.enabled === enabled) return;
         this.enabled = enabled;
         this.container.visible = enabled;
-        if (import.meta.env.DEV) console.info("[WM-4B.1] Rain VFX", { enabled, poolSize: this.pool.length });
         if (!enabled) {
             this.accumulator = 0;
             this.frameAccumulator = 0;
@@ -102,30 +97,9 @@ export class DownpourRainVfx {
             if (!free) { this.accumulator = 0; break; }
             const x = view.x + inset + Math.random() * Math.max(0, view.width - inset * 2);
             const y = view.y + inset + Math.random() * Math.max(0, view.height - inset * 2);
-            this.diagnosticAttempts++;
             if (this.validPosition(x, y)) {
-                this.diagnosticAccepted++;
                 this.spawn(free, x, y);
             } else {
-                this.diagnosticRejected++;
-            }
-        }
-        if (import.meta.env.DEV) {
-            this.diagnosticElapsed += step;
-            if (this.diagnosticElapsed >= 3) {
-                console.info("[WM-4B.1] RAIN VFX DIAGNOSTICS", {
-                    enabled: this.enabled,
-                    spawnAttempts: this.diagnosticAttempts,
-                    acceptedPositions: this.diagnosticAccepted,
-                    rejectedPositions: this.diagnosticRejected,
-                    activeImpacts: this.pool.filter(hit => hit.active).length,
-                    viewport: { x: view.x, y: view.y, width: view.width, height: view.height },
-                    layerVisible: this.container.visible,
-                });
-                this.diagnosticElapsed = 0;
-                this.diagnosticAttempts = 0;
-                this.diagnosticAccepted = 0;
-                this.diagnosticRejected = 0;
             }
         }
     }

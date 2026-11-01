@@ -44,23 +44,52 @@ import {
 export class EnvironmentField {
     private persistentMoistureFloor = 0;
     private moistureFloorBoundaryQuery: ((x: number, y: number) => boolean) | null = null;
+
+    /** 0 = unknown, 1 = playable, 2 = outside. Independent of moisture activity. */
+    private readonly moistureFloorCourseMask: Uint8Array;
+
     public setMoistureFloorBoundaryQuery(query: ((x: number, y: number) => boolean) | null): void {
         this.moistureFloorBoundaryQuery = query;
+        // Course geometry/query may have changed. Never retain stale classifications.
+        this.moistureFloorCourseMask.fill(0);
     }
+
+    private isMoistureFloorCellPlayable(index: number): boolean {
+        if (!this.moistureFloorBoundaryQuery) return true;
+        const cached = this.moistureFloorCourseMask[index];
+        if (cached !== 0) {
+            return cached === 1;
+        }
+
+        const gridX = index % this.columnCount;
+        const gridY = Math.floor(index / this.columnCount);
+        const x = this.courseBoundaryDefinition.minimumX + (gridX + 0.5) * this.definition.cellSize;
+        const y = this.courseBoundaryDefinition.minimumY + (gridY + 0.5) * this.definition.cellSize;
+        const playable = this.moistureFloorBoundaryQuery(x, y);
+        this.moistureFloorCourseMask[index] = playable ? 1 : 2;
+        return playable;
+    }
+
     public getMoistureFloorAt(worldX: number, worldY: number): number {
-        return this.persistentMoistureFloor > 0 &&
-            (!this.moistureFloorBoundaryQuery || this.moistureFloorBoundaryQuery(worldX, worldY))
+        if (this.persistentMoistureFloor <= 0) return 0;
+        const grid = this.worldToGrid(worldX, worldY);
+        if (!grid) return 0;
+        return this.isMoistureFloorCellPlayable(this.gridToIndex(grid.gridX, grid.gridY))
             ? this.persistentMoistureFloor : 0;
     }
+
     private getMoistureFloorByIndex(index: number): number {
-        if (this.persistentMoistureFloor <= 0) return 0;
-        const center = this.getWorldCenterByIndex(index);
-        return center ? this.getMoistureFloorAt(center.x, center.y) : 0;
+        if (this.persistentMoistureFloor <= 0 || index < 0 || index >= this.cellCount) return 0;
+        return this.isMoistureFloorCellPlayable(index) ? this.persistentMoistureFloor : 0;
     }
     public setPersistentMoistureFloor(value: number): void {
         this.persistentMoistureFloor = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     }
     public getPersistentMoistureFloor(): number { return this.persistentMoistureFloor; }
+    /** Effective floor for a grid index, including the cached course mask. */
+    public getMoistureFloorByIndexForSimulation(index: number): number {
+        return this.getMoistureFloorByIndex(index);
+    }
     public getStoredMoistureByIndex(index: number): number {
         if (!Number.isInteger(index) || index < 0 || index >= this.cellCount) return 0;
         this.ensureInitialized(index);
@@ -182,6 +211,8 @@ export class EnvironmentField {
         this.cellCount =
             this.columnCount *
             this.rowCount;
+
+        this.moistureFloorCourseMask = new Uint8Array(this.cellCount);
 
         this.initialized =
             new Uint8Array(
@@ -892,9 +923,24 @@ export class EnvironmentField {
      * Index-based moisture mutation for sparse environmental interaction
      * systems. No typed-array storage is exposed to consumers.
      */
+    /** Physical substrate removal, independent of any presentation/gameplay floor.
+     * Only use for conservative diffusion transfers; drying retains its floor policy.
+     */
+    public removeStoredMoistureByIndex(index: number, amount: number): number {
+        if (!Number.isInteger(index) || index < 0 || index >= this.cellCount ||
+            !Number.isFinite(amount) || amount <= 0) return 0;
+        this.ensureInitialized(index);
+        const removed = Math.min(amount, Math.max(0, this.moisture[index] - this.baselineMoisture[index]));
+        if (removed <= 0) return 0;
+        this.moisture[index] -= removed;
+        this.refreshMoistureTracking(index);
+        return removed;
+    }
+
     public addMoistureByIndex(
         index: number,
         amount: number,
+        _source = "other",
     ): number {
         if (
             !Number.isInteger(index) ||

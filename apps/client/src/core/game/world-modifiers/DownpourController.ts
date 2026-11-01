@@ -22,16 +22,6 @@ export class DownpourController {
         this.bridge.setPersistentMoistureFloor(enabled ? DOWNPOUR_CONFIG.moistureFloor : 0);
         // WM-4A: the 0.65 floor is virtual. Never populate thousands of tracked
         // moisture cells solely to represent persistent rainfall.
-        if (import.meta.env.DEV) {
-            console.info("[WM-4A] Downpour", {
-                enabled,
-                moistureFloor: enabled ? DOWNPOUR_CONFIG.moistureFloor : 0,
-                trackedMoistureCells: this.field.getTrackedMoistureCellCount(),
-                bulkMoistureInjection: false,
-                rainVfxEnabled: DOWNPOUR_CONFIG.enableRainVfx,
-                wetGroundRenderingEnabled: DOWNPOUR_CONFIG.enableWetGroundRendering,
-            });
-        }
         this.surface.notifyDerivedStateChanged();
     }
 }

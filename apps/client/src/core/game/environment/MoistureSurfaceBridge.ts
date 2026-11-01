@@ -48,6 +48,7 @@ const MOISTURE_DERIVED_WET =
  */
 export class MoistureSurfaceBridge {
     private persistentMoistureFloor = 0;
+
     public setPersistentMoistureFloor(floor: number): void {
         this.persistentMoistureFloor = Math.max(0, Math.min(1, floor));
         this.surfaceSystem.notifyDerivedStateChanged();
@@ -220,6 +221,24 @@ export class MoistureSurfaceBridge {
             const index
             of this.candidateIndices
         ) {
+            /*
+             * The live derived-state resolver already applies the virtual
+             * Downpour floor to playable cells. Reclassifying those cells at
+             * 15 Hz adds no gameplay information and is particularly costly
+             * on large levels. Cells outside the playable floor still use
+             * the ordinary classification path. Once the floor is disabled,
+             * every candidate is classified normally on the next bridge tick.
+             */
+            if (
+                this.persistentMoistureFloor > 0 &&
+                this.definition.surfaceProfiles.every(profile =>
+                    this.persistentMoistureFloor >= profile.wetThreshold
+                ) &&
+                this.environmentField.getMoistureFloorByIndexForSimulation(index) >=
+                    this.persistentMoistureFloor - 0.000001
+            ) {
+                continue;
+            }
             const center =
                 this.environmentField
                     .getWorldCenterByIndex(

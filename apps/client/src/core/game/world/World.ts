@@ -528,7 +528,6 @@ export class World {
     private readonly worldModifierController = new WorldModifierController();
     private downpourController: DownpourController | null = null;
     private downpourRainVfx: DownpourRainVfx | null = null;
-
     public getWorldModifierRolledState(): WorldModifierResolvedState {
         return this.worldModifierController.getRolledState();
     }

@@ -648,6 +648,7 @@ export class WaterGroundInteractionSystem {
                 this.environmentField.addMoistureByIndex(
                     index,
                     moistureFloor - currentMoisture,
+                    "contactWetting",
                 );
             },
         );
@@ -794,6 +795,7 @@ export class WaterGroundInteractionSystem {
                 this.environmentField.addMoistureByIndex(
                     index,
                     requestedMoisture,
+                    "infiltration",
                 );
 
             this.lastInfiltratingCellCount += 1;
@@ -893,7 +895,7 @@ export class WaterGroundInteractionSystem {
 
             if (delta < 0) {
                 this.environmentField
-                    .removeMoistureByIndex(
+                    .removeStoredMoistureByIndex(
                         index,
                         -delta,
                     );
@@ -914,6 +916,7 @@ export class WaterGroundInteractionSystem {
                     .addMoistureByIndex(
                         index,
                         delta,
+                        "diffusion",
                     );
             }
         }
@@ -928,13 +931,13 @@ export class WaterGroundInteractionSystem {
     ): void {
         const firstMoisture =
             this.environmentField
-                .getMoistureByIndex(
+                .getStoredMoistureByIndex(
                     firstIndex,
                 );
 
         const secondMoisture =
             this.environmentField
-                .getMoistureByIndex(
+                .getStoredMoistureByIndex(
                     secondIndex,
                 );
 
@@ -974,7 +977,7 @@ export class WaterGroundInteractionSystem {
 
         const drierMoisture =
             this.environmentField
-                .getMoistureByIndex(
+                .getStoredMoistureByIndex(
                     drierIndex,
                 );
 
@@ -1106,44 +1109,20 @@ export class WaterGroundInteractionSystem {
             const index
             of this.moistureIndexScratch
         ) {
-            const center =
-                this.environmentField
-                    .getWorldCenterByIndex(
-                        index,
-                    );
-
-            if (!center) {
+            // Floor-covered stored moisture cannot dry while Downpour is active.
+            // Skip surface classification, which is expensive for large grids.
+            const stored = this.environmentField.getStoredMoistureByIndex(index);
+            const baseline = this.environmentField.getBaselineMoistureByIndex(index);
+            const effectiveFloor = this.environmentField.getMoistureFloorByIndexForSimulation(index);
+            const excessMoisture = Math.max(0, stored - Math.max(baseline, effectiveFloor));
+            if (excessMoisture <= 0) {
                 continue;
             }
-
-            const surfaceType =
-                this.surfaceSystem
-                    .getSurfaceAt(
-                        center.x,
-                        center.y,
-                    )
-                    .surfaceType;
-
-            const profile =
-                this.getSurfaceProfile(
-                    surfaceType,
-                );
-
-            if (
-                profile.dryingRate <= 0
-            ) {
-                continue;
-            }
-
-            const excessMoisture = Math.max(0,
-                this.environmentField.getMoistureByIndex(index) -
-                Math.max(this.environmentField.getBaselineMoistureByIndex(index), this.environmentField.getPersistentMoistureFloor() > 0 ? this.environmentField.getMoistureByIndex(index) >= this.persistentMoistureFloor ? this.persistentMoistureFloor : 0 : 0));
-
-            if (
-                excessMoisture <= 0
-            ) {
-                continue;
-            }
+            const center = this.environmentField.getWorldCenterByIndex(index);
+            if (!center) continue;
+            const surfaceType = this.surfaceSystem.getSurfaceAt(center.x, center.y).surfaceType;
+            const profile = this.getSurfaceProfile(surfaceType);
+            if (profile.dryingRate <= 0) continue;
 
             let requestedDrying =
                 excessMoisture *
