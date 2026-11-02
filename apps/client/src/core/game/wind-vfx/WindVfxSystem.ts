@@ -62,6 +62,12 @@ export class WindVfxSystem {
         LocalWindEmitter;
 
 
+    /** Switch only global streak presentation; never mutate gameplay wind. */
+    public setGaleForcePresentationEnabled(enabled: boolean): void {
+        if (this.destroyed) return;
+        this.globalEmitter.setGaleForcePresentationEnabled(enabled);
+    }
+
     public setCourseEnvironmentBoundary(boundary: CourseEnvironmentBoundary | null): void {
         void boundary;
     }

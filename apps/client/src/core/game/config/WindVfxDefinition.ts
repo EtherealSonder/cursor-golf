@@ -19,6 +19,8 @@ export interface WindVfxDefinition {
     readonly global: WindVfxEmitterDefinition & {
         readonly spawnPadding: number;
     };
+    /** Presentation-only high-wind preset. */
+    readonly galeForce: WindVfxEmitterDefinition & { readonly spawnPadding: number; };
     readonly local: WindVfxEmitterDefinition & {
         readonly particlesPerSource: number;
 
@@ -128,6 +130,20 @@ export const DEFAULT_WIND_VFX_DEFINITION: WindVfxDefinition = {
         maximumOpacity: 0.52,
 
         spawnPadding: 180,
+    },
+
+    galeForce: {
+        minimumParticleCount: 18,
+        maximumParticleCount: 24,
+        minimumSpeed: 400,
+        maximumSpeed: 600,
+        minimumLength: 90,
+        maximumLength: 155,
+        minimumWidth: 8,
+        maximumWidth: 16,
+        minimumOpacity: 0.28,
+        maximumOpacity: 0.46,
+        spawnPadding: 120,
     },
 
     local: {

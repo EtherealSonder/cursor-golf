@@ -548,6 +548,7 @@ export class World {
         );
         this.updateDuneSurgeTerrain(state.modifier === "dune-surge");
         this.setGaleForceEnabled(state.modifier === "gale-force");
+        this.windVfxSystem?.setGaleForcePresentationEnabled(state.modifier === "gale-force");
         this.setDownpourEnabled(state.modifier === "downpour");
         this.updateDownpourTerrainTextures(state.modifier === "downpour");
         return state;
@@ -6530,6 +6531,7 @@ export class World {
                 this.camera,
             );
         this.windVfxSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
+        this.windVfxSystem.setGaleForcePresentationEnabled(this.galeForceActive);
 
         this.presentationLayers
             .getLayer(
