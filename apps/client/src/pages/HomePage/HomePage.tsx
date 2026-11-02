@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { WindState } from "../../core/game/environment/WindManager";
 import { WorldModifierHud } from "../../components/hud/WorldModifierHud";
 import { WorldModifierDebugPanel } from "../../components/hud/WorldModifierDebugPanel";
 import type { WorldModifierResolvedState } from "../../core/game/world-modifiers/WorldModifierDefinition";
@@ -17,6 +18,7 @@ import "./HomePage.css";
 function HomePage() {
 
     const [modifierState, setModifierState] = useState<WorldModifierResolvedState | null>(null);
+    const [windState, setWindState] = useState<WindState | null>(null);
     const gameRef = useRef<Game | null>(null);
     const applyModifier = (selection: WorldModifierDebugSelection, seed: number) => gameRef.current?.debugSetWorldModifier(selection, seed);
 
@@ -44,6 +46,7 @@ function HomePage() {
 
             let disposed =
                 false;
+            let unsubscribeWind: (() => void) | null = null;
 
             const initializeGame =
                 async (): Promise<void> => {
@@ -53,6 +56,9 @@ function HomePage() {
                         game.stop();
                         return;
                     }
+
+                    // World exists after start(). Subscribe to the authoritative wind state.
+                    unsubscribeWind = game.subscribeToWindState(setWindState);
 
                     game.setFireSourceDebugVisible(
                         false,
@@ -70,6 +76,7 @@ function HomePage() {
                     true;
 
                 unsubscribeModifier();
+                unsubscribeWind?.();
                 if (gameRef.current === game) gameRef.current = null;
                 game.stop();
             };
@@ -84,7 +91,7 @@ function HomePage() {
                 className="game-container"
                 aria-label="Cursor Golf gameplay"
             >
-                <WorldModifierHud state={modifierState} />
+                <WorldModifierHud state={modifierState} windState={windState} />
                 {import.meta.env.DEV && <WorldModifierDebugPanel state={modifierState} onApply={applyModifier} />}
             </div>
         </main>

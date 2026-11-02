@@ -66,15 +66,29 @@
     height: 60px;
 }
 
+.wind-panel__direction-ring {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border: 1px solid rgba( 160, 214, 226, 0.35 );
+    border-radius: 50%;
+    background: radial-gradient( circle, rgba( 73, 142, 157, 0.15 ), rgba( 73, 142, 157, 0.035 ) );
+    box-shadow: inset 0 0 0 3px rgba( 255, 255, 255, 0.025 );
+}
+
 .wind-panel__arrow {
-    display: inline-block;
+    display: block;
+    width: 78%;
+    height: 78%;
     color: var(--color-text-primary);
-    font-size: 3rem;
-    font-weight: 400;
-    line-height: 1;
     transform-origin: 50% 50%;
-    text-shadow: 0 0 14px rgba( 255, 255, 255, 0.12 );
     transition: transform 220ms ease;
+}
+
+.wind-panel__arrow-shape {
+    vector-effect: non-scaling-stroke;
 }
 
 .wind-panel__reading {
@@ -129,9 +143,6 @@
         min-height: 120px;
     }
 
-    .wind-panel__arrow {
-        font-size: 2.7rem;
-    }
 }
 
 /* ---------------------------------------------------------
@@ -154,9 +165,6 @@
         height: 48px;
     }
 
-    .wind-panel__arrow {
-        font-size: 2.35rem;
-    }
 
     .wind-panel__speed {
         font-size: 1.25rem;
@@ -193,9 +201,6 @@
         height: 46px;
     }
 
-    .wind-panel__arrow {
-        font-size: 2.15rem;
-    }
 
     .wind-panel__reading {
         align-items: flex-start;

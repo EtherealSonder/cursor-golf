@@ -1,4 +1,4 @@
-﻿import type {
+import type {
     WindState,
 } from "../../core/game/environment/WindManager";
 
@@ -36,10 +36,13 @@ function WindPanel({
     windState,
 }: WindPanelProps) {
 
-    const directionDegrees =
-        windState
-            ?.directionDegrees ??
-        0;
+    // The arrow follows the same normalized vector used by wind physics.
+    // SVG points right at zero degrees, matching the game's +X axis.
+    const windDirection = windState?.normalizedDirection;
+
+    const directionDegrees = windDirection
+        ? Math.atan2(windDirection.y, windDirection.x) * (180 / Math.PI)
+        : 0;
 
     const speedKph =
         windState
@@ -94,14 +97,26 @@ function WindPanel({
                     aria-hidden="true"
                 >
 
-                    <span
-                        className="wind-panel__arrow"
-                        style={{
-                            transform:
-                                `rotate(${directionDegrees}deg)`,
-                        }}
-                    >
-                        ➜
+                    <span className="wind-panel__direction-ring">
+                        <svg
+                            className="wind-panel__arrow"
+                            viewBox="0 0 48 48"
+                            aria-hidden="true"
+                            focusable="false"
+                            style={{
+                                transform: `rotate(${directionDegrees}deg)`,
+                            }}
+                        >
+                            <path
+                                className="wind-panel__arrow-shape"
+                                d="M9 24 H37 M27 14 L38 24 L27 34"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="4.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
                     </span>
 
                 </div>

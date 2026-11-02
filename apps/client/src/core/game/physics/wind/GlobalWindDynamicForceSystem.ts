@@ -1,0 +1,53 @@
+import type { WindManager } from "../../environment/WindManager";
+import type { DynamicCollidable } from "../DynamicCollidable";
+import type { PhysicsWorld } from "../PhysicsWorld";
+import {
+    DEFAULT_GLOBAL_WIND_DYNAMIC_FORCE_DEFINITION,
+    type GlobalWindDynamicForceDefinition,
+} from "../../config/GlobalWindDynamicForceDefinition";
+
+/**
+ * Applies prevailing global wind to moving, non-anchored rigid bodies.
+ * The ball keeps its existing dedicated wind physics and is deliberately not
+ * registered here. Robots are excluded by World, regardless of their mass.
+ * Static, fixed-pivot and resting bodies never receive a global wind impulse.
+ */
+export class GlobalWindDynamicForceSystem {
+    public constructor(
+        private readonly windManager: WindManager,
+        private readonly physicsWorld: PhysicsWorld,
+        private readonly isExcluded: (body: DynamicCollidable) => boolean,
+        private readonly definition: GlobalWindDynamicForceDefinition =
+            DEFAULT_GLOBAL_WIND_DYNAMIC_FORCE_DEFINITION,
+    ) {}
+
+    public update(deltaTime: number): void {
+        if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
+        const dt = Math.min(deltaTime, this.definition.maximumDeltaTime);
+        const acceleration = this.windManager.getAcceleration();
+        if (!Number.isFinite(acceleration.x) || !Number.isFinite(acceleration.y)) return;
+        if (acceleration.x === 0 && acceleration.y === 0) return;
+
+        const minSpeedSquared = this.definition.minimumMovingSpeed ** 2;
+        for (const body of this.physicsWorld.getRigidDynamicCollidables()) {
+            if (this.isExcluded(body) || body.isFixedPivot?.()) continue;
+            const inverseMass = body.getInverseMass();
+            if (!Number.isFinite(inverseMass) || inverseMass <= 0) continue;
+            const vx = body.getVelocityX();
+            const vy = body.getVelocityY();
+            if (!Number.isFinite(vx) || !Number.isFinite(vy) ||
+                vx * vx + vy * vy <= minSpeedSquared) continue;
+
+            const scale = this.definition.referenceMass * this.definition.accelerationMultiplier * dt;
+            let impulseX = acceleration.x * scale;
+            let impulseY = acceleration.y * scale;
+            const magnitude = Math.hypot(impulseX, impulseY);
+            if (magnitude > this.definition.maximumImpulsePerStep) {
+                const limit = this.definition.maximumImpulsePerStep / magnitude;
+                impulseX *= limit;
+                impulseY *= limit;
+            }
+            body.applyImpulseAtWorldPoint(impulseX, impulseY, body.getX(), body.getY());
+        }
+    }
+}

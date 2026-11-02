@@ -1,4 +1,5 @@
 import { DOWNPOUR_CONFIG } from "../world-modifiers/DownpourConfig";
+import { GALE_FORCE_CONFIG, rollGaleForceDirectionDegrees } from "../world-modifiers/GaleForceConfig";
 import { DownpourController } from "../world-modifiers/DownpourController";
 import { DownpourRainVfx } from "../water-vfx/DownpourRainVfx";
 import { createDuneSurgeSandConfig } from "../world-modifiers/DuneSurgeConfig";
@@ -258,6 +259,7 @@ import {
 import {
     LocalWindDynamicForceSystem,
 } from "../physics/wind/LocalWindDynamicForceSystem";
+import { GlobalWindDynamicForceSystem } from "../physics/wind/GlobalWindDynamicForceSystem";
 import {
     WindSuctionCaptureSystem,
 } from "../physics/wind/WindSuctionCaptureSystem";
@@ -528,6 +530,9 @@ export class World {
     private readonly worldModifierController = new WorldModifierController();
     private downpourController: DownpourController | null = null;
     private downpourRainVfx: DownpourRainVfx | null = null;
+    /** The pre-Gale session wind, restored when Gale Force is switched off. */
+    private normalWindBeforeGale: { directionDegrees: number; strength: number } | null = null;
+    private galeForceActive = false;
     public getWorldModifierRolledState(): WorldModifierResolvedState {
         return this.worldModifierController.getRolledState();
     }
@@ -542,12 +547,37 @@ export class World {
             WorldModifierDebugController.createConfiguration(selection), seed, this.runtimeLevel.id,
         );
         this.updateDuneSurgeTerrain(state.modifier === "dune-surge");
+        this.setGaleForceEnabled(state.modifier === "gale-force");
         this.setDownpourEnabled(state.modifier === "downpour");
         this.updateDownpourTerrainTextures(state.modifier === "downpour");
         return state;
     }
 
 
+
+    /** Apply one stable, high-strength global wind for the current Gale Force activation. */
+    private setGaleForceEnabled(enabled: boolean): void {
+        if (enabled === this.galeForceActive) return;
+
+        if (enabled) {
+            const normal = this.windManager.getState();
+            this.normalWindBeforeGale = {
+                directionDegrees: normal.directionDegrees,
+                strength: normal.strength,
+            };
+            this.galeForceActive = true;
+            this.windManager.setWind(
+                rollGaleForceDirectionDegrees(),
+                GALE_FORCE_CONFIG.strengthKph,
+            );
+            return;
+        }
+
+        this.galeForceActive = false;
+        const normal = this.normalWindBeforeGale;
+        this.normalWindBeforeGale = null;
+        if (normal) this.windManager.setWind(normal.directionDegrees, normal.strength);
+    }
 
     /** Presentation-only dry/wet terrain switch. Preserve world-space tile scale and masks. */
     private updateDownpourTerrainTextures(enabled: boolean): void {
@@ -693,6 +723,8 @@ export class World {
 
     private readonly localWindDynamicForceSystem:
         LocalWindDynamicForceSystem;
+
+    private readonly globalWindDynamicForceSystem: GlobalWindDynamicForceSystem;
 
     private readonly windSuctionCaptureSystem:
         WindSuctionCaptureSystem;
@@ -1340,6 +1372,7 @@ export class World {
 
         this.windManager =
             new WindManager();
+        this.setGaleForceEnabled(this.getWorldModifierState().modifier === "gale-force");
 
         this.localWindSystem =
             new LocalWindSystem(
@@ -1356,6 +1389,14 @@ export class World {
                 this.localWindSystem,
                 this.physicsWorld,
             );
+
+        this.globalWindDynamicForceSystem = new GlobalWindDynamicForceSystem(
+            this.windManager,
+            this.physicsWorld,
+            (body) => body === this.fireRobot || body === this.waterRobot ||
+                body === this.windRobot || body === this.secondWaterRobot ||
+                body === this.secondFireRobot || body === this.secondWindRobot,
+        );
 
         this.windSuctionCaptureSystem =
             new WindSuctionCaptureSystem(
@@ -2850,6 +2891,9 @@ export class World {
         this.waterPerformanceProfiler.measure("localWindForces", (): void => {
             if(this.performanceInvestigation?.passBIsolation.isEnabled("windForces")!==false)this.localWindDynamicForceSystem.update(deltaTime);
         });
+        // Prevailing wind affects moving rigid bodies. Ball wind remains handled
+        // by its existing physics path, and robot bodies are explicitly excluded.
+        this.globalWindDynamicForceSystem.update(deltaTime);
         this.waterPerformanceProfiler.measure("windSuction", (): void => {
             this.windSuctionCaptureSystem.update(deltaTime);
             this.processCompletedWindSuctionCaptures();

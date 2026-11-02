@@ -24,3 +24,8 @@
 /* WM-4: asset-free solid water badge. */
 .wm2-hud--downpour .wm2-hud__badge { overflow:hidden; position:relative; background:#3b9fcb; }
 .wm4-downpour-solid { position:absolute; inset:0; background:#4aa8d8; }
+
+/* WM-6B: the visible Gale Force badge uses the live global wind vector. */
+.wm2-hud--gale-force .wm2-hud__badge { overflow: hidden; }
+.wm6-gale-arrow { display: block; width: 38px; height: 38px; color: #fff; transform-origin: 50% 50%; transition: transform 220ms ease-out; will-change: transform; }
+@media (prefers-reduced-motion: reduce) { .wm6-gale-arrow { transition: none; } }
