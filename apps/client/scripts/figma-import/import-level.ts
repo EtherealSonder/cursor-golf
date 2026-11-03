@@ -4,6 +4,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { runFigmaImportPipeline } from "./FigmaImportPipeline";
+import { parseWorldModifierLevelConfig } from "../../src/core/game/world-modifiers/WorldModifierLevelConfig";
 
 const projectRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 function usage(): void {
@@ -46,6 +47,18 @@ async function main(): Promise<void> {
     let json: unknown;
     try { json = JSON.parse(jsonText) as unknown; }
     catch (error) { throw new Error(`Invalid JSON in ${args.input}: ${String(error)}`); }
+    const configPath = join(dirname(args.input), "level-config.json");
+    let levelConfig: ReturnType<typeof parseWorldModifierLevelConfig> | null = null;
+    try {
+        const text = await readFile(configPath, "utf8");
+        let raw: unknown;
+        try { raw = JSON.parse(text) as unknown; }
+        catch (error) { throw new Error(`Invalid JSON in ${configPath}: ${String(error)}`); }
+        levelConfig = parseWorldModifierLevelConfig(raw, configPath);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        console.warn(`[WM-8] No level-config.json for ${args.id}. World modifiers disabled.`);
+    }
     const result = runFigmaImportPipeline(json, svg, args.id);
     for (const d of result.validation.diagnostics) {
         const log = d.severity === "error" ? console.error : console.warn;
@@ -77,6 +90,18 @@ async function main(): Promise<void> {
             await rename(temp, output);
         }
     } finally { await rm(temp, { force: true }); }
+    const configOutput = join(dirname(output), `${args.id}-config.json`);
+    if (levelConfig) {
+        const configTemp = join(dirname(output), `.${args.id}-config.${randomUUID()}.tmp`);
+        try {
+            const handle = await open(configTemp, "wx");
+            try { await handle.writeFile(`${JSON.stringify(levelConfig, null, 2)}\n`, "utf8"); }
+            finally { await handle.close(); }
+            await rename(configTemp, configOutput);
+        } finally { await rm(configTemp, { force: true }); }
+    } else {
+        await rm(configOutput, { force: true });
+    }
     console.log(`Imported ${result.matchedCount} SVG-matched objects to ${output}`);
 }
 main().catch(error => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

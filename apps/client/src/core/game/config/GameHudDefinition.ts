@@ -21,9 +21,9 @@ export interface ResetBallButtonDefinition {
 export const DEFAULT_RESET_BALL_BUTTON_DEFINITION:
     ResetBallButtonDefinition = {
 
-    // Positioned directly below the existing top-left FPS diagnostics.
-    left: 18,
-    top: 46,
+    // WM-8: below the world modifier HUD, above the FPS readout.
+    left: 27,
+    top: 88,
 
     diameter: 38,
 

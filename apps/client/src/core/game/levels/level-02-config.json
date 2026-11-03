@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "worldModifier": {
+    "mode": "random",
+    "activationChance": 0.65,
+    "eligible": [
+      "gale-force",
+      "overdrive",
+      "wildfire",
+      "downpour",
+      "dune-surge"
+    ],
+    "weights": {
+      "gale-force": 35,
+      "overdrive": 25,
+      "wildfire": 20,
+      "downpour": 12,
+      "dune-surge": 8
+    }
+  }
+}

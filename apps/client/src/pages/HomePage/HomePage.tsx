@@ -1,9 +1,7 @@
 import { useState } from "react";
 import type { WindState } from "../../core/game/environment/WindManager";
 import { WorldModifierHud } from "../../components/hud/WorldModifierHud";
-import { WorldModifierDebugPanel } from "../../components/hud/WorldModifierDebugPanel";
 import type { WorldModifierResolvedState } from "../../core/game/world-modifiers/WorldModifierDefinition";
-import type { WorldModifierDebugSelection } from "../../core/game/world-modifiers/WorldModifierDebugController";
 import {
     useEffect,
     useRef,
@@ -20,7 +18,6 @@ function HomePage() {
     const [modifierState, setModifierState] = useState<WorldModifierResolvedState | null>(null);
     const [windState, setWindState] = useState<WindState | null>(null);
     const gameRef = useRef<Game | null>(null);
-    const applyModifier = (selection: WorldModifierDebugSelection, seed: number) => gameRef.current?.debugSetWorldModifier(selection, seed);
 
     const gameContainerRef =
         useRef<HTMLDivElement>(
@@ -92,7 +89,6 @@ function HomePage() {
                 aria-label="Cursor Golf gameplay"
             >
                 <WorldModifierHud state={modifierState} windState={windState} />
-                {import.meta.env.DEV && <WorldModifierDebugPanel state={modifierState} onApply={applyModifier} />}
             </div>
         </main>
     );

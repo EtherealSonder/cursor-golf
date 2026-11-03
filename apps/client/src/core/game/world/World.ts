@@ -9,7 +9,9 @@ import { DownpourRainVfx } from "../water-vfx/DownpourRainVfx";
 import { createDuneSurgeSandConfig } from "../world-modifiers/DuneSurgeConfig";
 import { WorldModifierDebugController, type WorldModifierDebugSelection } from "../world-modifiers/WorldModifierDebugController";
 import { WorldModifierController } from "../world-modifiers/WorldModifierController";
+import { getLevelWorldModifierConfig } from "../level/LevelConfigRegistry";
 import type { WorldModifierResolvedState } from "../world-modifiers/WorldModifierDefinition";
+import { DEFAULT_WORLD_MODIFIER_CONFIG } from "../world-modifiers/WorldModifierConfig";
 import { createPortalCollisionGeometry } from "../portal/PortalCollisionGeometry";
 import { PortalTeleportDiagnosticController as TeleportDebug } from "../debug/PortalTeleportDiagnosticController";
 import { PORTAL_DIAGNOSTIC } from "../debug/PortalPerformanceDiagnosticDefinition";
@@ -1290,9 +1292,10 @@ export class World {
             throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
-        if (import.meta.env.DEV) {
-            this.worldModifierController.logRollDiagnostics(this.runtimeLevel.id);
-        }
+        const levelModifierConfig = getLevelWorldModifierConfig(this.runtimeLevel.id);
+        this.worldModifierController.configureForLevel(levelModifierConfig ?? {
+            ...DEFAULT_WORLD_MODIFIER_CONFIG, mode: "disabled",
+        });
         this.portalDiagnosticEnabled = isPortalDiagnosticLevel(this.runtimeLevel.id);
         // P3-D2: disable the old P2-C5 recording/console output, retain the
         // level-00 sandbox setup and dedicated event-driven portal logs.
@@ -1671,11 +1674,6 @@ export class World {
         );
         if (this.proceduralSandController) this.proceduralSandRenderer.render(this.proceduralSandController.getPatches());
         this.updateDownpourTerrainTextures(this.getWorldModifierState().modifier === "downpour");
-        if (import.meta.env.DEV && this.proceduralSandController) {
-            this.proceduralSandDebugControls = new ProceduralSandDebugControls(
-                this.screenOverlayContainer, this.proceduralSandController.getDensity(),
-            );
-        }
         this.createLevelBushes();
         this.createLevelCrates();
         // level-00 is an interactive P4 test course, even in diagnostic mode.
@@ -2307,10 +2305,12 @@ export class World {
         deltaTime:
             number,
     ): void {
-        this.wildfireController?.setSpawnRegion(
-            this.ball.getX(), this.ball.getY(),
-            this.camera.getVisibleWorldWidth(), this.camera.getVisibleWorldHeight(),
-        );
+        if (this.wildfireController && this.ball) {
+            this.wildfireController.setSpawnRegion(
+                this.ball.getX(), this.ball.getY(),
+                this.camera.getVisibleWorldWidth(), this.camera.getVisibleWorldHeight(),
+            );
+        }
         this.wildfireController?.update(deltaTime);
         this.updateWildfireWarnings();
         if (DOWNPOUR_CONFIG.enableRainVfx) this.downpourRainVfx?.update(deltaTime, {
@@ -6770,8 +6770,8 @@ export class World {
             });
 
         this.performanceSummaryText.position.set(
-            12,
-            12,
+            18,
+            148,
         );
 
         this.performanceSummaryText.zIndex =

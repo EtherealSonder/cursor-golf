@@ -8,7 +8,7 @@ export const ROTATOR_ANIMATION = Object.freeze({
 
 export const TWO_PI = Math.PI * 2;
 
-export function rotatorAngularVelocity(direction: RotatorDirection, degreesPerSecond = ROTATOR_ANIMATION.degreesPerSecond): number {
+export function rotatorAngularVelocity(direction: RotatorDirection, degreesPerSecond: number = ROTATOR_ANIMATION.degreesPerSecond): number {
     // Pixi screen coordinates have positive Y downward: positive angle is clockwise.
     return direction === "clockwise"
         ? (degreesPerSecond * Math.PI) / 180

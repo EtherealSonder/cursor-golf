@@ -8,6 +8,7 @@ const modules = import.meta.glob("../levels/*.json", { eager: true, import: "def
 const levels = new Map<string, LevelDefinition>();
 
 for (const [path, data] of Object.entries(modules).sort(([a], [b]) => a.localeCompare(b))) {
+    if (path.endsWith("-config.json")) continue; // WM-8 metadata is not a playable level.
     if (data === null || typeof data !== "object" || Array.isArray(data)) {
         throw new Error(`[LevelRegistry] ${path}: expected a level JSON object.`);
     }

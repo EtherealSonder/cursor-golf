@@ -6,14 +6,6 @@
 .wm2-hud--overdrive { --wm-accent:#e5aaff; --wm-dark:#543769; }
 .wm2-hud__badge { width:56px; height:56px; box-sizing:border-box; border:3px solid var(--wm-accent); background:var(--wm-dark); border-radius:50%; display:grid; place-items:center; color:white; font-size:28px; font-weight:800; z-index:1; }
 .wm2-hud__tab { margin-left:-8px; padding:10px 20px 10px 19px; border-radius:0 24px 24px 0; background:var(--wm-dark); color:white; border:1px solid var(--wm-accent); text-transform:uppercase; letter-spacing:.08em; font-size:13px; font-weight:750; white-space:nowrap; }
-.wm2-debug { position:absolute; z-index:55; top:86px; left:18px; width:245px; padding:12px; background:#161e26ed; color:#fff; border:1px solid #75828e; border-radius:12px; font:12px system-ui,sans-serif; cursor:default; box-sizing:border-box; }
-.wm2-debug label { display:block; margin:8px 0 3px; }
-.wm2-debug select,.wm2-debug input { box-sizing:border-box; width:100%; padding:6px; background:#293846; color:white; border:1px solid #7a8a98; border-radius:5px; }
-.wm2-debug__actions { display:flex; gap:7px; margin-top:9px; }
-.wm2-debug button { flex:1; padding:7px; background:#456a83; color:white; border:0; border-radius:6px; cursor:pointer; }
-.wm2-debug button:disabled { opacity:.45; cursor:not-allowed; }
-.wm2-debug__error { color:#ffb7a9; margin-top:5px; }
-.wm2-debug__toggle { position:absolute; z-index:55; top:86px; left:18px; border-radius:6px; padding:6px 9px; background:#263a4b; color:white; border:1px solid #8a9da9; cursor:pointer; font:12px system-ui,sans-serif; }
 
 /* WM-3: stationary circular mask with a continuously scrolling sand tile. */
 .wm2-hud--dune-surge .wm2-hud__badge { overflow:hidden; position:relative; background:#c9a46d; }
@@ -33,3 +25,6 @@
 /* WM-5D.1: Solid Wildfire badge fill, reserved for a future tiled fire texture. */
 .wm2-hud--wildfire .wm2-hud__badge { position:relative; overflow:hidden; background:#ed6738; }
 .wm5-wildfire-solid { position:absolute; inset:0; background:#ed6738; }
+
+/* WM-8: match the lives holder top margin and use a consistent HUD column. */
+.wm2-hud { min-height:56px; }

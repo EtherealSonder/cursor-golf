@@ -11,6 +11,11 @@ export class WorldModifierController {
         this.configuration = config;
         this.resolved = rollWorldModifier(seed, config);
     }
+    /** Resolve once for the loaded level, before World.initialize creates modifier systems. */
+    public configureForLevel(config: WorldModifierConfiguration, seed: number = createWorldModifierSeed()): void {
+        this.configuration = config;
+        this.resolved = rollWorldModifier(seed, config);
+    }
     public getRolledState(): WorldModifierResolvedState { return this.resolved; }
     public isOverdriveActive(): boolean { return this.getState().modifier === "overdrive"; }
     public getState(): WorldModifierResolvedState {
