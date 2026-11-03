@@ -7,14 +7,14 @@ import { rollWorldModifier } from "./WorldModifierRollController";
 export class WorldModifierController {
     private resolved: WorldModifierResolvedState;
     private configuration: WorldModifierConfiguration;
-    private debugSelectionApplied = false;
     public constructor(config: WorldModifierConfiguration = DEFAULT_WORLD_MODIFIER_CONFIG, seed: number = createWorldModifierSeed()) {
         this.configuration = config;
         this.resolved = rollWorldModifier(seed, config);
     }
     public getRolledState(): WorldModifierResolvedState { return this.resolved; }
+    public isOverdriveActive(): boolean { return this.getState().modifier === "overdrive"; }
     public getState(): WorldModifierResolvedState {
-        if (!import.meta.env.DEV || this.debugSelectionApplied || WORLD_MODIFIER_DEVELOPMENT_OVERRIDE === null) return this.resolved;
+        if (!import.meta.env.DEV || WORLD_MODIFIER_DEVELOPMENT_OVERRIDE === null) return this.resolved;
         return Object.freeze({ ...this.resolved, modifier: WORLD_MODIFIER_DEVELOPMENT_OVERRIDE });
     }
 
@@ -24,7 +24,6 @@ export class WorldModifierController {
         const next = rollWorldModifier(seed, config);
         this.configuration = config;
         this.resolved = next;
-        this.debugSelectionApplied = true;
         this.logRollDiagnostics(levelId);
         return this.getState();
     }
@@ -71,7 +70,7 @@ export class WorldModifierController {
                 console.info("Selection roll: NOT PERFORMED", state.mode === "random" ? "(activation failed or no positive eligible weights)" : "(mode bypass)");
             }
             console.info("FINAL ROLLED RESULT:", label);
-            if (import.meta.env.DEV && !this.debugSelectionApplied && WORLD_MODIFIER_DEVELOPMENT_OVERRIDE !== null) {
+            if (import.meta.env.DEV && WORLD_MODIFIER_DEVELOPMENT_OVERRIDE !== null) {
                 console.info("[WM-3] DEVELOPMENT OVERRIDE", { rolled: label, effective: WORLD_MODIFIER_NAMES[WORLD_MODIFIER_DEVELOPMENT_OVERRIDE], overrideEnabled: true });
             }
             if (state.mode === "random") {

@@ -1,4 +1,5 @@
 import { Container, Sprite } from "pixi.js";
+import type { DirectionalBumperOverdriveProfile } from "../../world-modifiers/OverdriveDefinition";
 import { AssetLoader } from "../../../rendering/AssetLoader";
 import { DEFAULT_DIRECTIONAL_BUMPER_DEFINITION } from "../../config/DirectionalBumperDefinition";
 import type { DirectionalBumperDefinition } from "../../config/DirectionalBumperDefinition";
@@ -11,7 +12,25 @@ export class DirectionalBumper extends Entity {
     private readonly bodyContainer = new Container();
     private sprite: Sprite | null = null;
     private innerSprite: Sprite | null = null;
-    private readonly definition: DirectionalBumperDefinition;
+    private definition: DirectionalBumperDefinition;
+    private readonly normalDefinition: DirectionalBumperDefinition;
+    private overdriveEnabled = false;
+
+    public setOverdriveProfile(profile: DirectionalBumperOverdriveProfile, enabled: boolean): void {
+        if (this.overdriveEnabled === enabled) return;
+        this.overdriveEnabled = enabled;
+        this.definition = enabled ? {
+            ...this.normalDefinition,
+            minimumLaunchSpeed: profile.ballMinimumLaunchSpeed,
+            launchSpeedMultiplier: profile.ballLaunchMultiplier,
+            maximumLaunchSpeed: profile.maximumLaunchSpeed,
+            strikeDurationSeconds: profile.strikeDurationSeconds,
+            returnDurationSeconds: profile.returnDurationSeconds,
+            cooldownDurationSeconds: profile.cooldownSeconds,
+            genericLaunchSpeedMultiplier: profile.bodyLaunchMultiplier,
+            genericMaximumLaunchSpeed: profile.bodyMaximumLaunchSpeed,
+        } : this.normalDefinition;
+    }
     private readonly colliderId: string;
     private readonly idleAngleRadians: number;
     private currentAngleRadians: number;
@@ -36,6 +55,7 @@ export class DirectionalBumper extends Entity {
         super();
         this.colliderId = id;
         this.definition = definition;
+        this.normalDefinition = definition;
         this.idleAngleRadians = idleAngleRadians;
         this.currentAngleRadians = idleAngleRadians;
         this.previousAngleRadians = idleAngleRadians;

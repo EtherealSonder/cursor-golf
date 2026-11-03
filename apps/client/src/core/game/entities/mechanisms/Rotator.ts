@@ -3,13 +3,15 @@ import { shouldRenderRotators } from "../../rotator/RotatorPerformanceDebug";
 import { AssetLoader } from "../../../rendering/AssetLoader";
 import { ROTATOR_DEFINITION, type RotatorDirection } from "../../config/RotatorDefinition";
 import { Entity } from "../Entity";
+import type { OverdriveProfiles } from "../../world-modifiers/OverdriveDefinition";
 import { advanceRotatorAngle, rotatorAngularVelocity } from "../../rotator/RotatorAnimationDefinition";
 
 /** R2: fixed motorized visual entity; collision behavior arrives in R3. */
 export class Rotator extends Entity {
     private readonly arms: Sprite;
     private readonly hub: Sprite;
-    private readonly angularVelocity: number;
+    private angularVelocity: number;
+    private overdriveEnabled = false;
     private armAngle = 0;
     constructor(private readonly mechanismId: string, x: number, y: number, private readonly direction: RotatorDirection) {
         super();
@@ -26,6 +28,12 @@ export class Rotator extends Entity {
         this.container.addChild(this.arms, this.hub);
         this.container.visible = shouldRenderRotators();
         this.setPosition(x, y);
+    }
+    /** WM-7C: change motor speed in place without resetting arm angle or collision state. */
+    public setOverdriveProfile(profile: OverdriveProfiles["rotator"], enabled: boolean): void {
+        if (this.overdriveEnabled === enabled) return;
+        this.overdriveEnabled = enabled;
+        this.angularVelocity = rotatorAngularVelocity(this.direction, enabled ? profile.angularSpeedDegreesPerSecond : undefined);
     }
     public getId(): string { return this.mechanismId; }
     public getDirection(): RotatorDirection { return this.direction; }

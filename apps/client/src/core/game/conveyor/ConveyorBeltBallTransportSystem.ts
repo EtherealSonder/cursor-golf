@@ -1,6 +1,7 @@
 import type { Ball } from "../entities/Ball";
 import type { ConveyorBelt } from "../entities/mechanisms/ConveyorBelt";
 import { CONVEYOR_BELT_PHYSICS } from "./ConveyorBeltPhysicsDefinition";
+import type { ConveyorOverdriveProfile } from "../world-modifiers/OverdriveDefinition";
 
 /** Circle/rectangle contact, in the conveyor's rotated local coordinate system. */
 export function conveyorBallContactWeight(
@@ -36,12 +37,13 @@ export function conveyorDirectionalDeltaSpeed(
     currentDirectionalSpeed: number,
     deltaTime: number,
     contactWeight: number,
+    profile?: Readonly<ConveyorOverdriveProfile>,
 ): number {
     if (!Number.isFinite(currentDirectionalSpeed) || !Number.isFinite(deltaTime) || deltaTime <= 0) return 0;
     if (!Number.isFinite(contactWeight) || contactWeight <= 0) return 0;
-    const remaining = CONVEYOR_BELT_PHYSICS.targetDirectionalSpeed - currentDirectionalSpeed;
+    const remaining = (profile?.ballTargetSpeed ?? CONVEYOR_BELT_PHYSICS.targetDirectionalSpeed) - currentDirectionalSpeed;
     if (remaining <= 0) return 0;
-    return Math.min(remaining, CONVEYOR_BELT_PHYSICS.acceleration * deltaTime * Math.min(1, contactWeight));
+    return Math.min(remaining, (profile?.ballAcceleration ?? CONVEYOR_BELT_PHYSICS.acceleration) * deltaTime * Math.min(1, contactWeight));
 }
 
 export class ConveyorBeltBallTransportSystem {
@@ -60,7 +62,7 @@ export class ConveyorBeltBallTransportSystem {
             const dirX = Math.cos(angle);
             const dirY = Math.sin(angle);
             const along = ball.getVelocityX() * dirX + ball.getVelocityY() * dirY;
-            const deltaSpeed = conveyorDirectionalDeltaSpeed(along, deltaTime, weight);
+            const deltaSpeed = conveyorDirectionalDeltaSpeed(along, deltaTime, weight, belt.getTransportProfile());
             if (deltaSpeed <= 0) continue;
             const impulse = deltaSpeed / inverseMass;
             ball.applyImpulseAtWorldPoint(dirX * impulse, dirY * impulse, ball.getX(), ball.getY());

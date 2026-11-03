@@ -3,11 +3,14 @@ import { AssetLoader } from "../../../rendering/AssetLoader";
 import type { RotatingPaddleDefinition, RotatingPaddleDirection } from "../../config/RotatingPaddleDefinition";
 import { createRotatingPaddleDefinition } from "../../config/RotatingPaddleDefinition";
 import { Entity } from "../Entity";
+import type { OverdriveProfiles } from "../../world-modifiers/OverdriveDefinition";
 import type { FixedCircleCollisionShape } from "../../physics/DynamicCollidableCollision";
 
 export class RotatingPaddle extends Entity {
     private readonly sprite: Sprite;
-    private readonly definition: RotatingPaddleDefinition;
+    private definition: RotatingPaddleDefinition;
+    private readonly normalDefinition: RotatingPaddleDefinition;
+    private overdriveEnabled = false;
 
     public constructor(
         private readonly mechanismId: string,
@@ -16,13 +19,30 @@ export class RotatingPaddle extends Entity {
         private readonly direction: RotatingPaddleDirection,
     ) {
         super();
-        this.definition = createRotatingPaddleDefinition(direction);
+        this.normalDefinition = createRotatingPaddleDefinition(direction);
+        this.definition = this.normalDefinition;
         this.sprite = new Sprite(AssetLoader.getTexture(this.definition.textureKey));
         this.sprite.anchor.set(0.5);
         this.sprite.width = this.definition.displayDiameter;
         this.sprite.height = this.definition.displayDiameter;
         this.container.addChild(this.sprite);
         this.setPosition(x, y);
+    }
+
+    /** WM-7C: replace only powered motion settings; preserve geometry, materials and water behavior. */
+    public setOverdriveProfile(profile: OverdriveProfiles["paddle"], enabled: boolean): void {
+        if (this.overdriveEnabled === enabled) return;
+        this.overdriveEnabled = enabled;
+        this.definition = enabled ? {
+            ...this.normalDefinition,
+            angularSpeedRadiansPerSecond: profile.angularSpeedRadiansPerSecond,
+            targetTangentialSpeedAtOuterRadius: profile.ballTangentialTargetSpeed,
+            ballOutwardEscapeSpeed: profile.ballOutwardEscapeSpeed,
+            maximumBallSpeed: profile.ballMaximumSpeed,
+            dynamicTargetTangentialSpeedAtOuterRadius: profile.bodyTangentialTargetSpeed,
+            dynamicOutwardEscapeSpeed: profile.bodyOutwardEscapeSpeed,
+            dynamicMaximumImpulsePerSecond: profile.maximumDynamicImpulsePerSecond,
+        } : this.normalDefinition;
     }
 
     public getId(): string { return this.mechanismId; }

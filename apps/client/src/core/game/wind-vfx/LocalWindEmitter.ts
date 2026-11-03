@@ -268,7 +268,8 @@ export class LocalWindEmitter {
             particle.previousPositionX = previousX;
             particle.previousPositionY = previousY;
             particle.age += deltaTime;
-            particle.distance += flowSign * particle.speed * deltaTime;
+            particle.distance += flowSign * particle.speed *
+                this.localWindSystem.getOverdriveParticleSpeedMultiplier(source.id) * deltaTime;
             const minimum = this.getMinimumCenterDistance(particle, pullFlow);
             const maximum = this.getMaximumCenterDistance(particle, source);
             if (particle.distance < minimum || particle.distance > maximum) {

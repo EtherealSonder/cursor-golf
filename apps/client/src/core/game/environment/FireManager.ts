@@ -1749,6 +1749,17 @@ export class FireManager {
         return true;
     }
 
+    /** Read-only world-space ignition suitability for external hazard placement. */
+    public canIgniteAtPosition(worldX: number, worldY: number): boolean {
+        if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return false;
+        if (!this.canIgniteAt(worldX, worldY)) return false;
+        // The active-fire occupancy check is intentionally separate from fuel/moisture suitability.
+        for (const cell of this.activeCells) {
+            if (Math.hypot(worldX - cell.getWorldCenterX(), worldY - cell.getWorldCenterY()) < this.definition.cellSize) return false;
+        }
+        return true;
+    }
+
     private canIgniteAt(
         worldX: number,
         worldY: number,

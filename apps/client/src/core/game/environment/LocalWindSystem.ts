@@ -54,6 +54,27 @@ export interface LocalWindImpactAwareTarget {
 }
 
 export class LocalWindSystem {
+    private overdriveFanSourceIds = new Set<string>();
+    private overdriveAirflowMultiplier = 1;
+    private overdriveParticleMultiplier = 1;
+
+    /** WM-7D: only actual Fan sources receive stronger airflow and faster streaks. */
+    public setOverdriveFanSources(sourceIds: readonly string[], airflowMultiplier: number, particleMultiplier: number): void {
+        const nextIds = new Set(sourceIds);
+        const sameIds = nextIds.size === this.overdriveFanSourceIds.size &&
+            [...nextIds].every(id => this.overdriveFanSourceIds.has(id));
+        if (sameIds && this.overdriveAirflowMultiplier === airflowMultiplier &&
+            this.overdriveParticleMultiplier === particleMultiplier) return;
+        this.overdriveFanSourceIds = nextIds;
+        this.overdriveAirflowMultiplier = airflowMultiplier;
+        this.overdriveParticleMultiplier = particleMultiplier;
+        this.sampleCache.clear();
+    }
+
+    public getOverdriveParticleSpeedMultiplier(sourceId: string): number {
+        return this.overdriveFanSourceIds.has(sourceId) ? this.overdriveParticleMultiplier : 1;
+    }
+
     private obstacleQuery: LocalWindObstacleQuery | null = null;
     private courseBoundary: CourseEnvironmentBoundary | null = null;
 
@@ -439,6 +460,7 @@ export class LocalWindSystem {
 
         const accelerationMagnitude =
             source.acceleration *
+            (this.overdriveFanSourceIds.has(source.id) ? this.overdriveAirflowMultiplier : 1) *
             influence;
         const flowSign = source.flowMode === "pull" ? -1 : 1;
 

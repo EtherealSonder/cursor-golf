@@ -27,6 +27,7 @@ export class WorldPresentationLayers {
             WorldRenderLayer.HazardEffects,
             WorldRenderLayer.GameplayActors,
             WorldRenderLayer.AirborneEffects,
+            WorldRenderLayer.OverdriveEffects,
             WorldRenderLayer.GameplayIndicators,
             WorldRenderLayer.WindForeground,
             WorldRenderLayer.Debug,

@@ -1,3 +1,4 @@
+import type { RobotOverdriveProfile } from "../world-modifiers/OverdriveDefinition";
 export type RobotElement = "fire" | "water" | "wind";
 
 export interface RobotDefinition {
@@ -218,3 +219,17 @@ export const SECOND_WATER_ROBOT_DEFINITION: RobotDefinition = {
     positionX: 1480,
     positionY: 760,
 };
+
+/** WM-7B: derive AI-only tuning without mutating shared robot definitions. */
+export function withRobotOverdriveProfile(base: RobotDefinition, profile: RobotOverdriveProfile): RobotDefinition {
+    return {
+        ...base,
+        movementSpeed: profile.movementSpeed,
+        visionRange: profile.visionRange,
+        visionHalfAngleDegrees: profile.visionHalfAngleDegrees,
+        targetTurnSpeedRadiansPerSecond: profile.turnSpeedDegreesPerSecond * Math.PI / 180,
+        attackDurationSeconds: profile.attackDurationSeconds,
+        attackCooldownSeconds: profile.attackCooldownSeconds,
+        attackWarningDurationSeconds: profile.attackWarningSeconds,
+    };
+}

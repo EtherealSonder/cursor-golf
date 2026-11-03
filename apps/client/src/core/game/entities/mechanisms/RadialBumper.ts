@@ -1,4 +1,5 @@
 import { Container, Graphics, Sprite } from "pixi.js";
+import type { RadialBumperOverdriveProfile } from "../../world-modifiers/OverdriveDefinition";
 
 import {
     DEFAULT_RADIAL_BUMPER_DEFINITION,
@@ -12,7 +13,21 @@ import { RadialBumperImpactVfx } from "./RadialBumperImpactVfx";
 
 /** Fixed circular kinetic bumper with RB-2 impact presentation. */
 export class RadialBumper extends Entity {
-    private readonly definition: RadialBumperDefinition;
+    private definition: RadialBumperDefinition;
+    private readonly normalDefinition: RadialBumperDefinition;
+    private overdriveEnabled = false;
+
+    public setOverdriveProfile(profile: RadialBumperOverdriveProfile, enabled: boolean): void {
+        if (this.overdriveEnabled === enabled) return;
+        this.overdriveEnabled = enabled;
+        this.definition = enabled ? {
+            ...this.normalDefinition,
+            bounceSpeedMultiplier: profile.ballBounceMultiplier,
+            genericBounceSpeedMultiplier: profile.bodyBounceMultiplier,
+            maximumGenericReboundSpeed: profile.maximumReboundSpeed,
+            impactExpandScale: profile.pulseScale,
+        } : this.normalDefinition;
+    }
     private readonly collisionDefinition: StaticObstacleDefinition;
     private readonly bodyContainer = new Container();
     private sprite: Sprite | null = null;
@@ -39,6 +54,7 @@ export class RadialBumper extends Entity {
         }
 
         this.definition = definition;
+        this.normalDefinition = definition;
         this.collisionDefinition = {
             id,
             shape: "circle",

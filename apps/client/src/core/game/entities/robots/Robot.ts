@@ -1,6 +1,7 @@
 import { Container, Sprite } from "pixi.js";
 
-import type { RobotDefinition } from "../../config/RobotDefinition";
+import { withRobotOverdriveProfile, type RobotDefinition } from "../../config/RobotDefinition";
+import type { RobotOverdriveProfile } from "../../world-modifiers/OverdriveDefinition";
 import { AssetLoader } from "../../../rendering/AssetLoader";
 import { Entity } from "../Entity";
 import { RobotLocomotionController, type RobotLocomotionPhase } from "./RobotLocomotionController";
@@ -52,6 +53,10 @@ export interface RobotDebugSnapshot {
 /** Pass B observes this system without changing authoritative behavior. */
 export class Robot extends Entity {
     private readonly spawnX: number;
+    private readonly baseRobotDefinition: RobotDefinition;
+    private overdriveEnabled = false;
+    private movementSpeedRatio = 1;
+    private warningSpeedRatio = 1;
     private readonly spawnY: number;
     private readonly visualRoot = new Container();
     private readonly obstacleAvoidance: RobotObstacleAvoidance;
@@ -89,7 +94,7 @@ export class Robot extends Entity {
     private detectedTargetLabel: string | null = null;
 
     public constructor(
-        private readonly definition: RobotDefinition,
+        private definition: RobotDefinition,
         private readonly navigationQuery: RobotNavigationQuery,
         interactionRegistry: RobotInteractionRegistry,
         fireSourceSystem: FireSourceSystem,
@@ -98,6 +103,7 @@ export class Robot extends Entity {
         isTargetConcealed: (id: string) => boolean = () => false,
     ) {
         super();
+        this.baseRobotDefinition = definition;
         this.spawnX = definition.positionX;
         this.spawnY = definition.positionY;
         this.roamCenterX = definition.positionX;
@@ -149,6 +155,17 @@ export class Robot extends Entity {
         }, 0.5 * externalMass * definition.navigationRadius * definition.navigationRadius);
     }
 
+
+    /** WM-7B: apply AI tuning to live robots, including mid-attack/cooldown switching. */
+    public setOverdriveProfile(profile: RobotOverdriveProfile, enabled: boolean): void {
+        if (this.overdriveEnabled === enabled) return;
+        this.overdriveEnabled = enabled;
+        this.definition = enabled ? withRobotOverdriveProfile(this.baseRobotDefinition, profile) : this.baseRobotDefinition;
+        this.movementSpeedRatio = this.definition.movementSpeed / Math.max(0.001, this.baseRobotDefinition.movementSpeed);
+        this.warningSpeedRatio = this.baseRobotDefinition.attackWarningDurationSeconds /
+            Math.max(0.001, this.definition.attackWarningDurationSeconds);
+        this.attackController.setTimings(this.definition.attackDurationSeconds, this.definition.attackCooldownSeconds);
+    }
 
     public getWaterAttackSource(): RobotWaterAttackController | null {
         return this.elementAttackController instanceof RobotWaterAttackController
@@ -662,7 +679,7 @@ export class Robot extends Entity {
 
         this.visualRoot.rotation = desiredAngle;
         this.headingErrorDegrees = 0;
-        if (!this.elementAttackController.updateWarning(deltaTime)) return;
+        if (!this.elementAttackController.updateWarning(deltaTime * this.warningSpeedRatio)) return;
 
         const target = this.targetingController.getTarget();
         if (!target || !this.attackController.start(target.id)) {
@@ -784,7 +801,7 @@ export class Robot extends Entity {
         // Navigation, vision, attack, and heading updates remain active.
         if (this.conveyorTransportSeconds > 0) return;
         const allowedDistance = Math.min(distance, this.definition.stepDistance);
-        const advance = locomotion.update(deltaTime, allowedDistance);
+        const advance = locomotion.update(deltaTime * this.movementSpeedRatio, allowedDistance);
         if (advance.distance <= 0) return;
 
         const moveX = Math.cos(this.visualRoot.rotation);

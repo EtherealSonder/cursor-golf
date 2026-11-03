@@ -26,9 +26,23 @@ export class RobotAttackController {
     private targetId: string | null = null;
 
     public constructor(
-        private readonly durationSeconds: number,
-        private readonly cooldownDurationSeconds: number,
+        private durationSeconds: number,
+        private cooldownDurationSeconds: number,
     ) {}
+
+    /** WM-7B: preserve progress during runtime profile changes. */
+    public setTimings(durationSeconds: number, cooldownDurationSeconds: number): void {
+        if (this.durationSeconds === durationSeconds && this.cooldownDurationSeconds === cooldownDurationSeconds) return;
+        if (this.phase === "ATTACKING" && this.durationSeconds > 0) {
+            this.elapsedSeconds = Math.min(durationSeconds, this.elapsedSeconds / this.durationSeconds * durationSeconds);
+        }
+        if (this.phase === "COOLDOWN" && this.cooldownDurationSeconds > 0) {
+            this.cooldownElapsedSeconds = Math.min(cooldownDurationSeconds,
+                this.cooldownElapsedSeconds / this.cooldownDurationSeconds * cooldownDurationSeconds);
+        }
+        this.durationSeconds = durationSeconds;
+        this.cooldownDurationSeconds = cooldownDurationSeconds;
+    }
 
     public start(targetId: string): boolean {
         if (!this.isReady()) return false;

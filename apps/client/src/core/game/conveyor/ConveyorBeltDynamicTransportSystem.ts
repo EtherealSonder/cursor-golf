@@ -112,9 +112,10 @@ export class ConveyorBeltDynamicTransportSystem {
                 if (contact.weight <= 0) continue;
                 const direction = belt.getTransportDirection();
                 const speed = body.getVelocityX() * direction.x + body.getVelocityY() * direction.y;
-                const remaining = CONVEYOR_BELT_PHYSICS.dynamicTargetDirectionalSpeed - speed;
+                const profile = belt.getTransportProfile();
+                const remaining = profile.bodyTargetSpeed - speed;
                 if (remaining <= 0) continue;
-                const dv = Math.min(remaining, CONVEYOR_BELT_PHYSICS.dynamicAcceleration * dt * contact.weight);
+                const dv = Math.min(remaining, profile.bodyAcceleration * dt * contact.weight);
                 const impulse = dv / invMass;
                 const ix = direction.x * impulse, iy = direction.y * impulse;
                 const offsetX = contact.x - body.getX(), offsetY = contact.y - body.getY();

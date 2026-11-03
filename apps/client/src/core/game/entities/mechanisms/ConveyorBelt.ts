@@ -4,6 +4,8 @@ import { CONVEYOR_BELT_DEFINITION, normalizeConveyorRotation } from "../../confi
 import { CONVEYOR_BELT_ANIMATION, conveyorPlatformX } from "../../conveyor/ConveyorBeltAnimationDefinition";
 import { Entity } from "../Entity";
 import { CONVEYOR_BELT_RENDERING } from "../../conveyor/ConveyorBeltRenderingDefinition";
+import type { ConveyorOverdriveProfile } from "../../world-modifiers/OverdriveDefinition";
+import { NORMAL_MECHANISM_PROFILES } from "../../world-modifiers/OverdriveConfig";
 
 /** CB2: masked, pooled, visual-only conveyor surface. No collision or transport forces. */
 export class ConveyorBelt extends Entity {
@@ -13,7 +15,13 @@ export class ConveyorBelt extends Entity {
     private readonly platformMask = new Graphics();
     private readonly platforms: Sprite[] = [];
     private readonly rotationRadians: number;
-    private elapsedSeconds = 0;
+    private traveledDistance = 0;
+    private activeProfile: Readonly<ConveyorOverdriveProfile> = NORMAL_MECHANISM_PROFILES.conveyor;
+
+    public setOverdriveProfile(profile: Readonly<ConveyorOverdriveProfile>, enabled: boolean): void {
+        this.activeProfile = enabled ? profile : NORMAL_MECHANISM_PROFILES.conveyor;
+    }
+    public getTransportProfile(): Readonly<ConveyorOverdriveProfile> { return this.activeProfile; }
 
     constructor(private readonly mechanismId: string, x: number, y: number, rotation: number) {
         super();
@@ -68,12 +76,12 @@ export class ConveyorBelt extends Entity {
     protected onInitialize(): void {}
     protected onUpdate(deltaTime: number): void {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
-        this.elapsedSeconds += deltaTime;
+        this.traveledDistance += deltaTime * this.activeProfile.animationSpeed;
         this.positionPlatforms();
     }
     private positionPlatforms(): void {
         for (let index = 0; index < this.platforms.length; index++) {
-            this.platforms[index].position.set(conveyorPlatformX(index, this.elapsedSeconds), 0);
+            this.platforms[index].position.set(conveyorPlatformX(index, 0, this.traveledDistance), 0);
         }
     }
     protected onDestroy(): void { this.container.destroy({ children: true }); }

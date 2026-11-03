@@ -1,4 +1,8 @@
+import { OverdriveVfxSystem } from "../overdrive-vfx/OverdriveVfxSystem";
+import { OverdriveController } from "../world-modifiers/OverdriveController";
 import { DOWNPOUR_CONFIG } from "../world-modifiers/DownpourConfig";
+import { WildfireController } from "../world-modifiers/WildfireController";
+import { WildfireWarningRenderer } from "../world-modifiers/WildfireWarningRenderer";
 import { GALE_FORCE_CONFIG, rollGaleForceDirectionDegrees } from "../world-modifiers/GaleForceConfig";
 import { DownpourController } from "../world-modifiers/DownpourController";
 import { DownpourRainVfx } from "../water-vfx/DownpourRainVfx";
@@ -528,11 +532,40 @@ import {
 
 export class World {
     private readonly worldModifierController = new WorldModifierController();
+    private readonly overdriveController = new OverdriveController();
+    private overdriveVfx: OverdriveVfxSystem | null = null;
+    private overdriveVfxRegistered = false;
+    /** WM-7A: read-only profile source for future mechanism integrations. */
+    public getOverdriveController(): OverdriveController { return this.overdriveController; }
     private downpourController: DownpourController | null = null;
+    private wildfireController: WildfireController | null = null;
+    private wildfireWarningRenderer: WildfireWarningRenderer | null = null;
     private downpourRainVfx: DownpourRainVfx | null = null;
     /** The pre-Gale session wind, restored when Gale Force is switched off. */
     private normalWindBeforeGale: { directionDegrees: number; strength: number } | null = null;
     private galeForceActive = false;
+    /** WM-7C: apply active profiles to existing motors, including runtime debug switching. */
+    private synchronizeOverdriveMechanisms(): void {
+        const enabled = this.overdriveController.isEnabled();
+        const paddleProfile = this.overdriveController.getProfile("paddle");
+        const rotatorProfile = this.overdriveController.getProfile("rotator");
+        for (const paddle of this.rotatingPaddles) paddle.setOverdriveProfile(paddleProfile, enabled);
+        for (const rotator of this.rotators) rotator.setOverdriveProfile(rotatorProfile, enabled);
+        const fanProfile = this.overdriveController.getProfile("fan");
+        for (const fan of this.fans) fan.setOverdriveProfile(fanProfile, enabled);
+        this.localWindSystem.setOverdriveFanSources(
+            enabled ? this.fans.filter(fan => !fan.isDestroyed()).map(fan => fan.getSourceDefinition().id) : [],
+            enabled ? fanProfile.airflowAccelerationMultiplier : 1,
+            enabled ? fanProfile.particleSpeedMultiplier : 1,
+        );
+        const radialProfile = this.overdriveController.getProfile("radialBumper");
+        for (const bumper of this.radialBumpers) bumper.setOverdriveProfile(radialProfile, enabled);
+        const directionalProfile = this.overdriveController.getProfile("directionalBumper");
+        for (const bumper of this.directionalBumpers) bumper.setOverdriveProfile(directionalProfile, enabled);
+        const conveyorProfile = this.overdriveController.getProfile("conveyor");
+        for (const belt of this.conveyorBelts) belt.setOverdriveProfile(conveyorProfile, enabled);
+    }
+
     public getWorldModifierRolledState(): WorldModifierResolvedState {
         return this.worldModifierController.getRolledState();
     }
@@ -551,6 +584,10 @@ export class World {
         this.windVfxSystem?.setGaleForcePresentationEnabled(state.modifier === "gale-force");
         this.setDownpourEnabled(state.modifier === "downpour");
         this.updateDownpourTerrainTextures(state.modifier === "downpour");
+        this.setWildfireEnabled(state.modifier === "wildfire", state.seed);
+        this.overdriveController.setEnabled(this.worldModifierController.isOverdriveActive());
+        this.synchronizeOverdriveMechanisms();
+        this.overdriveVfx?.setEnabled(this.overdriveController.isEnabled());
         return state;
     }
 
@@ -1549,12 +1586,44 @@ export class World {
 
     }
 
+    /** WM-5C: scheduling remains authoritative; visuals are presentation-only. */
+    private setWildfireEnabled(enabled: boolean, seed: number): void {
+        if (!enabled) {
+            this.wildfireController?.stop();
+            this.wildfireController = null;
+            this.wildfireWarningRenderer?.clear();
+            return;
+        }
+        const geometry = this.runtimeLevel.course.generatedGeometry;
+        if (!geometry) return;
+        this.wildfireController = new WildfireController(seed, geometry, this.runtimeLevel.hole, this.runtimeLevel.ball, this.surfaceSystem, this.fireManager, this.fireSourceSystem);
+        if (!this.wildfireWarningRenderer) {
+            this.wildfireWarningRenderer = new WildfireWarningRenderer(
+                this.presentationLayers.getLayer(WorldRenderLayer.GroundState),
+            );
+        }
+        this.wildfireWarningRenderer.clear();
+    }
+
+    private updateWildfireWarnings(): void {
+        if (!this.wildfireWarningRenderer) return;
+        this.wildfireWarningRenderer.update(this.wildfireController?.getWarnings() ?? [], {
+            x: this.camera.getPositionX(),
+            y: this.camera.getPositionY(),
+            width: this.camera.getVisibleWorldWidth(),
+            height: this.camera.getVisibleWorldHeight(),
+        });
+    }
+
     // -------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------
 
     public initialize():
         void {
+        const wildfireState = this.getWorldModifierState();
+        this.overdriveController.setEnabled(this.worldModifierController.isOverdriveActive());
+        this.setWildfireEnabled(wildfireState.modifier === "wildfire", wildfireState.seed);
 
         /*
          * Phase 8B-14B: WorldPresentationLayers now owns deterministic
@@ -2173,6 +2242,43 @@ export class World {
 
     }
 
+    /** WM-7F: register once, update only a bounded pool of presentation sprites. */
+    private updateOverdriveVfx(deltaTime: number): void {
+        if (!this.overdriveVfx) {
+            this.overdriveVfx = new OverdriveVfxSystem(
+                this.app.renderer,
+                this.presentationLayers.getLayer(WorldRenderLayer.OverdriveEffects),
+            );
+        }
+        if (!this.overdriveVfxRegistered) {
+            const fx = this.overdriveVfx;
+            const register = (kind: import("../overdrive-vfx/OverdriveVfxConfig").OverdriveSourceKind,
+                entity: { getX(): number; getY(): number; isDestroyed(): boolean }, radius: number,
+                getAngle?: () => number, halfWidth?: number, halfHeight?: number): void => {
+                fx.register({kind, getX: () => entity.getX(), getY: () => entity.getY(),
+                    isActive: () => !entity.isDestroyed(), radius, getAngle, halfWidth, halfHeight});
+            };
+            for (const robot of [this.fireRobot, this.secondFireRobot, this.waterRobot,
+                this.secondWaterRobot, this.windRobot, this.secondWindRobot]) {
+                if (robot) register("robot", robot, 29);
+            }
+            for (const fan of this.fans) register("fan", fan, 35);
+            for (const paddle of this.rotatingPaddles)
+                register("paddle", paddle, paddle.getSurfaceRadius(), () => paddle.getCurrentRotationRadians());
+            for (const rotator of this.rotators)
+                register("rotator", rotator, 100, () => rotator.getArmAngle());
+            for (const bumper of this.radialBumpers) register("radialBumper", bumper, 35);
+            for (const bumper of this.directionalBumpers) register("directionalBumper", bumper, 46);
+            for (const belt of this.conveyorBelts)
+                register("conveyor", belt, 110, () => belt.getRotationRadians(),
+                    belt.getFootprintWidth() / 2, belt.getFootprintHeight() / 2);
+            this.overdriveVfxRegistered = true;
+        }
+        this.overdriveVfx.setEnabled(this.overdriveController.isEnabled());
+        this.overdriveVfx.update(deltaTime, this.camera.getPositionX(), this.camera.getPositionY(),
+            this.camera.getVisibleWorldWidth(), this.camera.getVisibleWorldHeight());
+    }
+
     public updateCamera(
         deltaTime:
             number,
@@ -2194,12 +2300,19 @@ export class World {
         );
 
         this.applyCameraTransform();
+        this.updateOverdriveVfx(deltaTime);
     }
 
     public update(
         deltaTime:
             number,
     ): void {
+        this.wildfireController?.setSpawnRegion(
+            this.ball.getX(), this.ball.getY(),
+            this.camera.getVisibleWorldWidth(), this.camera.getVisibleWorldHeight(),
+        );
+        this.wildfireController?.update(deltaTime);
+        this.updateWildfireWarnings();
         if (DOWNPOUR_CONFIG.enableRainVfx) this.downpourRainVfx?.update(deltaTime, {
             x: this.camera.getPositionX(), y: this.camera.getPositionY(),
             width: this.camera.getVisibleWorldWidth(), height: this.camera.getVisibleWorldHeight(),
@@ -2563,7 +2676,10 @@ export class World {
         let fireSourceSystemMilliseconds = 0;
         this.waterPerformanceProfiler.measure("fireSimulation", (): void => {
             const fireSourceStartedAt = performance.now();
-            if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSources")!==false)this.fireSourceSystem.update(deltaTime);
+            if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSources")!==false) {
+                this.fireSourceSystem.update(deltaTime);
+                this.wildfireController?.cleanupConsumedSources();
+            }
             fireSourceSystemMilliseconds = performance.now() - fireSourceStartedAt;
             if(this.performanceInvestigation?.passBIsolation.isEnabled("fireSpread")!==false)this.fireManager.update(deltaTime);
             // B7: independent bush ignition and destruction, after authoritative fire updates.
@@ -2809,12 +2925,14 @@ export class World {
             );
         }
 
+        this.synchronizeOverdriveMechanisms();
         P3B1.setScope("entities");
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
             if (!entity) continue;
 
             if (entity instanceof Robot) {
+                entity.setOverdriveProfile(this.overdriveController.getProfile("robot"), this.overdriveController.isEnabled());
                 this.waterPerformanceProfiler.measure("robotAI", (): void => {
                     if(this.performanceInvestigation?.passBIsolation.isEnabled("robotUpdates")!==false)entity.update(deltaTime);
                 });
@@ -3296,6 +3414,12 @@ export class World {
 
     public destroy():
         void {
+        this.wildfireController = null;
+        this.overdriveVfx?.destroy();
+        this.overdriveVfx = null;
+        this.overdriveController.reset();
+        this.wildfireWarningRenderer?.destroy();
+        this.wildfireWarningRenderer = null;
         this.downpourRainVfx?.destroy();
         this.downpourRainVfx = null;
         this.downpourController = null;

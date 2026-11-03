@@ -16,10 +16,11 @@ export const conveyorPlatformPitch = (): number =>
     CONVEYOR_BELT_ANIMATION.platformWidth + CONVEYOR_BELT_ANIMATION.gap;
 
 /** Stable modulo ensures wrap is independent of frame rate, even for large delta times. */
-export function conveyorPlatformX(index: number, elapsedSeconds: number): number {
+export function conveyorPlatformX(index: number, elapsedSeconds: number, traveledDistance?: number): number {
     const { poolSize, speed } = CONVEYOR_BELT_ANIMATION;
     const pitch = conveyorPlatformPitch();
     const span = poolSize * pitch;
-    const offset = ((elapsedSeconds * speed) % span + span) % span;
+    const distance = traveledDistance ?? elapsedSeconds * speed;
+    const offset = ((distance % span) + span) % span;
     return ((index * pitch + offset + span / 2) % span + span) % span - span / 2;
 }

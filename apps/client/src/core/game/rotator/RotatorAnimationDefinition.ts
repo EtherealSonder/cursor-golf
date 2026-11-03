@@ -8,12 +8,15 @@ export const ROTATOR_ANIMATION = Object.freeze({
 
 export const TWO_PI = Math.PI * 2;
 
-export function rotatorAngularVelocity(direction: RotatorDirection): number {
+export function rotatorAngularVelocity(direction: RotatorDirection, degreesPerSecond = ROTATOR_ANIMATION.degreesPerSecond): number {
     // Pixi screen coordinates have positive Y downward: positive angle is clockwise.
     return direction === "clockwise"
-        ? ROTATOR_ANIMATION.radiansPerSecond
-        : -ROTATOR_ANIMATION.radiansPerSecond;
+        ? (degreesPerSecond * Math.PI) / 180
+        : -(degreesPerSecond * Math.PI) / 180;
 }
+
+/** WM-7D: 210 degrees/s stays inside the existing swept-contact substep budget at 60 FPS. */
+export const ROTATOR_OVERDRIVE_TARGET_DEGREES_PER_SECOND = 210;
 
 /** Stable angle normalization for arbitrarily long sessions. */
 export function wrapRotatorAngle(angle: number): number {

@@ -1,3 +1,5 @@
+import type { FanOverdriveProfile } from "../../world-modifiers/OverdriveDefinition";
+
 import {
     Sprite,
 } from "pixi.js";
@@ -80,6 +82,11 @@ export class Fan extends Entity {
         Sprite | null = null;
 
     private rotationRadians = 0;
+    private overdriveRotorSpeed: number | null = null;
+
+    public setOverdriveProfile(profile: FanOverdriveProfile, enabled: boolean): void {
+        this.overdriveRotorSpeed = enabled ? profile.rotorSpeedRadiansPerSecond : null;
+    }
     private voidRemoving = false;
 
     public beginVoidRemoval(): void {
@@ -336,8 +343,7 @@ export class Fan extends Entity {
             this.sourceDefinition.enabled
         ) {
             this.rotorSprite.rotation +=
-                this.definition
-                    .rotorRotationSpeed *
+                (this.overdriveRotorSpeed ?? this.definition.rotorRotationSpeed) *
                 safeDeltaTime;
         }
 

@@ -91,10 +91,9 @@ export interface WaterGroundInteractionWorkload {
  *     )
  */
 export class WaterGroundInteractionSystem {
-    private persistentMoistureFloor = 0;
-    public setPersistentMoistureFloor(floor: number): void {
-        this.persistentMoistureFloor = Math.max(0, Math.min(1, floor));
-    }
+    // Compatibility hook retained for callers. The previous stored value was never read,
+    // so this setter intentionally has no simulation effect.
+    public setPersistentMoistureFloor(_floor: number): void {}
 
     private readonly definition:
         WaterGroundInteractionDefinition;

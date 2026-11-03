@@ -19,6 +19,7 @@ export enum WorldRenderLayer {
     HazardEffects = 550,
     GameplayActors = 600,
     AirborneEffects = 700,
+    OverdriveEffects = 760,
     GameplayIndicators = 800,
     /** Wind particles render above foliage but below the aiming foreground. */
     WindForeground = 825,
