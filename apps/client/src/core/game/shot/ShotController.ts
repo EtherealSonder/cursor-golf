@@ -575,15 +575,6 @@ export class ShotController {
 
         this.contactLaunchProcessed = true;
 
-        if (shot.insideOptimalRange) {
-            this.world
-                .getShotFeedback()
-                ?.spawn(
-                    ball.getX(),
-                    ball.getY(),
-                    shot.power,
-                );
-        }
 
         const launchSucceeded =
             ball.launch(

@@ -1,3 +1,5 @@
+import { CrateRewardController } from "./crate/CrateRewardController";
+import { assertCrateRewardRegression } from "./debug/CrateRewardRegression";
 import type { WorldModifierResolvedState } from "./world-modifiers/WorldModifierDefinition";
 import type { WorldModifierDebugSelection } from "./world-modifiers/WorldModifierDebugController";
 import { PixiPresentationProfiler as P3C2 } from "./debug/PixiPresentationProfiler";
@@ -79,6 +81,7 @@ import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEqu
 
 export class Game {
     private readonly ballEffectController = new BallEffectController();
+    private crateRewardController: CrateRewardController | null = null;
     private highPowerBallIndicator: HighPowerBallIndicator | null = null;
     private heavyBallIndicator: HeavyBallIndicator | null = null;
     private aimSwingIndicator: AimSwingIndicator | null = null;
@@ -334,6 +337,10 @@ export class Game {
 
         this.ballDeathController =
             new BallDeathController();
+        this.crateRewardController = new CrateRewardController(this.ballDeathController, this.ballEffectController);
+        this.world.setCrateRewardListener((event) => this.crateRewardController?.award(event)?.lines ?? null);
+        if (import.meta.env.DEV) assertCrateRewardRegression();
+
 
         this.world.setBallDeathReporter(
             (cause) => {
@@ -1278,6 +1285,8 @@ export class Game {
 
         this.engineLoop.stop();
         this.ballEffectController.clear();
+        this.world?.setCrateRewardListener(null);
+        this.crateRewardController = null;
 
         this.cameraController =
             null;

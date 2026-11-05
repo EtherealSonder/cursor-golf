@@ -59,6 +59,15 @@ export class BallDeathController {
         }
     }
 
+    /** Grants lives without changing death/retry state; returns actual number granted. */
+    public grantLives(amount: number): number {
+        const safe = Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)) : 0;
+        const before = this.currentLives;
+        this.currentLives = Math.min(this.definition.maximumLives, before + safe);
+        if (this.currentLives !== before) this.emit();
+        return this.currentLives - before;
+    }
+
     public requestDeath(cause: BallDeathCause): BallDeathEvent | null {
         if (this.state !== BallLifeState.Alive || this.retryProtection.isActive) {
             return null;

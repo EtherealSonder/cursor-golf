@@ -1,3 +1,4 @@
+import { CrateRewardFloatingText } from "../vfx/CrateRewardFloatingText";
 import { StickyBallSplash } from "../vfx/StickyBallSplash";
 import { assertStickyBallRegression } from "../debug/StickyBallRegression";
 import { StickyBallAttachmentController } from "../ball-effects/StickyBallAttachmentController";
@@ -986,6 +987,12 @@ export class World {
     private marbleDischargeController!: ElementalMarbleDischargeController;
     private crateDestructionSystem: CrateDestructionSystem | null = null;
     private readonly pendingCrateDestructions = new Set<Crate>();
+    private crateRewardText: import("../vfx/CrateRewardFloatingText").CrateRewardFloatingText | null = null;
+    private crateRewardListener: ((event: import("../crate/CrateRewardEvent").CrateDestructionRewardEvent) => string[] | null) | null = null;
+    public setCrateRewardListener(listener: ((event: import("../crate/CrateRewardEvent").CrateDestructionRewardEvent) => string[] | null) | null): void {
+        this.crateRewardListener = listener;
+    }
+
     private readonly crateRobotUnregister = new Map<string, () => void>();
     private flushCrateDestructions(): void {
         for (const crate of this.pendingCrateDestructions) {
@@ -993,6 +1000,15 @@ export class World {
             this.crateRobotUnregister.delete(crate.id);
             this.physicsWorld.unregisterDestroyedDynamicBody(crate);
             this.windSuctionCaptureSystem.unregisterTarget(`crate-capture-${crate.id}`);
+            if (crate.destruction.cause === "ballImpact") {
+                const lines = this.crateRewardListener?.({ crateId: crate.id, x: crate.x, y: crate.y });
+                if (lines?.length) {
+                    this.crateRewardText ??= new CrateRewardFloatingText(
+                        this.presentationLayers.getLayer(WorldRenderLayer.GameplayIndicators),
+                    );
+                    this.crateRewardText.spawn(crate.x, crate.y, lines);
+                }
+            }
             this.crateDestructionSystem?.spawn(crate.x,crate.y);
             crate.destroy();
         }
@@ -3126,6 +3142,7 @@ export class World {
             this.windSuctionCaptureSystem.update(deltaTime);
             this.processCompletedWindSuctionCaptures();
             this.flushCrateDestructions();
+            this.crateRewardText?.update(deltaTime);
         });
 
         this.robotDebugVisualizer
@@ -3596,6 +3613,8 @@ export class World {
         this.crateDestructionSystem?.destroy();
         this.crateDestructionSystem = null;
         this.pendingCrateDestructions.clear();
+        this.crateRewardText?.destroy();
+        this.crateRewardText = null;
         for (const unregister of this.crateRobotUnregister.values()) unregister();
         this.crateRobotUnregister.clear();
         for (const marble of this.elementalMarbles) {

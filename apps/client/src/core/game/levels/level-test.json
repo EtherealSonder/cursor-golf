@@ -45,9 +45,16 @@
       "rotation": 1.5707963267948966
     },
     {
+      "id": "fan-2",
+      "x": 1351.9999999999998,
+      "y": 1302.5000000000002,
+      "type": "fan",
+      "rotation": 3.141592653589793
+    },
+    {
       "id": "water-sprinkler-1",
-      "x": 1357,
-      "y": 460.5588,
+      "x": 891,
+      "y": 344.7138,
       "type": "sprinkler",
       "rotation": 0
     },
@@ -93,36 +100,36 @@
     },
     {
       "id": "rotator-anticlockwise-1",
-      "x": 898,
-      "y": 1041.5,
+      "x": 900,
+      "y": 1063.5,
       "type": "rotator",
       "direction": "counterClockwise"
     },
     {
       "id": "fire-robot-1",
-      "x": 412.5,
-      "y": 1552.5,
+      "x": 367.5,
+      "y": 732.5,
       "type": "fireRobot"
     },
     {
       "id": "water-robot-1",
-      "x": 1361,
-      "y": 1552,
+      "x": 1421,
+      "y": 738,
       "type": "waterRobot"
     },
     {
       "id": "conveyer-belt-bg-1",
-      "x": 835.5,
-      "y": 1590,
+      "x": 394.5,
+      "y": 1580,
       "type": "conveyorBelt",
       "rotation": 4.71238898038469
     },
     {
       "id": "conveyer-belt-bg-2",
-      "x": 964.5,
-      "y": 1590,
+      "x": 515.5,
+      "y": 1580,
       "type": "conveyorBelt",
-      "rotation": 4.71238898038469
+      "rotation": 1.5707963267948966
     },
     {
       "id": "portal-1-1",
@@ -137,6 +144,30 @@
       "y": 400.00000000000006,
       "type": "portal1",
       "rotation": -1.5707963267948966
+    },
+    {
+      "id": "crate-1",
+      "x": 464,
+      "y": 1773.5,
+      "type": "crate"
+    },
+    {
+      "id": "crate-2",
+      "x": 1046,
+      "y": 336.5,
+      "type": "crate"
+    },
+    {
+      "id": "wind-robot-1",
+      "x": 895,
+      "y": 749.5,
+      "type": "windRobot"
+    },
+    {
+      "id": "proximity-mine-1",
+      "x": 1298,
+      "y": 1848,
+      "type": "proximityMine"
     }
   ]
 }
