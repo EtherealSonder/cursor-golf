@@ -86,6 +86,7 @@ import { CRATE_FIRE } from "../crate/CrateFireDefinition";
 import { calculateProximityMineBlastSurfaceDistance } from "../physics/ProximityMineExplosionSystem";
 import { registerCrateRobotTarget } from "../crate/CrateRobotTargetAdapter";
 import { CrateDestructionSystem } from "../crate/CrateDestructionSystem";
+import { ghostTouchesRotatedCrate } from "../ball-effects/GhostBallCollisionPolicy";
 import { BushMovementController } from "../bush/BushMovementController";
 import { BushSpatialQueries } from "../bush/BushSpatialQueries";
 import { BushConcealmentController } from "../bush/BushConcealmentController";
@@ -536,6 +537,7 @@ import {
 
 
 import { HIGH_POWER_BALL } from "../config/HighPowerBallDefinition";
+import { INVINCIBLE_BALL } from "../config/InvincibleBallDefinition";
 
 export class World {
     private readonly stickyBallAttachmentController = new StickyBallAttachmentController();
@@ -547,11 +549,21 @@ export class World {
         return this.stickyBallAttachmentController;
     }
     private wasInvincibleBallActive = false;
+    private wasGhostBallActive = false;
     private applyActiveBallEffect(): void {
         const profile = this.ballEffectController?.getGameplayProfile();
         this.ball?.setHighPowerEnabled(profile?.highPowerVisual ?? false);
         this.ball?.setHeavyBallEnabled(profile?.heavyVisual ?? false);
         this.ball?.setStickyBallEnabled(profile?.stickyVisual ?? false);
+        const ghost = profile?.ghostVisual ?? false;
+        this.ball?.setGhostBallEnabled(ghost);
+        if (ghost && !this.wasGhostBallActive) {
+            for (const robot of [this.fireRobot, this.secondFireRobot, this.waterRobot,
+                this.secondWaterRobot, this.windRobot, this.secondWindRobot]) {
+                robot?.invalidateCurrentTarget();
+            }
+        }
+        this.wasGhostBallActive = ghost;
         const invincible = profile?.invincibleVisual ?? false;
         this.ball?.setInvincibleBallEnabled(invincible);
         if (invincible && !this.wasInvincibleBallActive) {
@@ -563,8 +575,11 @@ export class World {
         this.aimIndicator?.setLengthMultiplier(profile?.aimLengthMultiplier ?? 1);
         this.ballFireHeatController?.setDangerRateMultiplier(profile?.fireDangerRateMultiplier ?? 1);
         this.ballDrowningController?.setDangerRateMultiplier(profile?.waterDangerRateMultiplier ?? 1);
+        this.ballTrail?.setOpacityMultiplier(profile?.ghostVisual ? 0.40 : 1);
         this.ballTrail?.setColorOverride(profile?.highPowerVisual ? {
             bodyColor: HIGH_POWER_BALL.trailBodyColor, edgeColor: HIGH_POWER_BALL.trailEdgeColor,
+        } : invincible ? {
+            bodyColor: INVINCIBLE_BALL.trailBodyColor, edgeColor: INVINCIBLE_BALL.trailEdgeColor,
         } : null);
     }
 
@@ -989,7 +1004,8 @@ export class World {
     private readonly bushRobotUnregisterById = new Map<string, () => void>();
     private bushFireContact: BushFireContactSystem | null = null;
     private crateFireContact: CrateFireContactSystem | null = null;
-    private readonly isRobotTargetConcealed = (id: string): boolean => id === "ball" && this.bushConcealment.isConcealed;
+    private readonly isRobotTargetConcealed = (id: string): boolean =>
+        id === "ball" && (this.bushConcealment.isConcealed || this.ball?.isGhostBallActive() === true);
     private bushBallSilhouette: BushBallSilhouetteRenderer | null = null;
     private bushConcealmentVignette: BushConcealmentVignette | null = null;
     /** B2 query-only API. No ball physics or robot visibility changes in this phase. */
@@ -2089,9 +2105,14 @@ export class World {
 
         this.createBallTrail();
 
+        const worldBallIsGhost = (): boolean => this.ball?.isGhostBallActive() === true;
         this.robotInteractionRegistry.register({
             id: "ball", label: "Ball",
-            capabilities: { navigationBlocker: true, attackTarget: true, visionOccluder: true },
+            capabilities: {
+                get navigationBlocker() { return !worldBallIsGhost(); },
+                attackTarget: true,
+                get visionOccluder() { return !worldBallIsGhost(); },
+            },
             shape: { kind: "circle", radius: 14 },
             getX: (): number => this.ball?.getX() ?? -100000,
             getY: (): number => this.ball?.getY() ?? -100000,
@@ -3150,6 +3171,7 @@ export class World {
         if (movingStickyAnchor && this.ball) this.ball.setPosition(movingStickyAnchor.x, movingStickyAnchor.y);
         this.ball?.updateHighPowerVisual(deltaTime);
         this.ball?.updateInvincibleBallVisual(deltaTime);
+        this.processGhostBallCrateContacts();
         this.waterPerformanceProfiler.measure("ballTrail", (): void => {
             this.ballTrail?.update(deltaTime);
         });
@@ -5047,6 +5069,7 @@ export class World {
                 definition.id,
                 this.navigationBounds,
             );
+        navigationQuery.setGhostBallQuery(() => this.ball?.isGhostBallActive() === true);
 
         this.fireRobot =
             new Robot(
@@ -5143,10 +5166,25 @@ export class World {
         }
     }
 
+    /** P-6B: ghost ball destroys overlapping crates without bouncing or moving them. */
+    private processGhostBallCrateContacts(): void {
+        const ball = this.ball;
+        if (!ball?.isGhostBallActive() || ball.isDeathPhysicsLocked) return;
+        for (const crate of this.crates) {
+            if (crate.isDestroyed || crate.isVoidRemoving) continue;
+            const definition = crate.getDefinition();
+            if (ghostTouchesRotatedCrate(
+                ball.getX(), ball.getY(), ball.getRadius(),
+                crate.getX(), crate.getY(), definition.width, definition.height,
+                crate.getRotationRadians(),
+            )) crate.beginDestruction("ballImpact");
+        }
+    }
+
     private updateProximityMineTargets(): void {
         if (this.proximityMines.length === 0) return;
         const targets: ProximityMineTarget[] = [];
-        if (this.ball) targets.push({
+        if (this.ball && !this.ball.isGhostBallActive()) targets.push({
             id: "ball", label: "Ball", x: this.ball.getX(),
             y: this.ball.getY(), radius: this.ball.getRadius()
         });
@@ -5175,7 +5213,7 @@ export class World {
         if (!this.proximityMines.length) return;
         const circles: MineContactCircle[] = [];
         const segments: MineContactSegment[] = [];
-        if (this.ball) circles.push({ id: "ball", x: this.ball.getX(), y: this.ball.getY(), radius: this.ball.getRadius() });
+        if (this.ball && !this.ball.isGhostBallActive()) circles.push({ id: "ball", x: this.ball.getX(), y: this.ball.getY(), radius: this.ball.getRadius() });
         const robots = [this.fireRobot, this.secondFireRobot, this.waterRobot,
             this.secondWaterRobot, this.windRobot, this.secondWindRobot].filter((robot): robot is Robot => robot !== null);
         for (const robot of robots) {
@@ -5364,6 +5402,7 @@ export class World {
                 definition.id,
                 this.navigationBounds,
             );
+        navigationQuery.setGhostBallQuery(() => this.ball?.isGhostBallActive() === true);
             const robot = new Robot(
                 definition,
                 navigationQuery,
@@ -5469,6 +5508,7 @@ export class World {
         const navigationQuery = new RobotNavigationQuery(
             this.robotInteractionRegistry, this.technicalBounds, definition.id, this.navigationBounds,
         );
+        navigationQuery.setGhostBallQuery(() => this.ball?.isGhostBallActive() === true);
         this.windRobot = new Robot(
             definition, navigationQuery, this.robotInteractionRegistry,
             this.fireSourceSystem, this.waterSourceSystem, this.localWindSystem,

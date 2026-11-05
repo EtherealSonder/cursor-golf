@@ -10,7 +10,7 @@ export interface RotatorBallImpact { speed: number; normalX: number; normalY: nu
 /** Fixed motor-driven arms: nonpenetration and sustained moving-surface contact. */
 export class RotatorBallCollisionSystem {
     public resolve(dt: number, ball: Ball, rotator: Rotator): RotatorBallImpact | null {
-        if (ball.isDeathPhysicsLocked || ball.isStickyBallAttached() || !Number.isFinite(dt) || dt <= 0) return null;
+        if (ball.isGhostBallActive() || ball.isDeathPhysicsLocked || ball.isStickyBallAttached() || !Number.isFinite(dt) || dt <= 0) return null;
         const omega = rotator.getAngularVelocity();
         const center = rotator.getCenter();
         const reach = ROTATOR_DEFINITION.armOuterRadius + ROTATOR_DEFINITION.armEndRadius + ball.getRadius() + ROTATOR_DEFINITION.contactCaptureDistance;
@@ -81,7 +81,7 @@ export class RotatorBallCollisionSystem {
     }
     /** Position-only final projection at the actual sprite angle. No impulses or bounce. */
     public resolveFinalPenetration(ball: Ball, rotator: Rotator): void {
-        if (ball.isDeathPhysicsLocked || ball.isStickyBallAttached()) return;
+        if (ball.isGhostBallActive() || ball.isDeathPhysicsLocked || ball.isStickyBallAttached()) return;
         const center = rotator.getCenter();
         const reach = ROTATOR_DEFINITION.armOuterRadius + ROTATOR_DEFINITION.armCapHalfThickness
             + ROTATOR_DEFINITION.armTipSafetyMargin + ball.getRadius() + ROTATOR_DEFINITION.contactSkin;

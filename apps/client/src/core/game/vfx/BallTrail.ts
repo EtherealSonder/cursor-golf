@@ -28,6 +28,10 @@ interface BallTrailPoint {
  */
 export class BallTrail {
 
+    private opacityMultiplier = 1;
+    public setOpacityMultiplier(multiplier: number): void {
+        this.opacityMultiplier = Number.isFinite(multiplier) ? Math.max(0, Math.min(1, multiplier)) : 1;
+    }
     private colorOverride: { bodyColor: number; edgeColor: number } | null = null;
     public setColorOverride(colors: { bodyColor: number; edgeColor: number } | null): void { this.colorOverride = colors; }
     private readonly ball:
@@ -673,7 +677,7 @@ export class BallTrail {
                     (this.colorOverride?.bodyColor ?? this.definition.bodyColor),
 
                 alpha:
-                    bodyAlpha,
+                    bodyAlpha * this.opacityMultiplier,
             })
             .stroke({
                 width:
@@ -686,7 +690,7 @@ export class BallTrail {
                 alpha:
                     this.definition
                         .edgeAlpha *
-                    visualStrength,
+                    visualStrength * this.opacityMultiplier,
             });
     }
 

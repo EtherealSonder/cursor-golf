@@ -2,7 +2,9 @@
 export const INVINCIBLE_BALL = Object.freeze({
     shieldPulseCycleSeconds: 1.25,
     shieldMinimumAlpha: 0.48,
-    shieldDiameterRatio: 0.70,
+    shieldDiameterRatio: 0.56,
+    trailBodyColor: 0xFFD65A,
+    trailEdgeColor: 0xFFF0A3,
     ringDiameterRatio: 1.14,
     ringRevolutionsPerSecond: 0.40,
 });

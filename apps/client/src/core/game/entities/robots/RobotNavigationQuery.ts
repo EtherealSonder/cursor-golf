@@ -15,9 +15,12 @@ export class RobotNavigationQuery {
     ) {}
 
     private isHostCarryingBall: () => boolean = () => false;
+    private isGhostBall: () => boolean = () => false;
+    /** Ghost Ball is intangible and must never constrain robot navigation. */
+    public setGhostBallQuery(query: () => boolean): void { this.isGhostBall = query; }
     public setHostBallAttachmentQuery(query: () => boolean): void { this.isHostCarryingBall = query; }
     private shouldSkipBlocker(id: string): boolean {
-        return id === this.excludedId || (id === "ball" && this.isHostCarryingBall());
+        return id === this.excludedId || (id === "ball" && (this.isHostCarryingBall() || this.isGhostBall()));
     }
 
     public findDestination(centerX: number, centerY: number, roamRadius: number, clearanceRadius: number, maximumAttempts: number): RobotDestinationResult {

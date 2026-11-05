@@ -5,6 +5,7 @@ import {
 
 import golfClubTexture from "../../assets/sprites/golf/golf_club_temp.png";
 import golfBallTexture from "../../assets/sprites/golf/golf_ball.png";
+import golfBallGhostTexture from "../../assets/sprites/golf/golf_ball_ghost.png";
 import golfBallHeavyTexture from "../../assets/sprites/golf/golf_ball_heavy.png";
 import golfBallStickyTexture from "../../assets/sprites/golf/golf_ball_sticky.png";
 import golfBallInvincibleTexture from "../../assets/sprites/golf/golf_ball_invincible.png";
@@ -26,6 +27,8 @@ import highPowerUiTexture from "../../assets/sprites/ui/highpower_ui.png";
 import heavyUiTexture from "../../assets/sprites/ui/heavy_ui.png";
 import swingUiTexture from "../../assets/sprites/ui/swing_ui.png";
 import stickyUiTexture from "../../assets/sprites/ui/sticky_ui.png";
+import invincibleUiTexture from "../../assets/sprites/ui/invincible_ui.png";
+import ghostUiTexture from "../../assets/sprites/ui/ghost_ui.png";
 import rotatorArmsTexture from "../../assets/sprites/mechanisms/rotator_arms.png";
 import rotatorHubTexture from "../../assets/sprites/mechanisms/rotator_hub.png";
 import conveyorBeltBaseTexture from "../../assets/sprites/mechanisms/conveyer_belt_bg.png";
@@ -129,6 +132,7 @@ export class AssetLoader {
             golfBallTexture,
         );
 
+        await this.loadTexture("golfBallGhost", golfBallGhostTexture);
         await this.loadTexture("golfBallHeavy", golfBallHeavyTexture);
         await this.loadTexture("golfBallSticky", golfBallStickyTexture);
         await this.loadTexture("golfBallInvincible", golfBallInvincibleTexture);
@@ -163,6 +167,8 @@ export class AssetLoader {
         await this.loadTexture("heavyUi", heavyUiTexture);
         await this.loadTexture("swingUi", swingUiTexture);
         await this.loadTexture("stickyUi", stickyUiTexture);
+        await this.loadTexture("invincibleUi", invincibleUiTexture);
+        await this.loadTexture("ghostUi", ghostUiTexture);
 
         await this.loadTexture("rotatorArms", rotatorArmsTexture);
         await this.loadTexture("rotatorHub", rotatorHubTexture);

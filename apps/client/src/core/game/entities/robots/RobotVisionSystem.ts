@@ -72,7 +72,7 @@ export class RobotVisionSystem {
         let nearest: RobotInteractionEntry | null = null;
         let nearestT = Number.POSITIVE_INFINITY;
         for (const entry of this.registry.getVisionOccluders()) {
-            if (entry.id === targetId || entry.id === excludedId) continue;
+            if (entry.id === targetId || entry.id === excludedId || !entry.capabilities.visionOccluder) continue;
             const t = this.segmentHitT(ax, ay, bx, by, entry);
             if (t !== null && t > 0.001 && t < 0.999 && t < nearestT) { nearest = entry; nearestT = t; }
         }

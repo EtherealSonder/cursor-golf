@@ -63,6 +63,8 @@ import { HighPowerBallIndicator } from "./ui/HighPowerBallIndicator";
 import { HeavyBallIndicator } from "./ui/HeavyBallIndicator";
 import { AimSwingIndicator } from "./ui/AimSwingIndicator";
 import { StickyBallIndicator } from "./ui/StickyBallIndicator";
+import { InvincibleBallIndicator } from "./ui/InvincibleBallIndicator";
+import { GhostBallIndicator } from "./ui/GhostBallIndicator";
 import { FireDebuffIndicator } from "./ui/FireDebuffIndicator";
 import { BallHeatOverlay } from "./ui/BallHeatOverlay";
 import { WaterDebuffIndicator } from "./ui/WaterDebuffIndicator";
@@ -81,6 +83,8 @@ export class Game {
     private heavyBallIndicator: HeavyBallIndicator | null = null;
     private aimSwingIndicator: AimSwingIndicator | null = null;
     private stickyBallIndicator: StickyBallIndicator | null = null;
+    private invincibleBallIndicator: InvincibleBallIndicator | null = null;
+    private ghostBallIndicator: GhostBallIndicator | null = null;
     public getBallEffectSnapshot(): BallEffectSnapshot { return this.ballEffectController.getSnapshot(); }
     public subscribeToBallEffect(listener: (snapshot: BallEffectSnapshot) => void): () => void {
         return this.ballEffectController.subscribe(listener);
@@ -1202,6 +1206,28 @@ export class Game {
             this.stickyBallIndicator = null;
         }
 
+        const showInvincibleBall = this.ballEffectController.getSnapshot().active === "invincible";
+        if (showInvincibleBall) {
+            if (!this.invincibleBallIndicator) {
+                this.invincibleBallIndicator = new InvincibleBallIndicator();
+                this.debuffHud?.add("invincible", this.invincibleBallIndicator.getContainer());
+            }
+        } else if (this.invincibleBallIndicator) {
+            this.debuffHud?.remove("invincible");
+            this.invincibleBallIndicator = null;
+        }
+
+        const showGhostBall = this.ballEffectController.getSnapshot().active === "ghost";
+        if (showGhostBall) {
+            if (!this.ghostBallIndicator) {
+                this.ghostBallIndicator = new GhostBallIndicator();
+                this.debuffHud?.add("ghost", this.ghostBallIndicator.getContainer());
+            }
+        } else if (this.ghostBallIndicator) {
+            this.debuffHud?.remove("ghost");
+            this.ghostBallIndicator = null;
+        }
+
         this.ballLivesHud
             ?.update(deltaTime);
 
@@ -1302,6 +1328,8 @@ export class Game {
         this.heavyBallIndicator = null;
         this.aimSwingIndicator = null;
         this.stickyBallIndicator = null;
+        this.invincibleBallIndicator = null;
+        this.ghostBallIndicator = null;
 
         this.debuffHud?.destroy();
 

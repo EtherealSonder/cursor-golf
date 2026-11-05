@@ -302,6 +302,13 @@ export class Ball extends Entity {
         if (this.getSpeed() <= 0.5 || inward >= -0.01) return false;
         return this.attachToStatic(id, nx, ny);
     }
+    private ghostBallEnabled = false;
+    public isGhostBallActive(): boolean { return this.ghostBallEnabled; }
+    public setGhostBallEnabled(enabled: boolean): void {
+        if (this.ghostBallEnabled === enabled) return;
+        this.ghostBallEnabled = enabled;
+        this.refreshEffectShellTexture();
+    }
     private stickyBallEnabled = false;
     /** P-4A: visual-only toggle; attachment mechanics follow in P-4B. */
     public setStickyBallEnabled(enabled: boolean): void {
@@ -314,7 +321,7 @@ export class Ball extends Entity {
     private refreshEffectShellTexture(): void {
         if (!this.ballShellSprite) return;
         this.ballShellSprite.texture = AssetLoader.getTexture(
-            this.invincibleBallEnabled ? "golfBallInvincible" : this.stickyBallEnabled ? "golfBallSticky" : this.heavyBallEnabled ? "golfBallHeavy" : "golfBall"
+            this.invincibleBallEnabled ? "golfBallInvincible" : this.ghostBallEnabled ? "golfBallGhost" : this.stickyBallEnabled ? "golfBallSticky" : this.heavyBallEnabled ? "golfBallHeavy" : "golfBall"
         );
     }
     private heavyBallEnabled = false;
@@ -2089,7 +2096,7 @@ export class Ball extends Entity {
             }
         }
 
-        this.correctPositionInsideCourse();
+        if (!this.ghostBallEnabled) this.correctPositionInsideCourse();
         }
 
         // ---------------------------------------------------
@@ -2450,6 +2457,8 @@ export class Ball extends Entity {
     private resolveWorldBoundaryCollision():
         void {
 
+        if (this.ghostBallEnabled) return;
+
         const collision =
             this.detectAndCorrectBoundaryCollision();
 
@@ -2712,6 +2721,8 @@ export class Ball extends Entity {
     private resolveStaticObstacleCollisions():
         void {
 
+        if (this.ghostBallEnabled) return;
+
         if (
             this.staticObstacleDefinitions
                 .length ===
@@ -2895,6 +2906,10 @@ export class Ball extends Entity {
 
     private resolveDynamicObstacleCollisions():
         boolean {
+
+        // P-6B: no physical impulse or penetration correction from dynamic bodies.
+        // Crate destruction is independently detected by World.
+        if (this.ghostBallEnabled) return false;
 
         if (
             this.dynamicCollidables

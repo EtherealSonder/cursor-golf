@@ -35,6 +35,11 @@ export class DirectionalBumperCollisionSystem {
     }
 
     private resolveBall(ball: Ball, bumper: DirectionalBumper): boolean {
+        if (ball.isGhostBallActive()) {
+            this.ballContactLatched = false;
+            this.pendingPoweredImpact = null;
+            return false;
+        }
         const shape = bumper.getCollisionShape();
         const collision = circleAgainstOrientedRectangle(
             ball.getX(), ball.getY(), ball.getRadius(), shape.positionX, shape.positionY,

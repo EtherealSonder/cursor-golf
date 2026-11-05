@@ -9,7 +9,7 @@ export class RotatingPaddleCenterCollisionSystem {
         return physicsWorld.getRigidFixedShapes().some((shape) => shape.id === paddle.getCenterColliderId());
     }
     public resolve(ball: Ball, paddle: RotatingPaddle): void {
-        if (ball.isStickyBallAttached()) return;
+        if (ball.isStickyBallAttached() || ball.isGhostBallActive()) return;
         const dx = ball.getX() - paddle.getX();
         const dy = ball.getY() - paddle.getY();
         const distance = Math.hypot(dx, dy);
