@@ -62,6 +62,7 @@ import { DebuffHud } from "./ui/DebuffHud";
 import { HighPowerBallIndicator } from "./ui/HighPowerBallIndicator";
 import { HeavyBallIndicator } from "./ui/HeavyBallIndicator";
 import { AimSwingIndicator } from "./ui/AimSwingIndicator";
+import { StickyBallIndicator } from "./ui/StickyBallIndicator";
 import { FireDebuffIndicator } from "./ui/FireDebuffIndicator";
 import { BallHeatOverlay } from "./ui/BallHeatOverlay";
 import { WaterDebuffIndicator } from "./ui/WaterDebuffIndicator";
@@ -79,6 +80,7 @@ export class Game {
     private highPowerBallIndicator: HighPowerBallIndicator | null = null;
     private heavyBallIndicator: HeavyBallIndicator | null = null;
     private aimSwingIndicator: AimSwingIndicator | null = null;
+    private stickyBallIndicator: StickyBallIndicator | null = null;
     public getBallEffectSnapshot(): BallEffectSnapshot { return this.ballEffectController.getSnapshot(); }
     public subscribeToBallEffect(listener: (snapshot: BallEffectSnapshot) => void): () => void {
         return this.ballEffectController.subscribe(listener);
@@ -1189,6 +1191,17 @@ export class Game {
             this.aimSwingIndicator = null;
         }
 
+        const showStickyBall = this.ballEffectController.getSnapshot().active === "sticky";
+        if (showStickyBall) {
+            if (!this.stickyBallIndicator) {
+                this.stickyBallIndicator = new StickyBallIndicator();
+                this.debuffHud?.add("sticky", this.stickyBallIndicator.getContainer());
+            }
+        } else if (this.stickyBallIndicator) {
+            this.debuffHud?.remove("sticky");
+            this.stickyBallIndicator = null;
+        }
+
         this.ballLivesHud
             ?.update(deltaTime);
 
@@ -1288,6 +1301,7 @@ export class Game {
         this.highPowerBallIndicator = null;
         this.heavyBallIndicator = null;
         this.aimSwingIndicator = null;
+        this.stickyBallIndicator = null;
 
         this.debuffHud?.destroy();
 

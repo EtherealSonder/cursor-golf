@@ -546,11 +546,19 @@ export class World {
     public getStickyBallAttachmentController(): StickyBallAttachmentController {
         return this.stickyBallAttachmentController;
     }
+    private wasInvincibleBallActive = false;
     private applyActiveBallEffect(): void {
         const profile = this.ballEffectController?.getGameplayProfile();
         this.ball?.setHighPowerEnabled(profile?.highPowerVisual ?? false);
         this.ball?.setHeavyBallEnabled(profile?.heavyVisual ?? false);
         this.ball?.setStickyBallEnabled(profile?.stickyVisual ?? false);
+        const invincible = profile?.invincibleVisual ?? false;
+        this.ball?.setInvincibleBallEnabled(invincible);
+        if (invincible && !this.wasInvincibleBallActive) {
+            this.ballFireHeatController?.reset();
+            this.ballDrowningController?.reset();
+        }
+        this.wasInvincibleBallActive = invincible;
         this.stickyBallAttachmentController.setEnabled(profile?.stickyVisual ?? false);
         this.aimIndicator?.setLengthMultiplier(profile?.aimLengthMultiplier ?? 1);
         this.ballFireHeatController?.setDangerRateMultiplier(profile?.fireDangerRateMultiplier ?? 1);
@@ -3141,6 +3149,7 @@ export class World {
         const movingStickyAnchor = this.stickyBallAttachmentController.getAttachedAnchor();
         if (movingStickyAnchor && this.ball) this.ball.setPosition(movingStickyAnchor.x, movingStickyAnchor.y);
         this.ball?.updateHighPowerVisual(deltaTime);
+        this.ball?.updateInvincibleBallVisual(deltaTime);
         this.waterPerformanceProfiler.measure("ballTrail", (): void => {
             this.ballTrail?.update(deltaTime);
         });
@@ -3927,6 +3936,7 @@ export class World {
      */
     public reportBallDeath(cause: BallDeathCause): void {
         if (this.ball?.isDeathPhysicsLocked) return;
+        if (this.ball?.isInvincibleBallActive() && cause !== BallDeathCauseValue.OutOfBounds) return;
         this.ballDeathReporter?.(cause);
     }
 

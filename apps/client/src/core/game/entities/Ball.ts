@@ -37,6 +37,7 @@ import type {
 
 import { DEFAULT_SHOT_POWER_MODEL } from "../physics/ShotPowerModel";
 import { HighPowerBallVisual } from "./HighPowerBallVisual";
+import { InvincibleBallVisual } from "../ball-effects/InvincibleBallVisual";
 import { HIGH_POWER_BALL } from "../config/HighPowerBallDefinition";
 import { HEAVY_BALL } from "../config/HeavyBallDefinition";
 
@@ -221,6 +222,22 @@ export class Ball extends Entity {
         Graphics | null = null;
 
     private highPowerVisual: HighPowerBallVisual | null = null;
+    private invincibleBallVisual: InvincibleBallVisual | null = null;
+    private invincibleBallEnabled = false;
+    public isInvincibleBallActive(): boolean { return this.invincibleBallEnabled; }
+    public setInvincibleBallEnabled(enabled: boolean): void {
+        if (this.invincibleBallEnabled === enabled) return;
+        this.invincibleBallEnabled = enabled;
+        if (enabled && !this.invincibleBallVisual && this.visualContainer) {
+            this.invincibleBallVisual = new InvincibleBallVisual(this.radius * 2);
+            this.visualContainer.addChild(this.invincibleBallVisual.getContainer());
+        }
+        if (this.invincibleBallVisual) this.invincibleBallVisual.getContainer().visible = enabled;
+        this.refreshEffectShellTexture();
+    }
+    public updateInvincibleBallVisual(dt: number): void {
+        if (this.invincibleBallEnabled) this.invincibleBallVisual?.update(dt);
+    }
     private stickyAttachment: StickyBallAttachmentController | null = null;
     private stickyRobotHost: Robot | null = null;
     /** Reconcile the host relationship after any release, death, effect change or timeout. */
@@ -297,7 +314,7 @@ export class Ball extends Entity {
     private refreshEffectShellTexture(): void {
         if (!this.ballShellSprite) return;
         this.ballShellSprite.texture = AssetLoader.getTexture(
-            this.stickyBallEnabled ? "golfBallSticky" : this.heavyBallEnabled ? "golfBallHeavy" : "golfBall"
+            this.invincibleBallEnabled ? "golfBallInvincible" : this.stickyBallEnabled ? "golfBallSticky" : this.heavyBallEnabled ? "golfBallHeavy" : "golfBall"
         );
     }
     private heavyBallEnabled = false;
@@ -709,6 +726,8 @@ export class Ball extends Entity {
             false,
         );
 
+        this.invincibleBallVisual?.destroy();
+        this.invincibleBallVisual = null;
         this.ballShellSprite
             ?.destroy();
 
@@ -1477,6 +1496,7 @@ export class Ball extends Entity {
         contactPointX: number,
         contactPointY: number,
     ): void {
+        if (this.invincibleBallEnabled) return;
         const speed = Math.hypot(waterVelocityX, waterVelocityY);
         if (!Number.isFinite(speed) || speed <= 0 || !Number.isFinite(waterAmount) || waterAmount <= 0) {
             return;
@@ -1839,7 +1859,7 @@ export class Ball extends Entity {
          */
         const waterInteractionState = this.shotPowerBaselineValidationMode
             ? null
-            : this.updateStandingWaterInteraction(deltaTime, currentSurface.rollingResistanceMultiplier);
+            : this.invincibleBallEnabled ? null : this.updateStandingWaterInteraction(deltaTime, currentSurface.rollingResistanceMultiplier);
         const combinedRollingResistance = this.shotPowerBaselineValidationMode
             ? 1
             : this.ballWaterInteraction
@@ -1922,7 +1942,7 @@ export class Ball extends Entity {
                 )
                 : 0;
 
-        const globalWindAcceleration = this.shotPowerBaselineValidationMode
+        const globalWindAcceleration = this.invincibleBallEnabled || this.shotPowerBaselineValidationMode
             ? { x: 0, y: 0 }
             : this.windManager.getSafeScaledAcceleration(normalizedBallSpeed, this.velocityX, this.velocityY);
 
@@ -2314,6 +2334,12 @@ export class Ball extends Entity {
     public refreshStandingWaterContactForGameplay(
         deltaTime: number,
     ): void {
+        if (this.invincibleBallEnabled) {
+            this.lastWaterContactProfile = null;
+            this.lastWaterInteractionState = null;
+            this.currentStandingWaterContactTime = 0;
+            return;
+        }
         const currentSurface =
             this.surfaceSystem.getSurfaceAt(
                 this.getX(),

@@ -21,6 +21,7 @@ import type { PhysicsWorld } from "../PhysicsWorld";
  */
 interface LocalWindForceTarget {
     getX(): number;
+    isInvincibleBallActive?(): boolean;
     getY(): number;
     getInverseMass(): number;
     applyFixedPivotWind?(wind: LocalWindSystem, deltaTime: number, referenceMass: number): void;
@@ -70,6 +71,7 @@ export class LocalWindDynamicForceSystem {
         ]);
 
         for (const body of bodies) {
+            if (body.isInvincibleBallActive?.()) continue;
             // Anchored mechanisms cannot accept center-sampled linear impulses.
             // They sample wind at their own handles and convert it to torque.
             if (body.applyFixedPivotWind) {

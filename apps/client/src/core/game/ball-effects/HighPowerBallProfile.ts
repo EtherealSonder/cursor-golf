@@ -1,3 +1,4 @@
+import { INVINCIBLE_BALL_PROFILE } from "./InvincibleBallProfile";
 import { STICKY_BALL_PROFILE } from "./StickyBallProfile";
 import { HEAVY_BALL_PROFILE } from "./HeavyBallProfile";
 import { HIGH_POWER_BALL } from "../config/HighPowerBallDefinition";
@@ -10,6 +11,7 @@ export interface BallGameplayProfile {
     readonly highPowerVisual: boolean;
     readonly heavyVisual: boolean;
     readonly stickyVisual?: boolean;
+    readonly invincibleVisual?: boolean;
 }
 const NORMAL: BallGameplayProfile = Object.freeze({ travelDistanceMultiplier: 1, aimLengthMultiplier: 1, fireDangerRateMultiplier: 1, waterDangerRateMultiplier: 1, highPowerVisual: false, heavyVisual: false, stickyVisual: false });
 const HIGH: BallGameplayProfile = Object.freeze({
@@ -22,5 +24,5 @@ const HIGH: BallGameplayProfile = Object.freeze({
     stickyVisual: false,
 });
 export function getBallGameplayProfile(effect: BallEffectSelection): BallGameplayProfile {
-    return effect === "high-power" ? HIGH : effect === "heavy" ? HEAVY_BALL_PROFILE : effect === "sticky" ? STICKY_BALL_PROFILE : NORMAL;
+    return effect === "high-power" ? HIGH : effect === "heavy" ? HEAVY_BALL_PROFILE : effect === "sticky" ? STICKY_BALL_PROFILE : effect === "invincible" ? INVINCIBLE_BALL_PROFILE : NORMAL;
 }
