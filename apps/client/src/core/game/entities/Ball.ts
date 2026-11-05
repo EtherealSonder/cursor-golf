@@ -1,3 +1,9 @@
+import { createPortalHandleStickyAttachment } from "../ball-effects/StickyBallPortalHandleAttachmentAdapter";
+import { Portal } from "../portal/Portal";
+import { Robot } from "./robots/Robot";
+import { createRobotStickyAttachment } from "../ball-effects/StickyBallRobotAttachmentAdapter";
+import { StickyBallBumperCollisionAdapter } from "../ball-effects/StickyBallBumperCollisionAdapter";
+import type { StickyBallAttachmentController } from "../ball-effects/StickyBallAttachmentController";
 import { PortalCollisionDebugRenderer } from "../debug/PortalCollisionDebugRenderer";
 import { PortalPerformanceDiagnosticController as PortalDiag } from "../debug/PortalPerformanceDiagnosticController";
 import { BallDeathPhysicsLock } from "../death/BallDeathPhysicsLock";
@@ -30,6 +36,9 @@ import type {
 } from "../config/CourseBoundaryDefinition";
 
 import { DEFAULT_SHOT_POWER_MODEL } from "../physics/ShotPowerModel";
+import { HighPowerBallVisual } from "./HighPowerBallVisual";
+import { HIGH_POWER_BALL } from "../config/HighPowerBallDefinition";
+import { HEAVY_BALL } from "../config/HeavyBallDefinition";
 
 import type {
     StaticObstacleDefinition,
@@ -211,6 +220,106 @@ export class Ball extends Entity {
     private drowningVisualMask:
         Graphics | null = null;
 
+    private highPowerVisual: HighPowerBallVisual | null = null;
+    private stickyAttachment: StickyBallAttachmentController | null = null;
+    private stickyRobotHost: Robot | null = null;
+    /** Reconcile the host relationship after any release, death, effect change or timeout. */
+    public synchronizeStickyRobotHost(): void {
+        if (!this.stickyRobotHost) return;
+        const snapshot = this.stickyAttachment?.getSnapshot();
+        if (this.stickyBallEnabled && !this.isDeathPhysicsLocked && snapshot?.state === "attached" &&
+            snapshot.targetId === `sticky-robot:${this.stickyRobotHost.getDefinition().id}` &&
+            !this.stickyRobotHost.isDestroyed()) return;
+        this.stickyRobotHost.setHostingStickyBall(false);
+        this.stickyRobotHost = null;
+    }
+
+    public setStickyAttachmentController(controller: StickyBallAttachmentController): void {
+        this.stickyAttachment = controller;
+    }
+    private attachToStatic(id: string, nx: number, ny: number, follow?: () => { x: number; y: number } | null): boolean {
+        if (!this.stickyBallEnabled || !this.stickyAttachment || this.getSpeed() < 0.5) return false;
+        const anchor = { x: this.getX(), y: this.getY() };
+        const origin = follow?.();
+        const offset = origin ? { x: anchor.x - origin.x, y: anchor.y - origin.y } : null;
+        const getAnchor = (): { x: number; y: number } | null => {
+            if (!follow || !offset) return anchor;
+            const position = follow();
+            return position ? { x: position.x + offset.x, y: position.y + offset.y } : null;
+        };
+        const attached = this.stickyAttachment.attach({ id, kind: "static", getAnchor });
+        if (!attached) return false;
+        this.stop(false);
+        this.clubInteractable = true;
+        this.clubInteractionSettleElapsedTime = 0;
+        return true;
+    }
+    private readonly stickyRadialBumperIds = new Set<string>();
+    public setStickyRadialBumperIds(ids: readonly string[]): void {
+        this.stickyRadialBumperIds.clear();
+        for (const id of ids) this.stickyRadialBumperIds.add(id);
+    }
+    public tryAttachToRotatingTarget(target: import("../ball-effects/StickyBallAttachmentController").StickyAttachmentTarget): boolean {
+        if (!this.stickyBallEnabled || !this.stickyAttachment || this.isDeathPhysicsLocked) return false;
+        if (this.isStickyBallAttached()) return this.stickyAttachment.getSnapshot().targetId === target.id;
+        if (!this.stickyAttachment.attach(target)) return false;
+        this.setPosition(target.getAnchor()!.x, target.getAnchor()!.y);
+        this.stop(false);
+        this.clubInteractable = true;
+        this.clubInteractionSettleElapsedTime = 0;
+        return true;
+    }
+    public applyStickyTimedReleaseVelocity(velocity: { x: number; y: number }, replaceExistingVelocity = false): void {
+        if (this.isDeathPhysicsLocked || !Number.isFinite(velocity.x) || !Number.isFinite(velocity.y)) return;
+        const inverseMass = this.getInverseMass();
+        if (inverseMass <= 0) return;
+        if (replaceExistingVelocity) this.stop(false);
+        this.applyImpulseAtWorldPoint(velocity.x / inverseMass, velocity.y / inverseMass, this.getX(), this.getY());
+    }
+    public isStickyBallActive(): boolean { return this.stickyBallEnabled; }
+    public isStickyBallAttached(): boolean { return this.stickyAttachment?.getSnapshot().state === "attached"; }
+    public tryAttachToStickyBumper(id: string, nx: number, ny: number): boolean {
+        if (!this.stickyBallEnabled || !this.stickyAttachment) return false;
+        if (this.isStickyBallAttached()) return this.stickyAttachment.getSnapshot().targetId === id;
+        const inward = this.getVelocityX() * nx + this.getVelocityY() * ny;
+        if (this.getSpeed() <= 0.5 || inward >= -0.01) return false;
+        return this.attachToStatic(id, nx, ny);
+    }
+    private stickyBallEnabled = false;
+    /** P-4A: visual-only toggle; attachment mechanics follow in P-4B. */
+    public setStickyBallEnabled(enabled: boolean): void {
+        if (this.stickyBallEnabled === enabled) return;
+        this.stickyBallEnabled = enabled;
+        if (!enabled) this.stickyAttachment?.clear();
+        this.synchronizeStickyRobotHost();
+        this.refreshEffectShellTexture();
+    }
+    private refreshEffectShellTexture(): void {
+        if (!this.ballShellSprite) return;
+        this.ballShellSprite.texture = AssetLoader.getTexture(
+            this.stickyBallEnabled ? "golfBallSticky" : this.heavyBallEnabled ? "golfBallHeavy" : "golfBall"
+        );
+    }
+    private heavyBallEnabled = false;
+    /** Switches only shot energy and shell artwork. Dimple scrolling stays active. */
+    public setHeavyBallEnabled(enabled: boolean): void {
+        if (this.heavyBallEnabled === enabled) return;
+        this.heavyBallEnabled = enabled;
+        this.refreshEffectShellTexture();
+    }
+    private highPowerEnabled = false;
+    public setHighPowerEnabled(enabled: boolean): void {
+        if (this.highPowerEnabled === enabled) return;
+        this.highPowerEnabled = enabled;
+        if (enabled && !this.highPowerVisual && this.visualContainer) {
+            this.highPowerVisual = new HighPowerBallVisual(this.radius * 2);
+            this.visualContainer.addChild(this.highPowerVisual.getContainer());
+        }
+        if (this.highPowerVisual) this.highPowerVisual.getContainer().visible = enabled;
+        if (this.ballShellSprite) this.ballShellSprite.visible = !enabled;
+        if (this.ballDimpleSprite) this.ballDimpleSprite.visible = !enabled;
+    }
+    public updateHighPowerVisual(dt: number): void { if (this.highPowerEnabled) this.highPowerVisual?.update(dt); }
     private ballShellSprite:
         Sprite | null = null;
 
@@ -542,7 +651,18 @@ export class Ball extends Entity {
             number,
     ): void {
 
-        if (this.isDeathPhysicsLocked) { this.enforceDeathPhysicsLock(); return; }
+        if (this.isDeathPhysicsLocked) { this.stickyAttachment?.clear(); this.synchronizeStickyRobotHost(); this.enforceDeathPhysicsLock(); return; }
+        this.synchronizeStickyRobotHost();
+        const stickyAnchor = this.stickyAttachment?.getAttachedAnchor();
+        if (stickyAnchor) {
+            this.setPosition(stickyAnchor.x, stickyAnchor.y);
+            this.stop(false);
+            this.clubInteractable = true;
+            this.clubInteractionSettleElapsedTime = 0;
+            this.updateTargetScale();
+            this.updateVisualScale(Math.max(0, deltaTime));
+            return;
+        }
 
         const safeDeltaTime =
             Math.min(
@@ -860,6 +980,13 @@ export class Ball extends Entity {
             );
 
             return false;
+        }
+
+        if (this.stickyAttachment?.getAttachedAnchor()) {
+            this.stickyAttachment.release();
+            this.synchronizeStickyRobotHost();
+            // Do not offset into the target when shooting toward it. The static
+            // attachment's inward-speed check prevents recapture until launch.
         }
 
         this.correctPositionInsideCourse();
@@ -1185,8 +1312,7 @@ export class Ball extends Entity {
     public getMaximumBallSpeed():
         number {
 
-        return this.physicsDefinition
-            .maximumBallSpeed;
+        return this.highPowerEnabled ? HIGH_POWER_BALL.maximumMovementSpeed : this.physicsDefinition.maximumBallSpeed;
     }
 
     public getShotPowerExponent():
@@ -1843,12 +1969,10 @@ export class Ball extends Entity {
 
         if (
             speedAfterWind >
-            this.physicsDefinition
-                .maximumBallSpeed
+            this.getMaximumBallSpeed()
         ) {
             const speedRatio =
-                this.physicsDefinition
-                    .maximumBallSpeed /
+                this.getMaximumBallSpeed() /
                 speedAfterWind;
 
             this.velocityX *=
@@ -2321,6 +2445,9 @@ export class Ball extends Entity {
         const speedBeforeCollision =
             this.getSpeed();
 
+        if (this.stickyBallEnabled && speedBeforeCollision > 0.5 &&
+            this.attachToStatic("course-boundary", 0, 0)) return;
+
         if (
             collision.collidedLeft &&
             this.velocityX <
@@ -2645,6 +2772,15 @@ export class Ball extends Entity {
         const speedBeforeCollision =
             this.getSpeed();
 
+        // Bumpers are deliberately deferred to P-4C. Never consume their responder.
+        if (!this.staticCollisionResponders?.get(manifold.obstacleId) &&
+            this.attachToStatic(manifold.obstacleId, manifold.normalX, manifold.normalY)) return;
+
+        // P-4C: radial bumpers have a special powered responder. Sticky Ball
+        // must intercept it before any bumper impulse is applied.
+        if (this.stickyRadialBumperIds.has(manifold.obstacleId) &&
+            StickyBallBumperCollisionAdapter.tryAttach(this, manifold.obstacleId, manifold.normalX, manifold.normalY)) return;
+
         const specialResponder =
             this.staticCollisionResponders
                 ?.get(manifold.obstacleId);
@@ -2814,6 +2950,66 @@ export class Ball extends Entity {
             const obstacleAngularSpeedBeforeCollision =
                 obstacle
                     .getAngularVelocity();
+
+            // P-4F: only the two solid handle primitives can capture Sticky Ball.
+            // The central opening and the curved housing retain their portal behavior.
+            if (obstacle instanceof Portal && this.stickyBallEnabled &&
+                !this.isDeathPhysicsLocked && this.stickyAttachment) {
+                const part = getCompoundContactPart(dynamicManifold, "first");
+                if (part === "leftHandle" || part === "rightHandle") {
+                    const targetId = `sticky-portal-handle:${obstacle.id}:${part}`;
+                    if (this.isStickyBallAttached()) {
+                        if (this.stickyAttachment.getSnapshot().targetId === targetId) return true;
+                    } else if (this.getSpeed() > 0.5) {
+                        const nx = dynamicManifold.normalX, ny = dynamicManifold.normalY;
+                        if (this.getVelocityX() * nx + this.getVelocityY() * ny < -0.01) {
+                            this.translate(nx * Math.max(0, dynamicManifold.penetrationDepth),
+                                ny * Math.max(0, dynamicManifold.penetrationDepth));
+                            const target = createPortalHandleStickyAttachment(obstacle, this.getX(), this.getY(), part);
+                            if (this.tryAttachToRotatingTarget(target)) return true;
+                        }
+                    }
+                }
+            }
+
+            // P-4E: Robot contacts attach before the ordinary dynamic impulse solver.
+            // All three robot elements share the same kinematic chassis collider.
+            if (obstacle instanceof Robot && this.stickyBallEnabled &&
+                !this.isDeathPhysicsLocked && this.stickyAttachment) {
+                if (this.isStickyBallAttached()) {
+                    // Attached ball movement is owned by the moving anchor.
+                    if (this.stickyAttachment.getSnapshot().targetId ===
+                        `sticky-robot:${obstacle.getDefinition().id}`) return true;
+                } else if (this.getSpeed() > 0.5) {
+                    const nx = dynamicManifold.normalX;
+                    const ny = dynamicManifold.normalY;
+                    const inward = this.getVelocityX() * nx + this.getVelocityY() * ny;
+                    if (inward < -0.01) {
+                        const penetration = Math.max(0, dynamicManifold.penetrationDepth);
+                        const contactX = this.getX() + nx * penetration;
+                        const contactY = this.getY() + ny * penetration;
+                        const target = createRobotStickyAttachment(obstacle, contactX, contactY);
+                        if (this.tryAttachToRotatingTarget(target)) {
+                            this.stickyRobotHost?.setHostingStickyBall(false);
+                            this.stickyRobotHost = target.hostRobot;
+                            this.stickyRobotHost.setHostingStickyBall(true);
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // P-4B: fixed machinery and small rocks use the same contact geometry.
+            // Crates, portals, robots, paddles and other moving mechanisms are excluded.
+            const stickyTarget = obstacleDefinition.id;
+            const isStaticMachine = /^(fan-|sprinkler-|rock-)/.test(stickyTarget);
+            if (isStaticMachine && this.stickyBallEnabled && this.getSpeed() > 0.5) {
+                const nx = dynamicManifold.normalX;
+                const ny = dynamicManifold.normalY;
+                this.translate(nx * Math.max(0, dynamicManifold.penetrationDepth),
+                    ny * Math.max(0, dynamicManifold.penetrationDepth));
+                if (this.attachToStatic(stickyTarget, nx, ny, () => ({ x: obstacle.getX(), y: obstacle.getY() }))) return true;
+            }
 
             const result =
                 resolveDynamicCollision(
@@ -3155,7 +3351,11 @@ export class Ball extends Entity {
     // -------------------------------------------------------
 
     private calculateLaunchSpeed(normalizedPower: number): number {
-        return DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(normalizedPower);
+        return this.highPowerEnabled
+            ? DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(normalizedPower, 1, HIGH_POWER_BALL.maximumBaselineShotDistance, HIGH_POWER_BALL.maximumLaunchSpeed)
+            : this.heavyBallEnabled
+                ? DEFAULT_SHOT_POWER_MODEL.getLaunchSpeedForMaximumDistance(normalizedPower, HEAVY_BALL.maximumBaselineShotDistance)
+                : DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(normalizedPower);
     }
 
     // -------------------------------------------------------

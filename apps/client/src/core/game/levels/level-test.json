@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "id": "level-test",
+  "name": "level",
+  "course": {
+    "type": "polygon",
+    "width": 1800,
+    "height": 2127,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 1600,
+        "y": 200
+      },
+      {
+        "x": 200,
+        "y": 200
+      },
+      {
+        "x": 200,
+        "y": 2020
+      },
+      {
+        "x": 1600,
+        "y": 2020
+      }
+    ],
+    "openings": []
+  },
+  "ball": {
+    "x": 898,
+    "y": 1910
+  },
+  "hole": {
+    "x": 892,
+    "y": 609
+  },
+  "terrain": [],
+  "objects": [
+    {
+      "id": "fan-1",
+      "x": 1502.5,
+      "y": 362,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "water-sprinkler-1",
+      "x": 1357,
+      "y": 460.5588,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "box-2",
+      "x": 1255,
+      "y": 738,
+      "type": "staticMetalBox",
+      "width": 70,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "id": "box-1",
+      "x": 535,
+      "y": 735,
+      "type": "staticMetalBox",
+      "width": 70,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "id": "box-3",
+      "x": 900,
+      "y": 500,
+      "type": "staticMetalBox",
+      "width": 560,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "id": "radial-bumper-1",
+      "x": 1352,
+      "y": 1051,
+      "type": "radialBumper"
+    },
+    {
+      "id": "rotate-paddle-clockwise-1",
+      "x": 410,
+      "y": 1051,
+      "type": "rotatingPaddle",
+      "direction": "clockwise"
+    },
+    {
+      "id": "rotator-anticlockwise-1",
+      "x": 898,
+      "y": 1041.5,
+      "type": "rotator",
+      "direction": "counterClockwise"
+    },
+    {
+      "id": "fire-robot-1",
+      "x": 412.5,
+      "y": 1552.5,
+      "type": "fireRobot"
+    },
+    {
+      "id": "water-robot-1",
+      "x": 1361,
+      "y": 1552,
+      "type": "waterRobot"
+    },
+    {
+      "id": "conveyer-belt-bg-1",
+      "x": 835.5,
+      "y": 1590,
+      "type": "conveyorBelt",
+      "rotation": 4.71238898038469
+    },
+    {
+      "id": "conveyer-belt-bg-2",
+      "x": 964.5,
+      "y": 1590,
+      "type": "conveyorBelt",
+      "rotation": 4.71238898038469
+    },
+    {
+      "id": "portal-1-1",
+      "x": 1468.5,
+      "y": 1829.9999999999998,
+      "type": "portal1",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "portal-1-2",
+      "x": 331.5,
+      "y": 400.00000000000006,
+      "type": "portal1",
+      "rotation": -1.5707963267948966
+    }
+  ]
+}

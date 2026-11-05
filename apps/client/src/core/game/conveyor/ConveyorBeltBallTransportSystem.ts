@@ -1,3 +1,4 @@
+import { createConveyorStickyAttachment } from "../ball-effects/StickyBallConveyorAttachmentAdapter";
 import type { Ball } from "../entities/Ball";
 import type { ConveyorBelt } from "../entities/mechanisms/ConveyorBelt";
 import { CONVEYOR_BELT_PHYSICS } from "./ConveyorBeltPhysicsDefinition";
@@ -51,6 +52,7 @@ export class ConveyorBeltBallTransportSystem {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
         const inverseMass = ball.getInverseMass();
         if (!(inverseMass > 0)) return;
+        if (ball.isStickyBallAttached()) return;
         for (const belt of belts) {
             const weight = conveyorBallContactWeight(
                 ball.getX(), ball.getY(), ball.getRadius(),
@@ -58,6 +60,14 @@ export class ConveyorBeltBallTransportSystem {
                 belt.getFootprintWidth(), belt.getFootprintHeight(),
             );
             if (weight <= 0) continue;
+            if (ball.isStickyBallActive()) {
+                // Sticky balls must never enter the ordinary 900 px/s conveyor
+                // acceleration path, even during the post-release cooldown.
+                if (belt.getSurfaceContactWeight(ball.getX(), ball.getY()) > 0) {
+                    if (ball.tryAttachToRotatingTarget(createConveyorStickyAttachment(belt, ball.getX(), ball.getY()))) return;
+                }
+                continue;
+            }
             const angle = belt.getRotationRadians();
             const dirX = Math.cos(angle);
             const dirY = Math.sin(angle);

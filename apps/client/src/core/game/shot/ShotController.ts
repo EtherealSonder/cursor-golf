@@ -169,6 +169,8 @@ export class ShotController {
             mouseWorldPosition.y -
             ball.getY();
 
+        this.shotPreparation.setOscillationEnabled(this.world.isAimSwingActive());
+
         this.shotPreparation.updateDrag(
             deltaX,
             deltaY,

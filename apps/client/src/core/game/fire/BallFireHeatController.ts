@@ -11,6 +11,8 @@ export interface BallFireHeatUpdate {
 
 /** Owns the authoritative normalized burn progress for the current Ball life. */
 export class BallFireHeatController {
+    private dangerRateMultiplier = 1;
+    public setDangerRateMultiplier(value: number): void { this.dangerRateMultiplier = Math.max(0, value); }
     private heat = 0;
     private exposure = 0;
     private deathRequestedForCurrentHeatCycle = false;
@@ -29,7 +31,7 @@ export class BallFireHeatController {
         if (effectiveExposure > 0) {
             this.heat = Math.min(
                 this.definition.deathThreshold,
-                this.heat + effectiveExposure * this.definition.fullExposureHeatPerSecond * dt,
+                this.heat + effectiveExposure * this.definition.fullExposureHeatPerSecond * dt * this.dangerRateMultiplier,
             );
         } else {
             this.heat = Math.max(0, this.heat - this.definition.coolingPerSecond * dt);

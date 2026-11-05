@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { WindState } from "../../core/game/environment/WindManager";
 import { WorldModifierHud } from "../../components/hud/WorldModifierHud";
+import { BallEffectDebugPanel } from "../../components/hud/BallEffectDebugPanel";
+import type { BallEffectSnapshot, BallEffectSelection } from "../../core/game/ball-effects/BallEffectDefinition";
 import type { WorldModifierResolvedState } from "../../core/game/world-modifiers/WorldModifierDefinition";
 import {
     useEffect,
@@ -15,6 +17,9 @@ import "./HomePage.css";
 
 function HomePage() {
 
+    const [ballEffect, setBallEffect] = useState<BallEffectSnapshot>({ active: "none", revision: 0 });
+    const [showBallEffectDebug, setShowBallEffectDebug] = useState(false);
+    const selectBallEffect = (effect: BallEffectSelection) => gameRef.current?.debugSetBallEffect(effect);
     const [modifierState, setModifierState] = useState<WorldModifierResolvedState | null>(null);
     const [windState, setWindState] = useState<WindState | null>(null);
     const gameRef = useRef<Game | null>(null);
@@ -40,6 +45,7 @@ function HomePage() {
 
             gameRef.current = game;
             const unsubscribeModifier = game.subscribeToWorldModifier(setModifierState);
+            const unsubscribeBallEffect = game.subscribeToBallEffect(setBallEffect);
 
             let disposed =
                 false;
@@ -54,6 +60,7 @@ function HomePage() {
                         return;
                     }
 
+                    setShowBallEffectDebug(import.meta.env.DEV && game.getLevelId() === "level-test");
                     // World exists after start(). Subscribe to the authoritative wind state.
                     unsubscribeWind = game.subscribeToWindState(setWindState);
 
@@ -73,6 +80,7 @@ function HomePage() {
                     true;
 
                 unsubscribeModifier();
+                unsubscribeBallEffect();
                 unsubscribeWind?.();
                 if (gameRef.current === game) gameRef.current = null;
                 game.stop();
@@ -89,6 +97,7 @@ function HomePage() {
                 aria-label="Cursor Golf gameplay"
             >
                 <WorldModifierHud state={modifierState} windState={windState} />
+                {showBallEffectDebug && <BallEffectDebugPanel snapshot={ballEffect} onSelect={selectBallEffect} />}
             </div>
         </main>
     );

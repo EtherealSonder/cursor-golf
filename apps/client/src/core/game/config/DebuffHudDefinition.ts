@@ -11,6 +11,8 @@ export interface DebuffHudDefinition {
     readonly popOvershootScale: number;
     readonly deathBadgeDiameter: number;
     readonly deathBadgeOffsetY: number;
+    /** Maximum square footprint for the skull artwork, aspect ratio preserved. */
+    readonly deathSkullSize: number;
 }
 
 export const DEFAULT_DEBUFF_HUD_DEFINITION: DebuffHudDefinition = {
@@ -33,4 +35,5 @@ export const DEFAULT_DEBUFF_HUD_DEFINITION: DebuffHudDefinition = {
 
     deathBadgeDiameter: 34,
     deathBadgeOffsetY: 36,
+    deathSkullSize: 22.95,
 };

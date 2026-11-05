@@ -1,3 +1,4 @@
+import { StickyBallBumperCollisionAdapter } from "../ball-effects/StickyBallBumperCollisionAdapter";
 import type { Ball } from "../entities/Ball";
 import type { DirectionalBumper } from "../entities/mechanisms/DirectionalBumper";
 import { detectDynamicCollidableAgainstFixedCollision } from "./DynamicCollidableCollision";
@@ -44,7 +45,22 @@ export class DirectionalBumperCollisionSystem {
             this.lastDiagnostic = { physicalContact: false, poweredHit: false, reason: "no-contact" };
             return false;
         }
-        ball.translate(collision.normalX * (collision.penetration + 0.25), collision.normalY * (collision.penetration + 0.25));
+        // Sticky attachments suppress both ordinary restitution and powered strikes.
+        // Keep the collision latch independent of the powered-hit VFX path.
+        if (ball.isStickyBallActive()) {
+            if (ball.isStickyBallAttached()) {
+                this.lastDiagnostic = { physicalContact: true, poweredHit: false, reason: "latched" };
+                return false;
+            }
+            ball.translate(collision.normalX * (collision.penetration + 0.25), collision.normalY * (collision.penetration + 0.25));
+            if (StickyBallBumperCollisionAdapter.tryAttach(ball, bumper.getColliderId(), collision.normalX, collision.normalY)) {
+                this.ballContactLatched = true;
+                this.lastDiagnostic = { physicalContact: true, poweredHit: false, reason: "latched" };
+                return true;
+            }
+        } else {
+            ball.translate(collision.normalX * (collision.penetration + 0.25), collision.normalY * (collision.penetration + 0.25));
+        }
         if (this.ballContactLatched) {
             this.lastDiagnostic = { physicalContact: true, poweredHit: false, reason: "latched" };
             return false;

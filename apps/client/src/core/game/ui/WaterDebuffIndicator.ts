@@ -187,10 +187,12 @@ export class WaterDebuffIndicator {
             0,
             badgeY,
         );
-        death.width =
-            badgeRadius * 1.35;
-        death.height =
-            badgeRadius * 1.35;
+        const skullSize = DEFAULT_DEBUFF_HUD_DEFINITION.deathSkullSize;
+        const skullScale = Math.min(
+            skullSize / death.texture.width,
+            skullSize / death.texture.height,
+        );
+        death.scale.set(skullScale);
 
         this.root.addChild(
             death,

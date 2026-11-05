@@ -5,6 +5,8 @@ import { WaterSubphaseProfiler as P3C1 } from "./debug/WaterSubphaseProfiler";
 import { GeometryQueryAttributionProfiler as P3B1 } from "./debug/GeometryQueryAttributionProfiler";
 import { PerformanceDiagnosticStatusOverlay as P3B1Overlay } from "./debug/PerformanceDiagnosticStatusOverlay";
 import { Container } from "pixi.js";
+import { BallEffectController } from "./ball-effects/BallEffectController";
+import type { BallEffectSelection, BallEffectSnapshot } from "./ball-effects/BallEffectDefinition";
 import { EngineLoop } from "../engine/EngineLoop";
 import { EngineState } from "../engine/EngineState";
 import { InputManager } from "../input/InputManager";
@@ -57,6 +59,9 @@ import { BallDeathController } from "./death/BallDeathController";
 import { BallRetryResult } from "./death/BallRetryRequest";
 import { BallDeathArchitectureValidation } from "./debug/BallDeathArchitectureValidation";
 import { DebuffHud } from "./ui/DebuffHud";
+import { HighPowerBallIndicator } from "./ui/HighPowerBallIndicator";
+import { HeavyBallIndicator } from "./ui/HeavyBallIndicator";
+import { AimSwingIndicator } from "./ui/AimSwingIndicator";
 import { FireDebuffIndicator } from "./ui/FireDebuffIndicator";
 import { BallHeatOverlay } from "./ui/BallHeatOverlay";
 import { WaterDebuffIndicator } from "./ui/WaterDebuffIndicator";
@@ -70,6 +75,20 @@ import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation
 import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEquivalenceValidation";
 
 export class Game {
+    private readonly ballEffectController = new BallEffectController();
+    private highPowerBallIndicator: HighPowerBallIndicator | null = null;
+    private heavyBallIndicator: HeavyBallIndicator | null = null;
+    private aimSwingIndicator: AimSwingIndicator | null = null;
+    public getBallEffectSnapshot(): BallEffectSnapshot { return this.ballEffectController.getSnapshot(); }
+    public subscribeToBallEffect(listener: (snapshot: BallEffectSnapshot) => void): () => void {
+        return this.ballEffectController.subscribe(listener);
+    }
+    public getLevelId(): string | null { return this.world?.getLevelId() ?? null; }
+    public debugSetBallEffect(effect: BallEffectSelection): void {
+        if (!import.meta.env.DEV || this.getLevelId() !== "level-test") return;
+        this.ballEffectController.apply(effect);
+    }
+
     private readonly worldModifierListeners = new Set<(state: WorldModifierResolvedState | null) => void>();
     public getWorldModifierState(): WorldModifierResolvedState | null {
         return this.world?.getWorldModifierState() ?? null;
@@ -256,6 +275,7 @@ export class Game {
             );
 
         this.world.initialize();
+        this.world.setBallEffectController(this.ballEffectController);
         this.notifyWorldModifier();
         // Explicit, development-only validation; never runs in normal gameplay or benchmarks.
         if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("o2bvalidate") === "1") {
@@ -319,6 +339,8 @@ export class Game {
                     return;
                 }
 
+                // Only an accepted death ends a one-life ball effect.
+                this.ballEffectController.clear();
                 this.world?.lockBallForDeath();
                 this.world?.forceAllRobotsIntoDeathCooldown();
 
@@ -1132,6 +1154,41 @@ export class Game {
                 null;
         }
 
+        // Mirror the authoritative effect state in the shared status queue.
+        // Removal is animated by DebuffHud, so do not destroy the entry here.
+        const showHighPower = this.ballEffectController.getSnapshot().active === "high-power";
+        if (showHighPower) {
+            if (!this.highPowerBallIndicator) {
+                this.highPowerBallIndicator = new HighPowerBallIndicator();
+                this.debuffHud?.add("high-power", this.highPowerBallIndicator.getContainer());
+            }
+        } else if (this.highPowerBallIndicator) {
+            this.debuffHud?.remove("high-power");
+            this.highPowerBallIndicator = null;
+        }
+
+        const showHeavyBall = this.ballEffectController.getSnapshot().active === "heavy";
+        if (showHeavyBall) {
+            if (!this.heavyBallIndicator) {
+                this.heavyBallIndicator = new HeavyBallIndicator();
+                this.debuffHud?.add("heavy", this.heavyBallIndicator.getContainer());
+            }
+        } else if (this.heavyBallIndicator) {
+            this.debuffHud?.remove("heavy");
+            this.heavyBallIndicator = null;
+        }
+
+        const showAimSwing = this.ballEffectController.getSnapshot().active === "aim-swing";
+        if (showAimSwing) {
+            if (!this.aimSwingIndicator) {
+                this.aimSwingIndicator = new AimSwingIndicator();
+                this.debuffHud?.add("aim-swing", this.aimSwingIndicator.getContainer());
+            }
+        } else if (this.aimSwingIndicator) {
+            this.debuffHud?.remove("aim-swing");
+            this.aimSwingIndicator = null;
+        }
+
         this.ballLivesHud
             ?.update(deltaTime);
 
@@ -1181,6 +1238,7 @@ export class Game {
             EngineState.Stopping;
 
         this.engineLoop.stop();
+        this.ballEffectController.clear();
 
         this.cameraController =
             null;
@@ -1226,6 +1284,10 @@ export class Game {
 
         this.fireDebuffIndicator =
             null;
+
+        this.highPowerBallIndicator = null;
+        this.heavyBallIndicator = null;
+        this.aimSwingIndicator = null;
 
         this.debuffHud?.destroy();
 

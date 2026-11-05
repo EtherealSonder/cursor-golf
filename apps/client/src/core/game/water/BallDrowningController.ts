@@ -43,6 +43,8 @@ export interface BallDrowningUpdate {
  * physical depth + coverage into a stable, player-readable hazard meter.
  */
 export class BallDrowningController {
+    private dangerRateMultiplier = 1;
+    public setDangerRateMultiplier(value: number): void { this.dangerRateMultiplier = Math.max(0, value); }
     private accumulatedDanger = 0;
     private displayProgress = 0;
 
@@ -195,7 +197,7 @@ export class BallDrowningController {
                     this.accumulatedDanger +
                         this.definition.dangerAccumulationPerSecond *
                         rateMultiplier *
-                        dt,
+                        dt * this.dangerRateMultiplier,
                 );
         } else {
             /*

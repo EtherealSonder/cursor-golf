@@ -35,6 +35,24 @@ export class ShotPreparation {
     // Oscillation
     // -------------------------------------------------------
 
+    private oscillationOverride = false;
+
+    public setOscillationEnabled(enabled: boolean): void {
+        if (this.oscillationOverride === enabled) return;
+        this.oscillationOverride = enabled;
+        this.oscillationTime = 0;
+        this.oscillationPhase = 0;
+        this.oscillationOffset = 0;
+        this.rawOscillationWave = 0;
+        this.shapedOscillationWave = 0;
+        this.currentAimAngle = this.baseAimAngle;
+        this.updateOscillationSpeed();
+    }
+
+    private isOscillationEnabled(): boolean {
+        return this.oscillationOverride || this.clubDefinition.oscillationEnabled;
+    }
+
     private oscillationTime = 0;
 
     private oscillationPhase = 0;
@@ -83,8 +101,7 @@ export class ShotPreparation {
             club.getDefinition();
 
         this.oscillationSpeed =
-            this.clubDefinition
-                .oscillationEnabled
+            this.isOscillationEnabled()
                 ? this.clubDefinition
                     .minimumOscillationSpeed
                 : 0;
@@ -113,8 +130,7 @@ export class ShotPreparation {
         }
 
         if (
-            !this.clubDefinition
-                .oscillationEnabled
+            !this.isOscillationEnabled()
         ) {
             this.oscillationOffset = 0;
             this.rawOscillationWave = 0;
@@ -205,8 +221,7 @@ export class ShotPreparation {
     private updateOscillationSpeed(): void {
 
         if (
-            !this.clubDefinition
-                .oscillationEnabled
+            !this.isOscillationEnabled()
         ) {
             this.oscillationSpeed = 0;
 
@@ -432,8 +447,7 @@ export class ShotPreparation {
         this.oscillationOffset = 0;
 
         this.oscillationSpeed =
-            this.clubDefinition
-                .oscillationEnabled
+            this.isOscillationEnabled()
                 ? this.clubDefinition
                     .minimumOscillationSpeed
                 : 0;

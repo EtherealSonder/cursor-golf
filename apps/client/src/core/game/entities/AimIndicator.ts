@@ -16,6 +16,12 @@ import { Entity } from "./Entity";
 export class AimIndicator extends Entity {
     private graphics: Graphics | null = null;
 
+    private lengthMultiplier = 1;
+    public setLengthMultiplier(multiplier: number): void { this.lengthMultiplier = Math.max(1, multiplier); if (this.hasDirectionData) {
+        const growth = this.clamp01((Math.max(this.definition.minimumReadablePower, this.normalizedPower) - this.definition.minimumReadablePower) / Math.max(0.001, 1 - this.definition.minimumReadablePower));
+        this.currentLength = this.lerp(this.definition.minimumLength, this.definition.maximumLength * this.lengthMultiplier, growth);
+        this.redraw();
+    } }
     private currentAngle = 0;
     private normalizedPower = 0;
     private currentLength = 0;
@@ -115,7 +121,7 @@ export class AimIndicator extends Entity {
 
         this.currentLength = this.lerp(
             this.definition.minimumLength,
-            this.definition.maximumLength,
+            this.definition.maximumLength * this.lengthMultiplier,
             growth,
         );
 

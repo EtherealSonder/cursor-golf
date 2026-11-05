@@ -157,3 +157,5 @@ export const DEFAULT_BALL_TRAIL_DEFINITION:
     contractionSpeed:
         150,
 };
+
+export const HIGH_POWER_BALL_TRAIL_COLORS = Object.freeze({ bodyColor: 0xf58fa2, edgeColor: 0xffb3c0 });

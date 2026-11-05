@@ -1,0 +1,35 @@
+.ball-effect-debug {
+    position: absolute;
+    z-index: 40;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    border: 2px solid #462a40;
+    border-radius: 10px;
+    background: rgba(255, 243, 213, 0.97);
+    color: #30132f;
+    font: 600 12px/1.25 system-ui, sans-serif;
+    white-space: nowrap;
+    cursor: default;
+    pointer-events: auto;
+    box-shadow: 0 3px 9px rgba(0, 0, 0, .18);
+}
+.ball-effect-debug select {
+    min-width: 150px;
+    padding: 5px 7px;
+    border: 1px solid #462a40;
+    border-radius: 5px;
+    background: white;
+    color: #30132f;
+    font: inherit;
+    cursor: pointer;
+}
+.ball-effect-debug-note { font-size: 10px; font-weight: 400; opacity: .75; }
+@media (max-width: 650px) {
+    .ball-effect-debug { flex-wrap: wrap; justify-content: center; max-width: calc(100% - 16px); gap: 5px; }
+    .ball-effect-debug-note { display: none; }
+}

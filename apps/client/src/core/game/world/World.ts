@@ -1,3 +1,6 @@
+import { StickyBallSplash } from "../vfx/StickyBallSplash";
+import { assertStickyBallRegression } from "../debug/StickyBallRegression";
+import { StickyBallAttachmentController } from "../ball-effects/StickyBallAttachmentController";
 import { OverdriveVfxSystem } from "../overdrive-vfx/OverdriveVfxSystem";
 import { OverdriveController } from "../world-modifiers/OverdriveController";
 import { DOWNPOUR_CONFIG } from "../world-modifiers/DownpourConfig";
@@ -532,7 +535,42 @@ import {
 } from "../../rendering/ContourRefreshScheduler";
 
 
+import { HIGH_POWER_BALL } from "../config/HighPowerBallDefinition";
+
 export class World {
+    private readonly stickyBallAttachmentController = new StickyBallAttachmentController();
+    private readonly stickyBallSplash = new StickyBallSplash();
+    private readonly stickyBallSplashUnsubscribe = this.stickyBallAttachmentController.onAttached(event => {
+        this.stickyBallSplash.emit(event.x, event.y);
+    });
+    public getStickyBallAttachmentController(): StickyBallAttachmentController {
+        return this.stickyBallAttachmentController;
+    }
+    private applyActiveBallEffect(): void {
+        const profile = this.ballEffectController?.getGameplayProfile();
+        this.ball?.setHighPowerEnabled(profile?.highPowerVisual ?? false);
+        this.ball?.setHeavyBallEnabled(profile?.heavyVisual ?? false);
+        this.ball?.setStickyBallEnabled(profile?.stickyVisual ?? false);
+        this.stickyBallAttachmentController.setEnabled(profile?.stickyVisual ?? false);
+        this.aimIndicator?.setLengthMultiplier(profile?.aimLengthMultiplier ?? 1);
+        this.ballFireHeatController?.setDangerRateMultiplier(profile?.fireDangerRateMultiplier ?? 1);
+        this.ballDrowningController?.setDangerRateMultiplier(profile?.waterDangerRateMultiplier ?? 1);
+        this.ballTrail?.setColorOverride(profile?.highPowerVisual ? {
+            bodyColor: HIGH_POWER_BALL.trailBodyColor, edgeColor: HIGH_POWER_BALL.trailEdgeColor,
+        } : null);
+    }
+
+    private ballEffectController: import("../ball-effects/BallEffectController").BallEffectController | null = null;
+    public setBallEffectController(controller: import("../ball-effects/BallEffectController").BallEffectController): void {
+        this.ballEffectController = controller;
+        this.applyActiveBallEffect();
+    }
+    public getActiveBallEffect(): import("../ball-effects/BallEffectDefinition").BallEffectSelection {
+        return this.ballEffectController?.getSnapshot().active ?? "none";
+    }
+    public isAimSwingActive(): boolean { return this.getActiveBallEffect() === "aim-swing"; }
+    public getLevelId(): string { return this.runtimeLevel.id; }
+
     private readonly worldModifierController = new WorldModifierController();
     private readonly overdriveController = new OverdriveController();
     private overdriveVfx: OverdriveVfxSystem | null = null;
@@ -1359,6 +1397,9 @@ export class World {
             new WorldPresentationLayers(
                 this.worldContainer,
             );
+        this.presentationLayers.getLayer(WorldRenderLayer.AirborneEffects)
+            .addChild(this.stickyBallSplash.getContainer());
+        if (import.meta.env.DEV) assertStickyBallRegression();
 
         // PM-2C: static preview infrastructure only; detonation is connected in PM-2D.
         this.explosionRenderer = new ExplosionRenderer(getExplosionTextureSet());
@@ -1934,6 +1975,43 @@ export class World {
             })),
         ];
 
+        // P-4B: reproducible test-only rock/boulder placement. Keep away from
+        // the ball, hole, authored mechanisms and one another.
+        if (this.runtimeLevel.id === "level-test") {
+            let seed = 0x4b1d;
+            const random = (): number => {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                return seed / 4294967296;
+            };
+            const occupied = [
+                { x: this.runtimeLevel.ball.x, y: this.runtimeLevel.ball.y, radius: 140 },
+                { x: this.runtimeLevel.hole.x, y: this.runtimeLevel.hole.y, radius: 125 },
+                ...this.runtimeLevel.objects.map(o => ({ x: o.x, y: o.y, radius: 115 })),
+                ...rockPresentationPlacements.map(o => ({ x: o.x, y: o.y, radius: o.radius + 35 })),
+            ];
+            const courseBounds = this.runtimeLevel.course.generatedGeometry?.bounds;
+            if (!courseBounds) throw new Error("P-4B test placement requires generated course geometry.");
+            for (let i = 0; i < 11; i++) {
+                const large = i < 5;
+                const radius = large ? 38 + random() * 19 : 11 + random() * 5;
+                for (let attempt = 0; attempt < 300; attempt++) {
+                    const x = courseBounds.minimumX + random() * (courseBounds.maximumX - courseBounds.minimumX);
+                    const y = courseBounds.minimumY + random() * (courseBounds.maximumY - courseBounds.minimumY);
+                    // Check the entire footprint, not merely the centre. A generous
+                    // edge clearance keeps both boulders and rocks off the walls.
+                    if (!this.courseEnvironmentBoundary.containsCircle(x, y, radius + 22)) continue;
+                    if (occupied.some(o => Math.hypot(x - o.x, y - o.y) < radius + o.radius + 24)) continue;
+                    rockPresentationPlacements.push({
+                        id: `p4b-test-${i}`, x, y, radius,
+                        seed: Math.floor(random() * 1000000),
+                        type: large ? RockPresentationType.Boulder : RockPresentationType.SmallRock,
+                    });
+                    occupied.push({ x, y, radius });
+                    break;
+                }
+            }
+        }
+
         for (const placement of rockPresentationPlacements) {
             // P4-B level-00 sandbox: jitter authored test rocks on each load.
             // The centers remain well away from portal housings and course edges.
@@ -1967,6 +2045,8 @@ export class World {
                 ),
             );
 
+        this.ball.setStickyAttachmentController(this.stickyBallAttachmentController);
+        this.ball.setStickyRadialBumperIds(this.radialBumpers.map(bumper => bumper.getCollisionDefinition().id));
         this.addEntity(
             this.ball,
             WorldRenderLayer.GameplayActors,
@@ -3051,6 +3131,16 @@ export class World {
          * H2. Sample the Ball only after its authoritative physics update.
          * The trail is presentation-only and never feeds state back into Ball.
          */
+        this.applyActiveBallEffect();
+        this.stickyBallAttachmentController.update(deltaTime);
+        this.stickyBallSplash.update(deltaTime);
+        this.ball?.synchronizeStickyRobotHost();
+        const stickyReleaseVelocity = this.stickyBallAttachmentController.consumeReleaseVelocity();
+        const stickyReleaseKind = this.stickyBallAttachmentController.consumeReleaseKind();
+        if (stickyReleaseVelocity && this.ball) this.ball.applyStickyTimedReleaseVelocity(stickyReleaseVelocity, stickyReleaseKind === "conveyor");
+        const movingStickyAnchor = this.stickyBallAttachmentController.getAttachedAnchor();
+        if (movingStickyAnchor && this.ball) this.ball.setPosition(movingStickyAnchor.x, movingStickyAnchor.y);
+        this.ball?.updateHighPowerVisual(deltaTime);
         this.waterPerformanceProfiler.measure("ballTrail", (): void => {
             this.ballTrail?.update(deltaTime);
         });
@@ -3369,6 +3459,10 @@ export class World {
             }
         }
 
+        // P-4D: restore the authoritative moving anchor after all collision consumers.
+        const finalStickyAnchor = this.stickyBallAttachmentController.getAttachedAnchor();
+        if (finalStickyAnchor && this.ball) this.ball.setPosition(finalStickyAnchor.x, finalStickyAnchor.y);
+
         // B4 presentation follows the current authoritative ball position.
         if (this.ball && this.bushes.length > 0) {
             const footprint = this.ball.getBushPresentationFootprint();
@@ -3414,6 +3508,10 @@ export class World {
 
     public destroy():
         void {
+        this.stickyBallAttachmentController.clear();
+        this.stickyBallSplashUnsubscribe();
+        this.stickyBallSplash.destroy();
+        this.ball?.synchronizeStickyRobotHost();
         this.wildfireController = null;
         this.overdriveVfx?.destroy();
         this.overdriveVfx = null;

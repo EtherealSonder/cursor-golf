@@ -14,6 +14,12 @@ export class RobotNavigationQuery {
         private readonly playableBounds?: LevelNavigationBounds,
     ) {}
 
+    private isHostCarryingBall: () => boolean = () => false;
+    public setHostBallAttachmentQuery(query: () => boolean): void { this.isHostCarryingBall = query; }
+    private shouldSkipBlocker(id: string): boolean {
+        return id === this.excludedId || (id === "ball" && this.isHostCarryingBall());
+    }
+
     public findDestination(centerX: number, centerY: number, roamRadius: number, clearanceRadius: number, maximumAttempts: number): RobotDestinationResult {
         for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
             const angle = Math.random() * Math.PI * 2;
@@ -68,7 +74,7 @@ export class RobotNavigationQuery {
         if (x - clearanceRadius < this.courseBoundary.minimumX || x + clearanceRadius > this.courseBoundary.maximumX || y - clearanceRadius < this.courseBoundary.minimumY || y + clearanceRadius > this.courseBoundary.maximumY) return false;
         if (this.playableBounds && !this.playableBounds.containsCircle(x, y, clearanceRadius)) return false;
         for (const blocker of this.registry.getNavigationBlockers()) {
-            if (blocker.id === this.excludedId) continue;
+            if (this.shouldSkipBlocker(blocker.id)) continue;
             if (this.intersects(x, y, clearanceRadius, blocker)) return false;
         }
         return true;
@@ -98,7 +104,7 @@ export class RobotNavigationQuery {
     /** Steer outward from a navigation-only footprint when an impulse/spawn puts a robot inside. */
     public getEscapeDirection(x: number, y: number, clearanceRadius: number): RobotNavigationPoint | null {
         for (const blocker of this.registry.getNavigationBlockers()) {
-            if (blocker.id === this.excludedId || !this.intersects(x, y, clearanceRadius, blocker)) continue;
+            if (this.shouldSkipBlocker(blocker.id) || !this.intersects(x, y, clearanceRadius, blocker)) continue;
             const cx = blocker.getX(), cy = blocker.getY();
             const shape = blocker.getShape?.() ?? blocker.shape;
             if (shape.kind === "capsule") {

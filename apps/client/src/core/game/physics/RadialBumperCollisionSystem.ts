@@ -32,6 +32,9 @@ export class RadialBumperCollisionSystem {
         const contactsThisFrame = new Set<string>();
         let poweredImpactCount = 0;
 
+        // Ball is resolved by its registered static obstacle responder, with
+        // Sticky Ball interception before the radial powered impulse.
+        // This loop remains responsible for other movable rigid bodies.
         for (const body of physicsWorld.getMovableRigidDynamicCollidables()) {
             const manifold = detectDynamicCollidableAgainstFixedCollision(body, fixedShape);
             if (!manifold) continue;

@@ -90,6 +90,28 @@ export class Robot extends Entity {
     private readonly impactReactionController: RobotImpactReactionController;
     private readonly stuckRecoveryController: RobotStuckRecoveryController;
     private visionCandidates: readonly RobotVisionCandidate[] = [];
+    private stickyBallHosted = false;
+    public isHostingStickyBall(): boolean { return this.stickyBallHosted; }
+    /** Only the carrying robot ignores the attached ball. Other robots retain full perception. */
+    public setHostingStickyBall(hosting: boolean): void {
+        if (this.stickyBallHosted === hosting) return;
+        this.stickyBallHosted = hosting;
+        if (!hosting) return;
+        this.targetingController.clear();
+        this.detectedTargetId = null;
+        this.detectedTargetLabel = null;
+        this.visionCandidates = [];
+        this.lastCommittedTargetX = null;
+        this.lastCommittedTargetY = null;
+        this.impactReactionController.clear();
+        this.elementAttackController.cancelWarning();
+        this.attackController.forceCooldown();
+        this.destination = null;
+        this.headingErrorDegrees = 0;
+        this.resetAvoidanceState();
+        this.beginWaiting(0);
+        this.synchronizeElementAttack();
+    }
     private detectedTargetId: string | null = null;
     private detectedTargetLabel: string | null = null;
 
@@ -108,12 +130,13 @@ export class Robot extends Entity {
         this.spawnY = definition.positionY;
         this.roamCenterX = definition.positionX;
         this.roamCenterY = definition.positionY;
+        navigationQuery.setHostBallAttachmentQuery(() => this.stickyBallHosted);
         this.obstacleAvoidance = new RobotObstacleAvoidance(navigationQuery);
-        this.visionSystem = new RobotVisionSystem(new RobotTargetQuery(interactionRegistry, isTargetConcealed), interactionRegistry);
+        this.visionSystem = new RobotVisionSystem(new RobotTargetQuery(interactionRegistry, isTargetConcealed, () => this.stickyBallHosted), interactionRegistry);
         this.targetingController = new RobotTargetingController(
             definition.targetAlignmentToleranceDegrees,
             definition.targetLossGraceSeconds,
-            (target) => interactionRegistry.getAttackTargets().some((entry) => entry.id === target.id),
+            (target) => !(target.id === "ball" && this.stickyBallHosted) && interactionRegistry.getAttackTargets().some((entry) => entry.id === target.id),
         );
         this.attackController = new RobotAttackController(
             definition.attackDurationSeconds, definition.attackCooldownSeconds,
@@ -253,6 +276,7 @@ export class Robot extends Entity {
      * Physical collision routing is external; once reported here, Fire/Water use
      * the exact same attention, turn and scan state machine. */
     public notifyExternalImpact(impact: DynamicCollidableImpact): void {
+        if (this.stickyBallHosted && (impact.sourceId === "ball" || impact.sourceKind === "ball")) return;
         // Always observe the source first. Continuous Water/Wind contacts keep
         // the same episode alive even while the Robot is busy, so they cannot
         // immediately retrigger another scan when the current one finishes.

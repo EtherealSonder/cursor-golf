@@ -1,12 +1,13 @@
 import type { Ball } from "../entities/Ball";
 import type { RotatingPaddle } from "../entities/mechanisms/RotatingPaddle";
+import { createRotatingAttachment } from "../ball-effects/StickyBallRotatingAttachmentAdapter";
 
 export class RotatingPaddleBallInteractionSystem {
     // Per-paddle continuous contact timer. A new contact starts with rotation,
     // then smoothly introduces the outward escape velocity over 0.20–0.50 s.
     private readonly contactSeconds = new WeakMap<RotatingPaddle, number>();
     public update(deltaTime: number, ball: Ball, paddle: RotatingPaddle): void {
-        if (deltaTime <= 0) return;
+        if (deltaTime <= 0 || ball.isStickyBallAttached()) return;
 
         const dx = ball.getX() - paddle.getX();
         const dy = ball.getY() - paddle.getY();
@@ -21,6 +22,14 @@ export class RotatingPaddleBallInteractionSystem {
             return;
         }
 
+        if (ball.isStickyBallActive() && ball.getSpeed() > 0.5) {
+            const target = createRotatingAttachment(`paddle:${paddle.getId()}:arm`, {
+                getCenter: () => ({ x: paddle.getX(), y: paddle.getY() }),
+                getAngle: () => paddle.getCurrentRotationRadians(),
+                getAngularVelocity: () => paddle.getSignedAngularVelocityRadiansPerSecond(),
+            }, ball.getX(), ball.getY());
+            if (ball.tryAttachToRotatingTarget(target)) { this.contactSeconds.delete(paddle); return; }
+        }
         const tangent = paddle.getTangentialDirectionAt(ball.getX(), ball.getY());
         if (!tangent) {
             this.contactSeconds.delete(paddle);

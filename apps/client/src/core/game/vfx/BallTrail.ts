@@ -28,6 +28,8 @@ interface BallTrailPoint {
  */
 export class BallTrail {
 
+    private colorOverride: { bodyColor: number; edgeColor: number } | null = null;
+    public setColorOverride(colors: { bodyColor: number; edgeColor: number } | null): void { this.colorOverride = colors; }
     private readonly ball:
         Ball;
 
@@ -668,8 +670,7 @@ export class BallTrail {
             )
             .fill({
                 color:
-                    this.definition
-                        .bodyColor,
+                    (this.colorOverride?.bodyColor ?? this.definition.bodyColor),
 
                 alpha:
                     bodyAlpha,
@@ -680,8 +681,7 @@ export class BallTrail {
                         .edgeWidth,
 
                 color:
-                    this.definition
-                        .edgeColor,
+                    (this.colorOverride?.edgeColor ?? this.definition.edgeColor),
 
                 alpha:
                     this.definition

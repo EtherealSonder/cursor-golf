@@ -2,6 +2,7 @@ import type { Ball } from "../entities/Ball";
 import type { Rotator } from "../entities/mechanisms/Rotator";
 import { ROTATOR_DEFINITION } from "../config/RotatorDefinition";
 import { rotatorContacts } from "./RotatorCollisionGeometry";
+import { createRotatingAttachment } from "../ball-effects/StickyBallRotatingAttachmentAdapter";
 import { wrapRotatorAngle } from "./RotatorAnimationDefinition";
 
 export interface RotatorBallImpact { speed: number; normalX: number; normalY: number; }
@@ -9,12 +10,28 @@ export interface RotatorBallImpact { speed: number; normalX: number; normalY: nu
 /** Fixed motor-driven arms: nonpenetration and sustained moving-surface contact. */
 export class RotatorBallCollisionSystem {
     public resolve(dt: number, ball: Ball, rotator: Rotator): RotatorBallImpact | null {
-        if (ball.isDeathPhysicsLocked || !Number.isFinite(dt) || dt <= 0) return null;
+        if (ball.isDeathPhysicsLocked || ball.isStickyBallAttached() || !Number.isFinite(dt) || dt <= 0) return null;
         const omega = rotator.getAngularVelocity();
         const center = rotator.getCenter();
         const reach = ROTATOR_DEFINITION.armOuterRadius + ROTATOR_DEFINITION.armEndRadius + ball.getRadius() + ROTATOR_DEFINITION.contactCaptureDistance;
         if (Math.hypot(ball.getX() - center.x, ball.getY() - center.y) > reach) return null;
 
+        if (ball.isStickyBallActive() && ball.getSpeed() > 0.5) {
+            const contacts = rotatorContacts(center.x, center.y, rotator.getRenderedArmAngle(), omega,
+                ball.getX(), ball.getY(), ball.getRadius(), ROTATOR_DEFINITION.contactCaptureDistance);
+            contacts.sort((a, b) => b.depth - a.depth);
+            const contact = contacts[0];
+            if (contact) {
+                const rotating = contact.armIndex >= 0;
+                const target = createRotatingAttachment(`rotator:${rotator.getId()}:${rotating ? "arms" : "hub"}`, {
+                    getCenter: () => rotator.getCenter(),
+                    getAngle: () => rotator.getRenderedArmAngle(),
+                    getAngularVelocity: () => rotator.getAngularVelocity(),
+                }, contact.contactX + contact.normalX * ball.getRadius(),
+                   contact.contactY + contact.normalY * ball.getRadius(), rotating);
+                if (ball.tryAttachToRotatingTarget(target)) return null;
+            }
+        }
         const count = Math.min(ROTATOR_DEFINITION.maxCollisionSubsteps, Math.max(1, Math.ceil(Math.abs(omega * dt) / ROTATOR_DEFINITION.maxAngularStep)));
         const endAngle = rotator.getArmAngle();
         const subDt = dt / count;
@@ -64,7 +81,7 @@ export class RotatorBallCollisionSystem {
     }
     /** Position-only final projection at the actual sprite angle. No impulses or bounce. */
     public resolveFinalPenetration(ball: Ball, rotator: Rotator): void {
-        if (ball.isDeathPhysicsLocked) return;
+        if (ball.isDeathPhysicsLocked || ball.isStickyBallAttached()) return;
         const center = rotator.getCenter();
         const reach = ROTATOR_DEFINITION.armOuterRadius + ROTATOR_DEFINITION.armCapHalfThickness
             + ROTATOR_DEFINITION.armTipSafetyMargin + ball.getRadius() + ROTATOR_DEFINITION.contactSkin;
