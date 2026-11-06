@@ -661,6 +661,12 @@ export class Hole extends Entity {
     // Queries
     // -------------------------------------------------------------------------
 
+    /** HC-1: attraction is calculated separately from capture eligibility. */
+    public canAttractBall(): boolean {
+        return this.entryState !== HoleEntryState.Capturing &&
+            this.entryState !== HoleEntryState.Holed;
+    }
+
     public getDefinition():
         HoleDefinition {
 
@@ -880,6 +886,15 @@ export class Hole extends Entity {
             this.effectiveCaptureRadius,
         );
 
+        if (this.definition.showDebugAttractionRadius) {
+            this.debugGraphics.circle(0, 0, this.definition.attractionRadius);
+            this.debugGraphics.stroke({
+                width: this.definition.debugCaptureRadiusWidth,
+                color: this.definition.debugAttractionRadiusColor,
+                alpha: this.definition.debugCaptureRadiusAlpha * 0.7,
+            });
+        }
+
         this.debugGraphics.stroke({
             width:
                 this.definition
@@ -909,6 +924,11 @@ export class Hole extends Entity {
             d.positionY,
             d.visualRadius,
             d.captureAssistMargin,
+            d.attractionRadius,
+            d.attractionMaxAcceleration,
+            d.attractionFullSpeed,
+            d.attractionFadeSpeed,
+            d.attractionDepartureFactor,
             d.minimumEntryRatio,
             d.minimumCaptureSpeed,
             d.maximumCaptureSpeed,

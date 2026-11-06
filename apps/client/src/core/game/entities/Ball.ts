@@ -1301,6 +1301,14 @@ export class Ball extends Entity {
         this.clubInteractionSettleElapsedTime = 0;
     }
 
+    /** HC-1: small additive cup attraction; never replaces environmental forces. */
+    public applyHoleAttraction(deltaX: number, deltaY: number): void {
+        if (this.isDeathPhysicsLocked || this.gameplayState !== BallGameplayState.Active) return;
+        if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+        this.velocityX += deltaX;
+        this.velocityY += deltaY;
+    }
+
     public getSpeed():
         number {
 

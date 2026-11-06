@@ -10,6 +10,13 @@ export interface HoleDefinition {
     readonly positionY: number;
     readonly visualRadius: number;
     readonly captureAssistMargin: number;
+    readonly attractionRadius: number;
+    readonly attractionMaxAcceleration: number;
+    readonly attractionFullSpeed: number;
+    readonly attractionFadeSpeed: number;
+    readonly attractionDepartureFactor: number;
+    readonly showDebugAttractionRadius: boolean;
+    readonly debugAttractionRadiusColor: number;
     readonly minimumEntryRatio: number;
     readonly minimumCaptureSpeed: number;
     readonly maximumCaptureSpeed: number;
@@ -33,10 +40,17 @@ export const DEFAULT_HOLE_DEFINITION: HoleDefinition = {
     positionX: DEFAULT_GAME_VIEWPORT_DEFINITION.width * 0.75,
     positionY: DEFAULT_GAME_VIEWPORT_DEFINITION.height * 0.5,
     visualRadius: 18,
-    captureAssistMargin: 4,
-    minimumEntryRatio: 0.2,
-    minimumCaptureSpeed: 200,
-    maximumCaptureSpeed: 360,
+    captureAssistMargin: 8,
+    attractionRadius: 60,
+    attractionMaxAcceleration: 450,
+    attractionFullSpeed: 100,
+    attractionFadeSpeed: 300,
+    attractionDepartureFactor: 0.15,
+    showDebugAttractionRadius: true,
+    debugAttractionRadiusColor: 0x76C8FF,
+    minimumEntryRatio: 0.1,
+    minimumCaptureSpeed: 240,
+    maximumCaptureSpeed: 400,
     captureSpeedCurveExponent: 1.35,
     captureDuration: 0.3,
     capturedBallScale: 0,

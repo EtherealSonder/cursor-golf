@@ -1,3 +1,4 @@
+import { HoleAttractionSystem } from "../physics/HoleAttractionSystem";
 import { CrateRewardFloatingText } from "../vfx/CrateRewardFloatingText";
 import { StickyBallSplash } from "../vfx/StickyBallSplash";
 import { assertStickyBallRegression } from "../debug/StickyBallRegression";
@@ -3052,6 +3053,17 @@ export class World {
 
         this.synchronizeOverdriveMechanisms();
         P3B1.setScope("entities");
+        // HC-1: steer before the ball integrates, not after capture detection.
+        if (this.ball && this.hole && !this.ball.isDeathPhysicsLocked &&
+            this.ball.isAvailableForInteraction() && this.hole.canAttractBall()) {
+            const definition = this.hole.getDefinition();
+            const delta = HoleAttractionSystem.calculateVelocityDelta(
+                definition, this.ball.getX(), this.ball.getY(),
+                this.ball.getVelocityX(), this.ball.getVelocityY(),
+                this.hole.getX(), this.hole.getY(), deltaTime,
+            );
+            this.ball.applyHoleAttraction(delta.x, delta.y);
+        }
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
             if (!entity) continue;
