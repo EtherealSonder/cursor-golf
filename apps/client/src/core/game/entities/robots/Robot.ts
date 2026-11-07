@@ -1,3 +1,9 @@
+import { ROBOT_PATH_FOLLOWING_DEFINITION as FOLLOWING } from "../../config/RobotPathFollowingDefinition";
+import { RobotDisplacementTracker } from "../../navigation/RobotDisplacementTracker";
+import { RobotNavigationRecoveryController } from "../../navigation/RobotNavigationRecoveryController";
+import { ROBOT_NAVIGATION_RECOVERY_DEFINITION as RECOVERY } from "../../config/RobotNavigationRecoveryDefinition";
+import type { RobotPathPlanner } from "../../navigation/RobotPathPlanner";
+import { ROBOT_PATHFINDING_DEFINITION } from "../../config/RobotPathfindingDefinition";
 import { Container, Sprite } from "pixi.js";
 
 import { withRobotOverdriveProfile, type RobotDefinition } from "../../config/RobotDefinition";
@@ -32,10 +38,13 @@ export interface RobotDebugSnapshot {
     readonly x: number; readonly y: number; readonly rotationRadians: number;
     readonly roamCenterX: number; readonly roamCenterY: number; readonly roamRadius: number;
     readonly clearanceRadius: number; readonly destination: RobotNavigationPoint | null;
+    readonly pathWaypoints: readonly RobotNavigationPoint[]; readonly pathWaypointIndex: number;
     readonly distanceToDestination: number | null; readonly waitRemainingSeconds: number;
     readonly lastDestinationAttempts: number; readonly avoidanceProbePoint: RobotNavigationPoint | null;
     readonly avoidingObstacle: boolean; readonly avoidanceTurnDegrees: number;
     readonly stuckSeconds: number; readonly abandonedDestinations: number;
+    readonly waypointDistance: number | null; readonly routeProgressSeconds: number;
+    readonly recovery: ReturnType<RobotNavigationRecoveryController["snapshot"]>;
     readonly locomotionPhase: RobotLocomotionPhase; readonly activeLeg: 0 | 1 | 2;
     readonly headingErrorDegrees: number;
     readonly visionRange: number; readonly visionHalfAngleDegrees: number;
@@ -66,6 +75,24 @@ export class Robot extends Entity {
     private locomotion: RobotLocomotionController | null = null;
     private state: RobotMovementState = "WAITING";
     private destination: RobotNavigationPoint | null = null;
+    private pathPlanner: RobotPathPlanner | null = null;
+    private pathWaypoints: readonly RobotNavigationPoint[] = [];
+    private pathWaypointIndex = 0;
+    private dynamicObstructionSeconds = 0;
+    private dynamicReplanCooldown = 0;
+    public setPathPlanner(planner: RobotPathPlanner | null): void { this.pathPlanner = planner; this.pathWaypoints = []; this.pathWaypointIndex = 0; }
+    private getCurrentWaypoint(): RobotNavigationPoint | null {
+        return this.pathWaypoints[this.pathWaypointIndex] ?? this.destination;
+    }
+    private advanceWaypoint(): boolean {
+        while (this.pathWaypointIndex < this.pathWaypoints.length) {
+            const waypoint = this.pathWaypoints[this.pathWaypointIndex];
+            if (Math.hypot(waypoint.x - this.getX(), waypoint.y - this.getY()) > ROBOT_PATHFINDING_DEFINITION.waypointArrivalTolerance) break;
+            this.pathWaypointIndex++;
+        }
+        return this.pathWaypointIndex >= this.pathWaypoints.length;
+    }
+
     private waitRemainingSeconds = 0;
     private lastDestinationAttempts = 0;
     private roamCenterX: number;
@@ -73,7 +100,14 @@ export class Robot extends Entity {
     private avoidanceProbePoint: RobotNavigationPoint | null = null;
     private avoidingObstacle = false;
     private avoidanceTurnDegrees = 0;
+    private readonly displacementTracker = new RobotDisplacementTracker();
+    private readonly navigationRecovery = new RobotNavigationRecoveryController();
+    private lastMovementX: number | null = null;
+    private lastMovementY: number | null = null;
     private stuckSeconds = 0;
+    private routeProgressSeconds = 0;
+    private routeAnchorWaypointIndex = -1;
+    private routeAnchorDistance = Infinity;
     private progressAnchorDistance: number | null = null;
     private abandonedDestinations = 0;
     private headingErrorDegrees = 0;
@@ -106,7 +140,7 @@ export class Robot extends Entity {
         this.impactReactionController.clear();
         this.elementAttackController.cancelWarning();
         this.attackController.forceCooldown();
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.headingErrorDegrees = 0;
         this.resetAvoidanceState();
         this.beginWaiting(0);
@@ -196,6 +230,25 @@ export class Robot extends Entity {
             : null;
     }
 
+    /** Presentation-only snapshot; vision scanning and target acquisition remain authoritative. */
+    public getVisionConeState(): {
+        readonly element: RobotDefinition["element"];
+        readonly x: number; readonly y: number; readonly headingRadians: number;
+        readonly range: number; readonly halfAngleDegrees: number;
+        readonly detecting: boolean; readonly visible: boolean;
+    } {
+        return {
+            element: this.definition.element,
+            x: this.getX(), y: this.getY(), headingRadians: this.visualRoot.rotation,
+            range: this.definition.visionRange,
+            halfAngleDegrees: this.definition.visionHalfAngleDegrees,
+            detecting: this.detectedTargetId !== null ||
+                this.state === "DETECTING" || this.state === "TARGET_LOCKED" ||
+                this.state === "WARNING" || this.state === "ATTACKING",
+            visible: !this.isDestroyed() && !this.voidRemoving,
+        };
+    }
+
     public getForwardX(): number { return Math.cos(this.visualRoot.rotation); }
     public getForwardY(): number { return Math.sin(this.visualRoot.rotation); }
 
@@ -234,9 +287,10 @@ export class Robot extends Entity {
         if (!this.canPortalTeleport()) return;
         this.setPosition(x, y);
         this.externalRigidBody.setVelocity(vx, vy);
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.avoidingObstacle = false;
         this.avoidanceProbePoint = null;
+        this.displacementTracker.reset(); this.navigationRecovery.reset();
         this.stuckSeconds = 0;
         this.locomotion?.resetAfterTeleport();
         this.conveyorTransportSeconds = 0;
@@ -293,7 +347,7 @@ export class Robot extends Entity {
             this.state === "WARNING"
         ) return;
         this.targetingController.clear();
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.locomotion?.plantForTargeting();
         this.resetAvoidanceState();
         this.impactReactionController.begin(
@@ -314,7 +368,7 @@ export class Robot extends Entity {
 
         if (this.state === "WARNING") {
             this.elementAttackController.cancelWarning();
-            this.destination = null;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
             this.headingErrorDegrees = 0;
             this.resetAvoidanceState();
             this.beginWaiting(0);
@@ -332,7 +386,7 @@ export class Robot extends Entity {
         this.visionCandidates = [];
         this.lastCommittedTargetX = null;
         this.lastCommittedTargetY = null;
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.headingErrorDegrees = 0;
         this.impactReactionController.clear();
         this.stuckRecoveryController.reset();
@@ -355,11 +409,15 @@ export class Robot extends Entity {
             rotationRadians: this.visualRoot.rotation, roamCenterX: this.roamCenterX,
             roamCenterY: this.roamCenterY, roamRadius: this.definition.roamRadius,
             clearanceRadius: this.getClearanceRadius(), destination: this.destination,
+            pathWaypoints: this.pathWaypoints, pathWaypointIndex: this.pathWaypointIndex,
             distanceToDestination, waitRemainingSeconds: this.waitRemainingSeconds,
             lastDestinationAttempts: this.lastDestinationAttempts,
             avoidanceProbePoint: this.avoidanceProbePoint, avoidingObstacle: this.avoidingObstacle,
             avoidanceTurnDegrees: this.avoidanceTurnDegrees, stuckSeconds: this.stuckSeconds,
+            waypointDistance: this.getCurrentWaypoint() ? Math.hypot(this.getCurrentWaypoint()!.x - this.getX(), this.getCurrentWaypoint()!.y - this.getY()) : null,
+            routeProgressSeconds: this.routeProgressSeconds,
             abandonedDestinations: this.abandonedDestinations,
+            recovery: this.navigationRecovery.snapshot(),
             locomotionPhase: this.locomotion?.getPhase() ?? "PLANTED",
             activeLeg: this.locomotion?.getActiveLeg() ?? 0,
             headingErrorDegrees: this.headingErrorDegrees,
@@ -463,7 +521,11 @@ export class Robot extends Entity {
         if (this.voidRemoving) return;
         if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
         this.conveyorTransportSeconds = Math.max(0, this.conveyorTransportSeconds - deltaTime);
+        this.navigationRecovery.update(deltaTime);
         const externalMotion = this.externalRigidBody.integrate(deltaTime);
+        if (this.displacementTracker.recordExternalMotion(externalMotion.positionDeltaX, externalMotion.positionDeltaY)) {
+            this.tryReplanCurrentRoute("external-displacement");
+        }
         if (externalMotion.positionDeltaX !== 0 || externalMotion.positionDeltaY !== 0) {
             this.setPosition(
                 this.getX() + externalMotion.positionDeltaX,
@@ -525,7 +587,7 @@ export class Robot extends Entity {
                 return;
             }
             this.elementAttackController.cancelWarning();
-            this.destination = null;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
             this.headingErrorDegrees = 0;
             this.resetAvoidanceState();
             this.beginWaiting(0);
@@ -572,7 +634,7 @@ export class Robot extends Entity {
 
             // Fire retains the existing target-loss cancellation behaviour.
             this.attackController.cancelAttack();
-            this.destination = null;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
             this.headingErrorDegrees = 0;
             this.resetAvoidanceState();
             this.beginWaiting(0);
@@ -587,7 +649,7 @@ export class Robot extends Entity {
         // Target was released after the loss grace period. Start a fresh wander
         // decision instead of resuming a half-completed pre-detection step.
         if (this.state === "DETECTING" || this.state === "TARGET_LOCKED" || this.state === "WARNING") {
-            this.destination = null;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
             this.headingErrorDegrees = 0;
             this.resetAvoidanceState();
             this.beginWaiting(0);
@@ -617,7 +679,7 @@ export class Robot extends Entity {
         }
 
         this.locomotion?.plantForTargeting();
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.resetAvoidanceState();
 
         if (this.impactReactionController.getPhase() === "TURN_TO_IMPACT") {
@@ -709,7 +771,7 @@ export class Robot extends Entity {
         if (!target || !this.attackController.start(target.id)) {
             this.elementAttackController.cancelWarning();
             this.targetingController.clear();
-            this.destination = null;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
             this.beginWaiting(0);
             return;
         }
@@ -738,7 +800,7 @@ export class Robot extends Entity {
         this.targetingController.clear();
         this.lastCommittedTargetX = null;
         this.lastCommittedTargetY = null;
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.headingErrorDegrees = 0;
         this.resetAvoidanceState();
         this.beginWaiting(0);
@@ -755,10 +817,12 @@ export class Robot extends Entity {
     private updateTurning(deltaTime: number): void {
         this.locomotion?.reset();
         if (!this.destination) { this.beginWaiting(0.5); return; }
-        const dx = this.destination.x - this.getX();
-        const dy = this.destination.y - this.getY();
+        this.advanceWaypoint();
+        const waypoint = this.getCurrentWaypoint()!;
+        const dx = waypoint.x - this.getX();
+        const dy = waypoint.y - this.getY();
         const distance = Math.hypot(dx, dy);
-        if (distance <= this.definition.arrivalTolerance) {
+        if (distance <= this.definition.arrivalTolerance && this.advanceWaypoint()) {
             this.arriveAtDestination(); return;
         }
         const desiredAngle = Math.atan2(dy, dx);
@@ -773,24 +837,51 @@ export class Robot extends Entity {
 
     private updateWandering(deltaTime: number): void {
         if (!this.destination) { this.beginWaiting(0.5); return; }
-        const dx = this.destination.x - this.getX();
-        const dy = this.destination.y - this.getY();
+        this.advanceWaypoint();
+        const waypoint = this.getCurrentWaypoint()!;
+        const dx = waypoint.x - this.getX();
+        const dy = waypoint.y - this.getY();
         const distance = Math.hypot(dx, dy);
-        if (distance <= this.definition.arrivalTolerance) { this.arriveAtDestination(); return; }
+        if (distance <= this.definition.arrivalTolerance && this.advanceWaypoint()) { this.arriveAtDestination(); return; }
 
         this.updateProgressWatch(distance, deltaTime);
+        if (this.pathWaypoints.length) {
+            if (this.routeAnchorWaypointIndex !== this.pathWaypointIndex ||
+                this.routeAnchorDistance - distance >= FOLLOWING.routeProgressMinimumPixels) {
+                this.routeAnchorWaypointIndex = this.pathWaypointIndex;
+                this.routeAnchorDistance = distance;
+                this.routeProgressSeconds = 0;
+            } else {
+                this.routeProgressSeconds += deltaTime;
+                if (this.routeProgressSeconds >= FOLLOWING.routeProgressTimeoutSeconds) {
+                    this.stuckSeconds = this.definition.stuckTimeoutSeconds;
+                }
+            }
+        }
         if (this.stuckSeconds >= this.definition.stuckTimeoutSeconds) {
-            if (this.beginStuckRecovery()) return;
+            if (this.tryRecoverNavigation()) return;
+            if (this.navigationRecovery.snapshot().stage === "RELOCATE" && this.beginStuckRecovery()) return;
 
             // If no safe recovery point exists, retain the old conservative
             // fallback and simply abandon this destination.
             this.abandonedDestinations += 1;
-            this.destination = null;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
             this.resetAvoidanceState();
             this.locomotion?.reset();
             this.beginWaiting(0.35);
             return;
         }
+
+        this.dynamicReplanCooldown=Math.max(0,this.dynamicReplanCooldown-deltaTime);
+        if(this.pathPlanner&&this.pathWaypoints.length&&this.pathPlanner.isUpcomingSegmentBlocked(
+            this.getX(),this.getY(),waypoint,this.getClearanceRadius(),this.navigationQuery)){
+            this.dynamicObstructionSeconds+=deltaTime;
+            if(this.dynamicObstructionSeconds>=0.65&&this.dynamicReplanCooldown<=0){
+                this.dynamicReplanCooldown=1.25;
+                this.dynamicObstructionSeconds=0;
+                if(this.tryReplanCurrentRoute("dynamic-obstacle"))return;
+            }
+        }else this.dynamicObstructionSeconds=0;
 
         const desiredX = dx / distance;
         const desiredY = dy / distance;
@@ -799,6 +890,7 @@ export class Robot extends Entity {
             this.definition.avoidanceProbeDistance, this.definition.avoidanceProbeStepDegrees,
             this.definition.avoidanceMaximumTurnDegrees, this.definition.avoidanceCommitSeconds,
             this.definition.avoidanceReleaseClearFrames,
+            this.pathWaypoints.length ? distance + FOLLOWING.waypointProbePadding : undefined,
         );
         if (!steering) {
             this.stuckSeconds += deltaTime; this.avoidanceProbePoint = null;
@@ -840,6 +932,60 @@ export class Robot extends Entity {
         }
     }
 
+    /** Replans from the actual position; failed replans never reuse stale waypoints. */
+    private tryReplanCurrentRoute(reason: string): boolean {
+        if (!this.destination || !this.pathPlanner || !this.navigationRecovery.request(reason)) return false;
+        const route = this.pathPlanner.replan(this.getX(), this.getY(), this.destination, this.getClearanceRadius(), this.navigationQuery);
+        if (!route) return false;
+        const signature = route.map(p => `${Math.round(p.x / 24)},${Math.round(p.y / 24)}`).join(";");
+        if (!this.navigationRecovery.acceptRoute(signature, FOLLOWING.repeatedRouteLimit)) return false;
+        this.routeProgressSeconds = 0;
+        this.routeAnchorWaypointIndex = -1;
+        this.pathWaypoints = route; this.pathWaypointIndex = 0;
+        this.stuckSeconds = 0; this.progressAnchorDistance = null; this.routeProgressSeconds = 0; this.routeAnchorWaypointIndex = -1;
+        this.resetAvoidanceState(); this.navigationRecovery.success();
+        return true;
+    }
+
+    private tryRecoverNavigation(): boolean {
+        if (!this.navigationRecovery.canReplan()) {
+            // Cooldown means wait for the next bounded attempt rather than teleporting.
+            this.stuckSeconds = this.definition.stuckTimeoutSeconds * 0.5;
+            return true;
+        }
+        if (this.tryReplanCurrentRoute("stuck-waypoint")) return true;
+        const escape = this.navigationQuery.findLocalEscapePosition(
+            this.getX(), this.getY(), this.getClearanceRadius(),
+            RECOVERY.localEscapeDistance, RECOVERY.localEscapeAttempts,
+        );
+        if (escape && this.pathPlanner) {
+            const route = this.pathPlanner.replan(this.getX(), this.getY(), escape, this.getClearanceRadius(), this.navigationQuery);
+            if (route) {
+                this.navigationRecovery.escape();
+                this.destination = escape; this.pathWaypoints = route; this.pathWaypointIndex = 0;
+                this.stuckSeconds = 0; this.progressAnchorDistance = null; this.routeProgressSeconds = 0; this.routeAnchorWaypointIndex = -1;
+                this.resetAvoidanceState(); return true;
+            }
+        }
+        if (this.pathPlanner) {
+            const alternative = this.pathPlanner.planAlternative(this.getX(), this.getY(), this.definition.roamRadius, this.getClearanceRadius(), this.navigationQuery);
+            if (alternative) {
+                this.destination = alternative.destination; this.pathWaypoints = alternative.waypoints;
+                this.pathWaypointIndex = 0; this.stuckSeconds = 0; this.progressAnchorDistance = null; this.routeProgressSeconds = 0; this.routeAnchorWaypointIndex = -1;
+                this.navigationRecovery.success(); this.resetAvoidanceState(); return true;
+            }
+        }
+        const stage = this.navigationRecovery.failed();
+        if (stage !== "RELOCATE") {
+            this.stuckSeconds = 0;
+            this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
+            this.abandonedDestinations++;
+            this.beginWaiting(RECOVERY.replanCooldownSeconds);
+            return true;
+        }
+        return false;
+    }
+
     private beginStuckRecovery(): boolean {
         const recoveryPoint = this.navigationQuery.findRecoveryPosition(
             this.getX(),
@@ -854,7 +1000,7 @@ export class Robot extends Entity {
         if (!recoveryPoint) return false;
 
         this.abandonedDestinations += 1;
-        this.destination = null;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
         this.headingErrorDegrees = 0;
         this.resetAvoidanceState();
         this.locomotion?.reset();
@@ -862,7 +1008,9 @@ export class Robot extends Entity {
         this.externalRigidBody.setAngularVelocity(0);
         this.state = "WAITING";
         this.waitRemainingSeconds = 0;
-        return this.stuckRecoveryController.begin(recoveryPoint);
+        const started = this.stuckRecoveryController.beginLastResort(recoveryPoint);
+        if (started) this.navigationRecovery.relocated();
+        return started;
     }
 
     private updateStuckRecovery(deltaTime: number): void {
@@ -892,11 +1040,19 @@ export class Robot extends Entity {
 
     private selectDestination(): boolean {
         this.roamCenterX = this.getX(); this.roamCenterY = this.getY();
-        const result = this.navigationQuery.findDestination(
+        const route = this.pathPlanner?.planRoam(
+            this.roamCenterX, this.roamCenterY, this.definition.roamRadius,
+            this.getClearanceRadius(), this.definition.destinationAttempts, this.navigationQuery,
+        );
+        // RN-2: never revert to an unverified direct destination when a grid exists.
+        const result = this.pathPlanner ? null : this.navigationQuery.findDestination(
             this.roamCenterX, this.roamCenterY, this.definition.roamRadius,
             this.getClearanceRadius(), this.definition.destinationAttempts,
         );
-        this.lastDestinationAttempts = result.attempts; this.destination = result.point;
+        this.pathWaypoints = route?.waypoints ?? [];
+        this.pathWaypointIndex = 0;
+        this.lastDestinationAttempts = route?.attempts ?? result?.attempts ?? this.definition.destinationAttempts;
+        this.destination = route?.destination ?? result?.point ?? null;
         this.resetAvoidanceState();
         if (this.destination) this.progressAnchorDistance = Math.hypot(
             this.destination.x - this.getX(), this.destination.y - this.getY(),
@@ -906,7 +1062,8 @@ export class Robot extends Entity {
 
     private arriveAtDestination(): void {
         if (this.destination) this.setPosition(this.destination.x, this.destination.y);
-        this.destination = null; this.headingErrorDegrees = 0;
+        this.destination = null; this.pathWaypoints = []; this.pathWaypointIndex = 0;
+        this.headingErrorDegrees = 0;
         this.resetAvoidanceState(); this.locomotion?.reset();
         this.beginWaiting(this.randomWaitDuration());
     }
@@ -926,6 +1083,15 @@ export class Robot extends Entity {
     }
 
     private updateProgressWatch(distance: number, deltaTime: number): void {
+        const x = this.getX(), y = this.getY();
+        if (this.lastMovementX === null || this.lastMovementY === null) {
+            this.lastMovementX = x; this.lastMovementY = y;
+        } else if (Math.hypot(x - this.lastMovementX, y - this.lastMovementY) >= RECOVERY.minimumMovementDistance) {
+            this.lastMovementX = x; this.lastMovementY = y;
+            this.stuckSeconds = 0;
+            this.progressAnchorDistance = distance;
+            return;
+        }
         if (this.progressAnchorDistance === null) { this.progressAnchorDistance = distance; return; }
         if (this.progressAnchorDistance - distance >= this.definition.stuckMinimumProgress) {
             this.progressAnchorDistance = distance; this.stuckSeconds = 0;
@@ -961,7 +1127,7 @@ export class Robot extends Entity {
 
     private resetAvoidanceState(): void {
         this.avoidanceProbePoint = null; this.avoidingObstacle = false; this.avoidanceTurnDegrees = 0;
-        this.stuckSeconds = 0; this.progressAnchorDistance = null; this.obstacleAvoidance.reset();
+        this.stuckSeconds = 0; this.progressAnchorDistance = null; this.routeProgressSeconds = 0; this.routeAnchorWaypointIndex = -1; this.obstacleAvoidance.reset();
     }
     private getClearanceRadius(): number { return this.definition.navigationRadius + this.definition.destinationClearancePadding; }
     private beginWaiting(durationSeconds: number): void { this.state = "WAITING"; this.waitRemainingSeconds = Math.max(0, durationSeconds); }

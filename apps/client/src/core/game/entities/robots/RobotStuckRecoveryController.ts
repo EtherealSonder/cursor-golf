@@ -31,6 +31,8 @@ export class RobotStuckRecoveryController {
         return this.phase !== "IDLE";
     }
 
+    /** Called only after RN-3 has exhausted ordinary navigation recovery. */
+    public beginLastResort(recoveryPoint: RobotNavigationPoint): boolean { return this.begin(recoveryPoint); }
     public begin(recoveryPoint: RobotNavigationPoint): boolean {
         if (this.isActive()) return false;
         this.recoveryPoint = recoveryPoint;

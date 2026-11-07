@@ -148,7 +148,7 @@ export const DEFAULT_FIRE_ROBOT_DEFINITION: RobotDefinition = {
     impactTurnSpeedRadiansPerSecond: Math.PI * 2.2,
 
     enabled: true,
-    // Master Robot debug toggle. Set true whenever vision/AI diagnostics are needed.
+    // Default off. Use ?robotdebug=1 for the diagnostic overlay; vision cones are independent.
     debugEnabled: false,
 };
 

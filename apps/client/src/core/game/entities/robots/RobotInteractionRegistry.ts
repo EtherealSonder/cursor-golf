@@ -15,6 +15,8 @@ export type RobotInteractionShape =
 export interface RobotInteractionEntry {
     readonly id: string;
     readonly label: string;
+    /** True for fixed blockers used by RN-1. Omitted entries are dynamic unless recognized as fixed geometry. */
+    readonly navigationStatic?: boolean;
     readonly capabilities: RobotInteractionCapabilities;
     readonly shape: RobotInteractionShape;
     /** Optional live geometry for moving and rotating compound obstacles. */
@@ -50,6 +52,7 @@ export class RobotInteractionRegistry {
         return this.register({
             id: definition.id,
             label: "Static obstacle",
+            navigationStatic: true,
             capabilities: { navigationBlocker: true, attackTarget: false, visionOccluder: true },
             shape,
             getX: (): number => definition.positionX,
@@ -79,6 +82,27 @@ export class RobotInteractionRegistry {
             getY,
             { navigationBlocker: true, attackTarget: false, visionOccluder: true },
         );
+    }
+
+    /** Fixed-world obstacles only. Dynamic objects must not permanently block the RN-1 raster. */
+    public getStaticNavigationBlockers(): readonly RobotInteractionEntry[] {
+        const fixedLabels = new Set([
+            "Static obstacle", "Bush", "Radial Bumper", "Directional Bumper", "Fan",
+            "Conveyor belt", "Rotating paddle center", "Portal handle", "Portal housing",
+        ]);
+        return this.filter((entry) => entry.capabilities.navigationBlocker &&
+            (entry.navigationStatic === true || (entry.navigationStatic !== false && fixedLabels.has(entry.label))));
+    }
+
+    /** Moving blockers are evaluated separately from the static RN-1 raster. */
+    public getDynamicNavigationBlockers(): readonly RobotInteractionEntry[] {
+        const staticIds = new Set(this.getStaticNavigationBlockers().map(entry => entry.id));
+        return this.filter(entry => entry.capabilities.navigationBlocker && !staticIds.has(entry.id));
+    }
+
+    /** Stable identity of static entries; detects destruction/unregistration without tracking moving coordinates. */
+    public getStaticNavigationSignature(): string {
+        return this.getStaticNavigationBlockers().map(entry => entry.id).sort().join('|');
     }
 
     public getNavigationBlockers(): readonly RobotInteractionEntry[] {

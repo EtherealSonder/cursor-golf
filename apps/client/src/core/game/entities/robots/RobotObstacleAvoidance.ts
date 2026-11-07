@@ -37,7 +37,21 @@ export class RobotObstacleAvoidance {
         maximumTurnDegrees: number,
         commitSeconds: number,
         releaseClearFrames: number,
+        plannedWaypointDistance?: number,
     ): RobotAvoidanceResult | null {
+        // Never probe far beyond a nearby A* waypoint. That can make a clear
+        // waypoint look blocked by an obstacle on its far side.
+        if (plannedWaypointDistance !== undefined) {
+            probeDistance = Math.min(probeDistance, Math.max(1, plannedWaypointDistance));
+        }
+        if (plannedWaypointDistance !== undefined && this.navigationQuery.isSegmentClear(
+            x, y, x + desiredDirectionX * probeDistance, y + desiredDirectionY * probeDistance, clearanceRadius,
+        )) {
+            this.reset();
+            return { directionX: desiredDirectionX, directionY: desiredDirectionY,
+                probePoint: { x: x + desiredDirectionX * probeDistance, y: y + desiredDirectionY * probeDistance },
+                avoiding: false, turnDegrees: 0 };
+        }
         // When physically pushed inside a navigation-only exclusion zone, ordinary
         // clearance probes all fail. Move outward until regular path checks resume.
         const escape = this.navigationQuery.getEscapeDirection(x, y, clearanceRadius);

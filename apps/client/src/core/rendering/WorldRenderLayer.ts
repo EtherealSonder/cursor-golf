@@ -9,6 +9,8 @@ export enum WorldRenderLayer {
     GroundState = 200,
     SurfaceMechanisms = 250,
     StandingWater = 300,
+    /** Elemental robot vision overlays above puddles, below physical mechanisms and actors. */
+    RobotVisionCones = 325,
     /** R5: motorized rotators sit above puddles but below airborne splashes. */
     RotatorMechanisms = 350,
     WaterEffects = 400,

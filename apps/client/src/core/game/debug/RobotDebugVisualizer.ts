@@ -1,11 +1,24 @@
 import { Container, Graphics, Text } from "pixi.js";
 import type { Robot } from "../entities/robots/Robot";
+import type { RobotNavigationGrid } from "../navigation/RobotNavigationGrid";
+import { ROBOT_NAVIGATION_GRID_DEFINITION } from "../config/RobotNavigationGridDefinition";
 
 export class RobotDebugVisualizer {
     private readonly container = new Container();
     private readonly graphics = new Graphics();
+    private readonly gridGraphics = new Graphics();
+    public setNavigationGrid(grid: RobotNavigationGrid): void {
+        const g = this.gridGraphics; g.clear();
+        const d = ROBOT_NAVIGATION_GRID_DEFINITION.debug;
+        for (let y = 0; y < grid.rows; y++) for (let x = 0; x < grid.columns; x++) {
+            const pos = grid.cellToWorld(x, y);
+            g.rect(pos.x - grid.cellSize / 2, pos.y - grid.cellSize / 2, grid.cellSize, grid.cellSize)
+                .fill({ color: grid.isTraversable(x, y) ? d.traversable : d.blocked, alpha: d.alpha });
+        }
+    }
+
     private readonly text = new Text({ text: "ROBOT R-7", style: { fontFamily: "monospace", fontSize: 14, fill: 0xffffff, lineHeight: 19, stroke: { color: 0x15101a, width: 4 } } });
-    public constructor(private readonly robot: Robot) { this.container.addChild(this.graphics, this.text); }
+    public constructor(private readonly robot: Robot) { this.container.addChild(this.gridGraphics, this.graphics, this.text); }
     public getContainer(): Container { return this.container; }
 
     /** Runtime visibility hook for quick Robot diagnostics without rebuilding visuals. */
@@ -18,6 +31,18 @@ export class RobotDebugVisualizer {
         const s = this.robot.getDebugSnapshot(); this.graphics.clear();
         this.graphics.circle(s.roamCenterX, s.roamCenterY, s.roamRadius).stroke({ width: 3, color: 0xf6c453, alpha: 0.9 });
         this.graphics.circle(s.roamCenterX, s.roamCenterY, 6).fill({ color: 0xf6c453, alpha: 1 });
+        if (s.pathWaypoints.length) {
+            const color = 0x34d6ff;
+            this.graphics.moveTo(s.x, s.y);
+            for (let i = s.pathWaypointIndex; i < s.pathWaypoints.length; i++) {
+                const point = s.pathWaypoints[i];
+                this.graphics.lineTo(point.x, point.y);
+                this.graphics.circle(point.x, point.y, i === s.pathWaypointIndex ? 6 : 3)
+                    .fill({ color: i === s.pathWaypointIndex ? 0xffdf65 : color, alpha: 0.95 });
+                this.graphics.moveTo(point.x, point.y);
+            }
+            this.graphics.stroke({ width: 2, color, alpha: 0.85 });
+        }
         if (s.destination) {
             this.graphics.moveTo(s.x, s.y).lineTo(s.destination.x, s.destination.y).stroke({ width: 2, color: 0x7ee8fa, alpha: 0.45 });
             this.graphics.circle(s.destination.x, s.destination.y, s.clearanceRadius).stroke({ width: 2, color: 0x7ee8fa, alpha: 0.4 });
@@ -54,8 +79,16 @@ export class RobotDebugVisualizer {
             `Cooldown: ${s.cooldownRemainingSeconds.toFixed(2)} s remaining / ${s.cooldownDurationSeconds.toFixed(2)} s`,
             `Heading error: ${s.headingErrorDegrees.toFixed(1)} deg`,
             `Destination: ${s.destination ? "VALID" : "NONE"}`,
+            `RN-2 Waypoint: ${s.pathWaypoints.length ? `${Math.min(s.pathWaypointIndex + 1, s.pathWaypoints.length)}/${s.pathWaypoints.length}` : "NONE"}`,
             `Avoidance: ${s.avoidingObstacle ? `STEERING ${s.avoidanceTurnDegrees.toFixed(0)} deg` : "DIRECT"}`,
+            `Waypoint distance: ${s.waypointDistance === null ? "NONE" : s.waypointDistance.toFixed(1) + " px"}`,
+            `Route no-progress: ${s.routeProgressSeconds.toFixed(2)} s`,
+            `Repeated replans: ${s.recovery.repeatedRoutes}`,
+            `RN-4: dynamic occupancy enabled (shared World navigation)`,
             `Stuck: ${s.stuckSeconds.toFixed(2)} s`, `Abandoned: ${s.abandonedDestinations}`,
+            `RN-3: ${s.recovery.stage} / ${s.recovery.reason}`,
+            `Replan cooldown: ${s.recovery.cooldown.toFixed(2)} s`,
+            `Recovery failures: ${s.recovery.failures} / relocations: ${s.recovery.relocations}`,
         ].join("\n");
     }
     public destroy(): void { this.container.destroy({ children: true }); }

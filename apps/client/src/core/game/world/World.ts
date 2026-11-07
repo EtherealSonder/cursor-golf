@@ -1,3 +1,9 @@
+import { RobotVisionConeCourseMask } from "../entities/robots/RobotVisionConeCourseMask";
+import { RobotVisionConeRenderer } from "../entities/robots/RobotVisionConeRenderer";
+import { RobotDynamicObstacleLayer } from "../navigation/RobotDynamicObstacleLayer";
+import { RobotNavigationScheduler } from "../navigation/RobotNavigationScheduler";
+import { RobotPathCache } from "../navigation/RobotPathCache";
+import { assertRobotDynamicNavigationValidation } from "../debug/RobotDynamicNavigationValidation";
 import { HoleFireExclusion } from "../environment/HoleFireExclusion";
 import { DEFAULT_HOLE_FIRE_EXCLUSION_DEFINITION } from "../config/HoleFireExclusionDefinition";
 import { HoleWaterExclusion } from "../environment/HoleWaterExclusion";
@@ -425,6 +431,11 @@ import {
     Robot,
 } from "../entities/robots/Robot";
 
+import { RobotNavigationGridBuilder } from "../navigation/RobotNavigationGridBuilder";
+import { RobotPathPlanner } from "../navigation/RobotPathPlanner";
+import { assertRobotPathfindingValidation } from "../debug/RobotPathfindingValidation";
+import type { RobotNavigationGrid } from "../navigation/RobotNavigationGrid";
+import { assertRobotNavigationGridValidation } from "../debug/RobotNavigationGridValidation";
 import {
     RobotNavigationQuery,
 } from "../entities/robots/RobotNavigationQuery";
@@ -1276,6 +1287,17 @@ export class World {
     /** Second Wind Robot used by the expanded environmental stress-test scene. */
     private secondWindRobot: Robot | null = null;
 
+    private robotNavigationGrid: RobotNavigationGrid | null = null;
+    private robotPathPlanner: RobotPathPlanner | null = null;
+    private robotDynamicLayer: RobotDynamicObstacleLayer | null = null;
+    private robotNavigationScheduler: RobotNavigationScheduler | null = null;
+    private robotPathCache: RobotPathCache | null = null;
+    private robotStaticSignature = "";
+    private robotStaticCheckSeconds = 0;
+
+    private readonly robotVisionCones = new Map<Robot, RobotVisionConeRenderer>();
+    private robotVisionConeCourseMask: RobotVisionConeCourseMask | null = null;
+
     private robotDebugVisualizer:
         RobotDebugVisualizer | null = null;
 
@@ -1447,6 +1469,19 @@ export class World {
             new WorldPresentationLayers(
                 this.worldContainer,
             );
+        // Mask the complete vision-cone layer to the authored playable polygon.
+        // Openings in wall segments remain outside the mask when beyond the course.
+        const visionCourseGeometry = this.runtimeLevel.course.generatedGeometry;
+        if (visionCourseGeometry) {
+            this.robotVisionConeCourseMask = new RobotVisionConeCourseMask(
+                visionCourseGeometry, this.worldContainer,
+            );
+            RobotVisionConeRenderer.applyCourseMask(
+                this.presentationLayers.getLayer(WorldRenderLayer.RobotVisionCones),
+                this.robotVisionConeCourseMask.getGraphics(),
+            );
+        }
+
         this.presentationLayers.getLayer(WorldRenderLayer.AirborneEffects)
             .addChild(this.stickyBallSplash.getContainer());
         if (import.meta.env.DEV) assertStickyBallRegression();
@@ -1868,7 +1903,7 @@ export class World {
             });
             this.robotInteractionRegistry.registerStaticObstacle(definition);
             this.staticObstacleDefinitions = [...this.staticObstacleDefinitions, definition];
-            this.addEntity(new StaticObstacle(definition), WorldRenderLayer.SurfaceMechanisms);
+            this.addEntity(new StaticObstacle(definition), WorldRenderLayer.RotatorMechanisms);
         }
 
         // ---------------------------------------------------
@@ -2458,10 +2493,81 @@ export class World {
         this.updateOverdriveVfx(deltaTime);
     }
 
+    private updateRobotVisionCones(deltaTime: number): void {
+        const active = [this.fireRobot, this.secondFireRobot, this.waterRobot,
+            this.secondWaterRobot, this.windRobot, this.secondWindRobot]
+            .filter((robot): robot is Robot => robot !== null && !robot.isDestroyed());
+        const activeSet = new Set(active);
+        for (const [robot, cone] of this.robotVisionCones) {
+            if (!activeSet.has(robot)) {
+                cone.destroy();
+                this.robotVisionCones.delete(robot);
+            }
+        }
+        for (const robot of active) {
+            let cone = this.robotVisionCones.get(robot);
+            if (!cone) {
+                cone = new RobotVisionConeRenderer(robot);
+                this.presentationLayers.getLayer(WorldRenderLayer.RobotVisionCones)
+                    .addChild(cone.getContainer());
+                this.robotVisionCones.set(robot, cone);
+            }
+            cone.update(deltaTime);
+        }
+    }
+
+    public getRobotNavigationGrid(): RobotNavigationGrid | null { return this.robotNavigationGrid; }
+
     public update(
         deltaTime:
             number,
     ): void {
+        if (!this.robotNavigationGrid) {
+            if (import.meta.env.DEV) assertRobotNavigationGridValidation();
+            this.robotNavigationGrid = RobotNavigationGridBuilder.build(
+                this.technicalBounds, this.navigationBounds, this.robotInteractionRegistry,
+            );
+            if (import.meta.env.DEV) assertRobotPathfindingValidation();
+            if (import.meta.env.DEV) assertRobotDynamicNavigationValidation();
+            this.robotStaticSignature = this.robotInteractionRegistry.getStaticNavigationSignature();
+            this.robotDynamicLayer = new RobotDynamicObstacleLayer(this.robotNavigationGrid,this.robotInteractionRegistry);
+            this.robotNavigationScheduler = new RobotNavigationScheduler();
+            this.robotPathCache = new RobotPathCache();
+            this.robotDynamicLayer.update(1);
+            this.robotPathPlanner = new RobotPathPlanner(this.robotNavigationGrid,this.robotDynamicLayer,this.robotNavigationScheduler,this.robotPathCache);
+            this.fireRobot?.setPathPlanner(this.robotPathPlanner);
+            this.waterRobot?.setPathPlanner(this.robotPathPlanner);
+            this.windRobot?.setPathPlanner(this.robotPathPlanner);
+            this.robotDebugVisualizer?.setNavigationGrid(this.robotNavigationGrid);
+            if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("navgrid") === "1") console.info("[RN-1] Navigation grid", {
+                columns: this.robotNavigationGrid.columns, rows: this.robotNavigationGrid.rows,
+                traversable: this.robotNavigationGrid.getTraversableCount(),
+                blocked: this.robotNavigationGrid.getBlockedCount(),
+            });
+        }
+        // Static destruction is infrequent. Refresh only when the registered static blocker set changes.
+        this.robotStaticCheckSeconds += deltaTime;
+        if (this.robotNavigationGrid && this.robotStaticCheckSeconds >= 1) {
+            this.robotStaticCheckSeconds = 0;
+            const signature = this.robotInteractionRegistry.getStaticNavigationSignature();
+            if (signature !== this.robotStaticSignature) {
+                this.robotStaticSignature = signature;
+                this.robotNavigationGrid = RobotNavigationGridBuilder.build(
+                    this.technicalBounds, this.navigationBounds, this.robotInteractionRegistry,
+                );
+                this.robotDynamicLayer = new RobotDynamicObstacleLayer(this.robotNavigationGrid,this.robotInteractionRegistry);
+                this.robotDynamicLayer.update(1);
+                this.robotPathCache?.clear();
+                this.robotPathPlanner = new RobotPathPlanner(this.robotNavigationGrid,this.robotDynamicLayer,this.robotNavigationScheduler??undefined,this.robotPathCache??undefined);
+                this.fireRobot?.setPathPlanner(this.robotPathPlanner);
+                this.waterRobot?.setPathPlanner(this.robotPathPlanner);
+                this.windRobot?.setPathPlanner(this.robotPathPlanner);
+                this.robotDebugVisualizer?.setNavigationGrid(this.robotNavigationGrid);
+            }
+        }
+        this.robotNavigationScheduler?.beginFrame();
+        this.robotDynamicLayer?.update(deltaTime);
+        this.robotPathCache?.tick(deltaTime);
         if (this.wildfireController && this.ball) {
             this.wildfireController.setSpawnRegion(
                 this.ball.getX(), this.ball.getY(),
@@ -3234,6 +3340,8 @@ export class World {
             this.crateRewardText?.update(deltaTime);
         });
 
+        this.updateRobotVisionCones(deltaTime);
+
         this.robotDebugVisualizer
             ?.update();
 
@@ -3762,6 +3870,19 @@ export class World {
         this.ballTrail =
             null;
 
+        for (const cone of this.robotVisionCones.values()) cone.destroy();
+        this.robotVisionCones.clear();
+        this.presentationLayers.getLayer(WorldRenderLayer.RobotVisionCones).mask = null;
+        this.robotVisionConeCourseMask?.destroy();
+        this.robotVisionConeCourseMask = null;
+        this.robotNavigationGrid = null;
+        this.robotPathPlanner = null;
+        this.robotDynamicLayer = null;
+        this.robotNavigationScheduler = null;
+        this.robotPathCache?.clear();
+        this.robotPathCache = null;
+        this.robotStaticSignature = "";
+        this.robotStaticCheckSeconds = 0;
         this.robotDebugVisualizer
             ?.destroy();
 
@@ -5234,7 +5355,7 @@ export class World {
             }),
         });
 
-        if (definition.debugEnabled) {
+        if (new URLSearchParams(window.location.search).get("robotdebug") === "1") {
             this.robotDebugVisualizer =
                 new RobotDebugVisualizer(
                     this.fireRobot,

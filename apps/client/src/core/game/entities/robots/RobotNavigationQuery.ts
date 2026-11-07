@@ -46,6 +46,23 @@ export class RobotNavigationQuery {
      * Recovery searches concentric rings so relocation stays local and uses the
      * same authoritative NAVIGATION_BLOCKER clearance test as normal roaming.
      */
+    /** RN-3: choose a physically reachable local escape point, never teleport through walls. */
+    public findLocalEscapePosition(x: number, y: number, clearance: number, distance: number, attempts: number): RobotNavigationPoint | null {
+        const startClear = this.isPositionClear(x, y, clearance);
+        for (let ring = 1; ring <= 3; ring++) {
+            const radius = distance * ring / 3;
+            for (let i = 0; i < attempts; i++) {
+                const angle = i * Math.PI * 2 / attempts;
+                const target = { x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius };
+                if (!this.isPositionClear(target.x, target.y, clearance)) continue;
+                if (startClear && !this.isSegmentClear(x, y, target.x, target.y, clearance)) continue;
+                // When embedded, do not claim that an unverified segment is traversable.
+                if (!startClear) continue;
+                return target;
+            }
+        }
+        return null;
+    }
     public findRecoveryPosition(
         centerX: number,
         centerY: number,
@@ -73,12 +90,60 @@ export class RobotNavigationQuery {
         return null;
     }
 
+    /** RN-1 rasterization excludes live actors while retaining the same geometric clearance tests. */
+    public isPositionClearAgainstStatic(x: number, y: number, clearanceRadius: number): boolean {
+        if (x - clearanceRadius < this.courseBoundary.minimumX || x + clearanceRadius > this.courseBoundary.maximumX ||
+            y - clearanceRadius < this.courseBoundary.minimumY || y + clearanceRadius > this.courseBoundary.maximumY) return false;
+        if (this.playableBounds && !this.playableBounds.containsCircle(x, y, clearanceRadius)) return false;
+        for (const blocker of this.registry.getStaticNavigationBlockers()) {
+            if (this.intersects(x, y, clearanceRadius, blocker)) return false;
+        }
+        return true;
+    }
+
     public isPositionClear(x: number, y: number, clearanceRadius: number): boolean {
         if (x - clearanceRadius < this.courseBoundary.minimumX || x + clearanceRadius > this.courseBoundary.maximumX || y - clearanceRadius < this.courseBoundary.minimumY || y + clearanceRadius > this.courseBoundary.maximumY) return false;
         if (this.playableBounds && !this.playableBounds.containsCircle(x, y, clearanceRadius)) return false;
         for (const blocker of this.registry.getNavigationBlockers()) {
             if (this.shouldSkipBlocker(blocker.id)) continue;
             if (this.intersects(x, y, clearanceRadius, blocker)) return false;
+        }
+        return true;
+    }
+
+    /** Dynamic-only clearance for short-range route validation. */
+    public isPositionClearAgainstDynamic(x:number,y:number,clearanceRadius:number):boolean {
+        for(const blocker of this.registry.getDynamicNavigationBlockers()){
+            if(this.shouldSkipBlocker(blocker.id))continue;
+            if(this.intersects(x,y,clearanceRadius,blocker))return false;
+        }
+        return true;
+    }
+    public isDynamicSegmentClear(x0:number,y0:number,x1:number,y1:number,clearance:number,spacing=12):boolean {
+        const count=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)/Math.max(4,spacing)));
+        for(let i=0;i<=count;i++){
+            const t=i/count;
+            if(!this.isPositionClearAgainstDynamic(x0+(x1-x0)*t,y0+(y1-y0)*t,clearance))return false;
+        }
+        return true;
+    }
+
+    /** Static-only visibility test for A* path smoothing. Includes both endpoints. */
+    public isStaticSegmentClear(x0: number, y0: number, x1: number, y1: number, clearance: number, spacing = 8): boolean {
+        const count = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / Math.max(2, spacing)));
+        for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            if (!this.isPositionClearAgainstStatic(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, clearance)) return false;
+        }
+        return true;
+    }
+
+    /** RN-3B: verify full clearance of a planned segment, including both endpoints. */
+    public isPlannedSegmentClear(x0: number, y0: number, x1: number, y1: number, clearance: number, spacing = 6): boolean {
+        const count = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / Math.max(2, spacing)));
+        for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            if (!this.isPositionClearAgainstStatic(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, clearance)) return false;
         }
         return true;
     }
