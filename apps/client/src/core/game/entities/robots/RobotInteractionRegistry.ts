@@ -117,6 +117,11 @@ export class RobotInteractionRegistry {
         return this.filter((entry) => entry.capabilities.visionOccluder);
     }
 
+    /** Live entries, filtered once per presentation update; callers can snapshot geometry. */
+    public getActiveVisionOccluders(excludedId?: string): readonly RobotInteractionEntry[] {
+        return this.filter((entry) => entry.capabilities.visionOccluder && entry.id !== excludedId);
+    }
+
     public clear(): void { this.entries.clear(); }
 
     private filter(predicate: (entry: RobotInteractionEntry) => boolean): RobotInteractionEntry[] {

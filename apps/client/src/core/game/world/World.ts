@@ -1,3 +1,5 @@
+import { snapshotVisionOccluders } from "../entities/robots/RobotVisionOcclusionGeometry";
+import { assertRobotVisionOcclusionValidation } from "../debug/RobotVisionOcclusionValidation";
 import { RobotVisionConeCourseMask } from "../entities/robots/RobotVisionConeCourseMask";
 import { RobotVisionConeRenderer } from "../entities/robots/RobotVisionConeRenderer";
 import { RobotDynamicObstacleLayer } from "../navigation/RobotDynamicObstacleLayer";
@@ -2504,6 +2506,7 @@ export class World {
                 this.robotVisionCones.delete(robot);
             }
         }
+        const occluders = snapshotVisionOccluders(this.robotInteractionRegistry.getActiveVisionOccluders());
         for (const robot of active) {
             let cone = this.robotVisionCones.get(robot);
             if (!cone) {
@@ -2512,7 +2515,7 @@ export class World {
                     .addChild(cone.getContainer());
                 this.robotVisionCones.set(robot, cone);
             }
-            cone.update(deltaTime);
+            cone.update(deltaTime, occluders);
         }
     }
 
@@ -2528,7 +2531,10 @@ export class World {
                 this.technicalBounds, this.navigationBounds, this.robotInteractionRegistry,
             );
             if (import.meta.env.DEV) assertRobotPathfindingValidation();
-            if (import.meta.env.DEV) assertRobotDynamicNavigationValidation();
+            if (import.meta.env.DEV) {
+                assertRobotDynamicNavigationValidation();
+                assertRobotVisionOcclusionValidation();
+            }
             this.robotStaticSignature = this.robotInteractionRegistry.getStaticNavigationSignature();
             this.robotDynamicLayer = new RobotDynamicObstacleLayer(this.robotNavigationGrid,this.robotInteractionRegistry);
             this.robotNavigationScheduler = new RobotNavigationScheduler();
