@@ -1,3 +1,4 @@
+import type { HoleFireExclusion } from "./HoleFireExclusion";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
@@ -150,6 +151,24 @@ const FIRE_NEIGHBOUR_OFFSETS:
  * cells. Rendering is handled separately by FireVisualizer.
  */
 export class FireManager {
+    private holeFireExclusion: HoleFireExclusion | null = null;
+
+    public setHoleFireExclusion(exclusion: HoleFireExclusion | null): void {
+        this.holeFireExclusion = exclusion;
+        // Remove any ground-fire cell that predates registration.
+        if (!exclusion) return;
+        for (let i = this.activeCells.length - 1; i >= 0; i--) {
+            const cell = this.activeCells[i];
+            if (!exclusion.contains(cell.getWorldCenterX(), cell.getWorldCenterY())) continue;
+            this.activeCells.splice(i, 1);
+            this.occupiedCellKeys.delete(this.createCellKey(cell.getGridX(), cell.getGridY()));
+        }
+    }
+
+    public isHoleFireExcluded(x: number, y: number, visual = false): boolean {
+        return this.holeFireExclusion?.contains(x, y, visual) ?? false;
+    }
+
     private readonly activeCells:
         FireCell[] = [];
 
@@ -539,6 +558,8 @@ export class FireManager {
         ) {
             return false;
         }
+
+        if (this.isHoleFireExcluded(worldX, worldY)) return false;
 
         const gridPosition =
             this.worldToGrid(
@@ -1764,6 +1785,8 @@ export class FireManager {
         worldX: number,
         worldY: number,
     ): boolean {
+        if (this.isHoleFireExcluded(worldX, worldY)) return false;
+
         const sample =
             this.surfaceSystem
                 .getSurfaceAt(

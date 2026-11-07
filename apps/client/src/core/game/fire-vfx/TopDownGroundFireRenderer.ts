@@ -63,6 +63,7 @@ export class TopDownGroundFireRenderer {
         activeGridKeys.clear();
 
         for (const cell of this.fireManager.getActiveCells()) {
+            if (this.fireManager.isHoleFireExcluded(cell.getWorldCenterX(), cell.getWorldCenterY())) continue;
             if (this.directionalRegion.ownsFireCell(cell)) {
                 continue;
             }
@@ -324,6 +325,12 @@ export class TopDownGroundFireRenderer {
             cell.getWorldCenterX() + Math.cos(angle) * radius,
             cell.getWorldCenterY() + Math.sin(angle) * radius,
         );
+        // The coarse FireCell can overlap the cup even if its centre is outside.
+        // Suppress geometry whose origin would obscure the protected opening.
+        if (this.fireManager.isHoleFireExcluded(element.sprite.x, element.sprite.y, true)) {
+            this.deactivate(element);
+            return;
+        }
         element.sprite.rotation = this.range(
             d.rotationMinimum,
             d.rotationMaximum,

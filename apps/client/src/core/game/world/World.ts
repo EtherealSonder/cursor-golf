@@ -1,3 +1,10 @@
+import { HoleFireExclusion } from "../environment/HoleFireExclusion";
+import { DEFAULT_HOLE_FIRE_EXCLUSION_DEFINITION } from "../config/HoleFireExclusionDefinition";
+import { HoleWaterExclusion } from "../environment/HoleWaterExclusion";
+import { DEFAULT_HOLE_WATER_EXCLUSION_DEFINITION } from "../config/HoleWaterExclusionDefinition";
+import { HoleObjectCaptureController } from "../hole/HoleObjectCaptureController";
+import type { HoleCaptureTarget } from "../hole/HoleCaptureTarget";
+import { ELEMENTAL_MARBLE_PHYSICS } from "../marble/ElementalMarbleDefinition";
 import { HoleAttractionSystem } from "../physics/HoleAttractionSystem";
 import { CrateRewardFloatingText } from "../vfx/CrateRewardFloatingText";
 import { StickyBallSplash } from "../vfx/StickyBallSplash";
@@ -140,6 +147,7 @@ import { runtimeObjectsOfType, type RuntimeLevelDefinition } from "../level/Leve
 import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
 import { Rock } from "../entities/props/Rock";
 import { RockPresentationType } from "../entities/props/RockPresentationType";
+import { DEFAULT_ROCK_SIZE_DISTRIBUTION, sampleSmallRockRadius } from "../config/RockSizeDistributionDefinition";
 import { SmallRockPhysicsValidation } from "../debug/SmallRockPhysicsValidation";
 import { RockInteractionValidation } from "../debug/RockInteractionValidation";
 import { RockInteractionSystem } from "./RockInteractionSystem";
@@ -1279,6 +1287,7 @@ export class World {
     private ballTrail:
         BallTrail | null = null;
 
+    private readonly holeObjectCaptureController = new HoleObjectCaptureController();
     private hole:
         Hole | null = null;
 
@@ -1513,10 +1522,11 @@ export class World {
                 this.physicsWorld,
             );
 
+        // RK-2: global wind skips rocks; local fans use size-sensitive resistance.
         this.globalWindDynamicForceSystem = new GlobalWindDynamicForceSystem(
             this.windManager,
             this.physicsWorld,
-            (body) => body === this.fireRobot || body === this.waterRobot ||
+            (body) => body instanceof Rock || body === this.fireRobot || body === this.waterRobot ||
                 body === this.windRobot || body === this.secondWaterRobot ||
                 body === this.secondFireRobot || body === this.secondWindRobot,
         );
@@ -2034,14 +2044,17 @@ export class World {
             if (!courseBounds) throw new Error("P-4B test placement requires generated course geometry.");
             for (let i = 0; i < 11; i++) {
                 const large = i < 5;
-                const radius = large ? 38 + random() * 19 : 11 + random() * 5;
+                const radius = large
+                    ? DEFAULT_ROCK_SIZE_DISTRIBUTION.boulderMinimumRadius + random() *
+                        (DEFAULT_ROCK_SIZE_DISTRIBUTION.boulderMaximumRadius - DEFAULT_ROCK_SIZE_DISTRIBUTION.boulderMinimumRadius)
+                    : sampleSmallRockRadius(random);
                 for (let attempt = 0; attempt < 300; attempt++) {
                     const x = courseBounds.minimumX + random() * (courseBounds.maximumX - courseBounds.minimumX);
                     const y = courseBounds.minimumY + random() * (courseBounds.maximumY - courseBounds.minimumY);
                     // Check the entire footprint, not merely the centre. A generous
                     // edge clearance keeps both boulders and rocks off the walls.
-                    if (!this.courseEnvironmentBoundary.containsCircle(x, y, radius + 22)) continue;
-                    if (occupied.some(o => Math.hypot(x - o.x, y - o.y) < radius + o.radius + 24)) continue;
+                    if (!this.courseEnvironmentBoundary.containsCircle(x, y, radius + DEFAULT_ROCK_SIZE_DISTRIBUTION.minimumWallClearance)) continue;
+                    if (occupied.some(o => Math.hypot(x - o.x, y - o.y) < radius + o.radius + DEFAULT_ROCK_SIZE_DISTRIBUTION.minimumObjectClearance)) continue;
                     rockPresentationPlacements.push({
                         id: `p4b-test-${i}`, x, y, radius,
                         seed: Math.floor(random() * 1000000),
@@ -2220,6 +2233,24 @@ export class World {
             this.hole,
             WorldRenderLayer.GroundState,
         );
+
+        // HE-1: The cup is solid only to ground-water occupancy, not to balls,
+        // airborne droplets or other gameplay objects.
+        const holeWaterExclusion = new HoleWaterExclusion(
+            this.runtimeLevel.hole.x,
+            this.runtimeLevel.hole.y,
+            DEFAULT_HOLE_DEFINITION.visualRadius,
+            DEFAULT_HOLE_WATER_EXCLUSION_DEFINITION,
+        );
+        this.waterObstacleField.setHoleExclusion(holeWaterExclusion);
+        this.waterField.setHoleWaterExclusion(holeWaterExclusion);
+        // HE-2: only ground-fire simulation and presentation use this exclusion.
+        this.fireManager.setHoleFireExclusion(new HoleFireExclusion(
+            this.runtimeLevel.hole.x,
+            this.runtimeLevel.hole.y,
+            DEFAULT_HOLE_DEFINITION.visualRadius,
+            DEFAULT_HOLE_FIRE_EXCLUSION_DEFINITION,
+        ));
 
         this.windValidationMetrics =
             new WindValidationMetrics(
@@ -3105,6 +3136,52 @@ export class World {
             marble => this.deactivateElementalMarble(marble),
             marble => this.removeElementalMarble(marble),
         );
+        // HC-2: capture non-player objects independently of the golf ball's hole lifecycle.
+        if (this.hole) {
+            const hx = this.hole.getX(), hy = this.hole.getY();
+            const targets: HoleCaptureTarget[] = [];
+            for (const marble of this.elementalMarbles) {
+                targets.push({
+                    id: `marble:${marble.id}`, radius: ELEMENTAL_MARBLE_PHYSICS.radius,
+                    getX: () => marble.getX(), getY: () => marble.getY(),
+                    getVelocityX: () => marble.getVelocityX(), getVelocityY: () => marble.getVelocityY(),
+                    isAvailable: () => !marble.isRemoving(),
+                    applyAttraction: (vx, vy) => marble.applyImpulseAtWorldPoint(vx / Math.max(0.0001, marble.getInverseMass()), vy / Math.max(0.0001, marble.getInverseMass()), marble.getX(), marble.getY()),
+                    beginCapture: () => { if (marble.beginRemoval()) this.deactivateElementalMarble(marble); },
+                    moveTo: (x, y) => { marble.physics.teleportTo(x, y, 0, 0); marble.syncSprite(); },
+                    setScale: scale => marble.setRemovalScale(scale),
+                    remove: () => this.removeElementalMarble(marble),
+                });
+            }
+            for (const rock of this.rocks) {
+                if (!rock.isSmallRock()) continue;
+                targets.push({
+                    id: `rock:${rock.id}`, radius: rock.getRadius(),
+                    getX: () => rock.getX(), getY: () => rock.getY(),
+                    getVelocityX: () => rock.getVelocityX(), getVelocityY: () => rock.getVelocityY(),
+                    isAvailable: () => !rock.isDestroyed() && !rock.isSuctionCaptured(),
+                    applyAttraction: (vx, vy) => rock.applyImpulseAtWorldPoint(vx / Math.max(0.0001, rock.getInverseMass()), vy / Math.max(0.0001, rock.getInverseMass()), rock.getX(), rock.getY()),
+                    beginCapture: () => { rock.beginHoleCapture(); this.physicsWorld.unregisterDynamicBody(rock); this.windSuctionCaptureSystem.unregisterTarget(`small-rock-${rock.id}`); this.rockRobotInteractionUnregister.get(rock)?.(); this.rockRobotInteractionUnregister.delete(rock); this.invalidateRobotTargets(); },
+                    moveTo: (x, y) => rock.setPosition(x, y),
+                    setScale: scale => rock.setHoleCaptureScale(scale),
+                    remove: () => this.removeEntity(rock),
+                });
+            }
+            for (const sprinkler of this.sprinklers) {
+                targets.push({
+                    id: `sprinkler:${sprinkler.id}`, radius: sprinkler.getHoleCaptureRadius(),
+                    getX: () => sprinkler.getX(), getY: () => sprinkler.getY(),
+                    getVelocityX: () => sprinkler.getVelocityX(), getVelocityY: () => sprinkler.getVelocityY(),
+                    isAvailable: () => !sprinkler.isDestroyed() && !sprinkler.isSuctionCapturing(),
+                    applyAttraction: (vx, vy) => sprinkler.applyImpulseAtWorldPoint(vx / Math.max(0.0001, sprinkler.getInverseMass()), vy / Math.max(0.0001, sprinkler.getInverseMass()), sprinkler.getX(), sprinkler.getY()),
+                    beginCapture: () => { sprinkler.beginHoleCapture(); this.waterSourceSystem.removeSource(sprinkler.getSourceId()); this.physicsWorld.unregisterDynamicBody(sprinkler); this.windSuctionCaptureSystem.unregisterTarget(sprinkler.getSourceId()); this.sprinklerRobotInteractionUnregister.get(sprinkler)?.(); this.sprinklerRobotInteractionUnregister.delete(sprinkler); this.invalidateRobotTargets(); },
+                    moveTo: (x, y) => sprinkler.setPosition(x, y),
+                    setScale: scale => sprinkler.setHoleCaptureScale(scale),
+                    remove: () => this.removeEntity(sprinkler),
+                });
+            }
+            this.holeObjectCaptureController.update(deltaTime, hx, hy, this.hole.getDefinition().objectCaptureOpeningRadius, targets);
+        }
         this.objectVoidController.updateCrates(deltaTime, this.crates,
             crate => {
                 this.crateRobotUnregister.get(crate.id)?.();
@@ -3962,6 +4039,9 @@ export class World {
 
         this.hole =
             null;
+        this.waterObstacleField.setHoleExclusion(null);
+        this.waterField.setHoleWaterExclusion(null);
+        this.fireManager.setHoleFireExclusion(null);
 
         this.club =
             null;

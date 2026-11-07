@@ -254,7 +254,7 @@ export class Ball extends Entity {
     public setStickyAttachmentController(controller: StickyBallAttachmentController): void {
         this.stickyAttachment = controller;
     }
-    private attachToStatic(id: string, nx: number, ny: number, follow?: () => { x: number; y: number } | null): boolean {
+    private attachToStatic(id: string, follow?: () => { x: number; y: number } | null): boolean {
         if (!this.stickyBallEnabled || !this.stickyAttachment || this.getSpeed() < 0.5) return false;
         const anchor = { x: this.getX(), y: this.getY() };
         const origin = follow?.();
@@ -300,7 +300,7 @@ export class Ball extends Entity {
         if (this.isStickyBallAttached()) return this.stickyAttachment.getSnapshot().targetId === id;
         const inward = this.getVelocityX() * nx + this.getVelocityY() * ny;
         if (this.getSpeed() <= 0.5 || inward >= -0.01) return false;
-        return this.attachToStatic(id, nx, ny);
+        return this.attachToStatic(id);
     }
     private ghostBallEnabled = false;
     public isGhostBallActive(): boolean { return this.ghostBallEnabled; }
@@ -2489,7 +2489,7 @@ export class Ball extends Entity {
             this.getSpeed();
 
         if (this.stickyBallEnabled && speedBeforeCollision > 0.5 &&
-            this.attachToStatic("course-boundary", 0, 0)) return;
+            this.attachToStatic("course-boundary")) return;
 
         if (
             collision.collidedLeft &&
@@ -2819,7 +2819,7 @@ export class Ball extends Entity {
 
         // Bumpers are deliberately deferred to P-4C. Never consume their responder.
         if (!this.staticCollisionResponders?.get(manifold.obstacleId) &&
-            this.attachToStatic(manifold.obstacleId, manifold.normalX, manifold.normalY)) return;
+            this.attachToStatic(manifold.obstacleId)) return;
 
         // P-4C: radial bumpers have a special powered responder. Sticky Ball
         // must intercept it before any bumper impulse is applied.
@@ -3057,7 +3057,7 @@ export class Ball extends Entity {
                 const ny = dynamicManifold.normalY;
                 this.translate(nx * Math.max(0, dynamicManifold.penetrationDepth),
                     ny * Math.max(0, dynamicManifold.penetrationDepth));
-                if (this.attachToStatic(stickyTarget, nx, ny, () => ({ x: obstacle.getX(), y: obstacle.getY() }))) return true;
+                if (this.attachToStatic(stickyTarget, () => ({ x: obstacle.getX(), y: obstacle.getY() }))) return true;
             }
 
             const result =
@@ -3107,7 +3107,7 @@ export class Ball extends Entity {
 
                 // R-9: physics collision is authoritative. Report the resolved
                 // contact to any impact-aware dynamic body after resolution.
-                obstacle.notifyExternalImpact?.({
+                if ("notifyExternalImpact" in obstacle && typeof obstacle.notifyExternalImpact === "function") obstacle.notifyExternalImpact({
                     sourceKind: "ball",
                     sourceId: "player-ball",
                     positionX: dynamicManifold.contactPointX,

@@ -1,3 +1,5 @@
+import { Rock } from "../../entities/props/Rock";
+import { DEFAULT_ROCK_WIND_RESISTANCE_DEFINITION as ROCK_WIND } from "../../config/RockWindResistanceDefinition";
 import { PerformanceInvestigationCounters as PassBCounters } from "../../debug/PerformanceInvestigationCounters";
 import {
     DEFAULT_LOCAL_WIND_DYNAMIC_FORCE_DEFINITION,
@@ -110,6 +112,19 @@ export class LocalWindDynamicForceSystem {
                     (source) => source.id === sourceId && source.flowMode === "pull",
                 ),
             );
+            // Ordinary fans cannot move stone except for tiny pebbles in strong gusts.
+            // Robot suction is a separate intentional mechanic and stays intact.
+            let rockWindMultiplier = 1;
+            if (body instanceof Rock) {
+                if (hasPullSource) {
+                    rockWindMultiplier = ROCK_WIND.robotPullMultiplier;
+                } else if (body.getRadius() <= ROCK_WIND.fanMaximumRadius &&
+                    accelerationMagnitude >= ROCK_WIND.fanMinimumAcceleration) {
+                    rockWindMultiplier = ROCK_WIND.fanImpulseMultiplier;
+                } else {
+                    continue;
+                }
+            }
             const mass = 1 / inverseMass;
             const heavyProgress = Math.max(0, Math.min(1,
                 (mass - this.definition.referenceMass) /
@@ -120,9 +135,9 @@ export class LocalWindDynamicForceSystem {
                 : 1;
 
             let impulseX =
-                acceleration.x * this.definition.referenceMass * pullHeavyMultiplier * deltaTime;
+                acceleration.x * this.definition.referenceMass * pullHeavyMultiplier * rockWindMultiplier * deltaTime;
             let impulseY =
-                acceleration.y * this.definition.referenceMass * pullHeavyMultiplier * deltaTime;
+                acceleration.y * this.definition.referenceMass * pullHeavyMultiplier * rockWindMultiplier * deltaTime;
 
             const impulseMagnitude = Math.hypot(impulseX, impulseY);
             if (impulseMagnitude > this.definition.maximumImpulsePerStep) {

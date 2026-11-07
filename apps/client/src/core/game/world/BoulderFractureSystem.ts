@@ -4,6 +4,7 @@ import {
     type BoulderFractureDefinition,
 } from "../config/BoulderFractureDefinition";
 import type { Rock } from "../entities/props/Rock";
+import { sampleSmallRockRadius } from "../config/RockSizeDistributionDefinition";
 
 export interface BoulderFragmentSpawnDescriptor {
     readonly x: number;
@@ -56,13 +57,9 @@ export class BoulderFractureSystem {
         const baseAngle = nextRandom(randomState) * Math.PI * 2;
 
         for (let index = 0; index < count; index += 1) {
-            const radius =
-                this.definition.minimumFragmentRadius +
-                Math.floor(
-                    nextRandom(randomState) *
-                    (this.definition.maximumFragmentRadius -
-                        this.definition.minimumFragmentRadius + 1),
-                );
+            // RK-1: fragments inherit the same broad pebble-to-medium
+            // distribution as ordinary Small Rocks.
+            const radius = sampleSmallRockRadius(() => nextRandom(randomState));
             const angle =
                 baseAngle +
                 (index / count) * Math.PI * 2 +

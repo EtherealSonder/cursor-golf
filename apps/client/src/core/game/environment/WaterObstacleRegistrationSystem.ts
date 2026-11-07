@@ -83,6 +83,7 @@ export class WaterObstacleRegistrationSystem {
             for (const registration of staticRegistrations) {
                 this.addGroundRegistration(registration);
             }
+            this.groundField.applyHoleExclusion();
             this.groundField.captureStaticOccupancy();
             this.staticGroundSignature = staticSignature;
         } else {

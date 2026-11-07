@@ -458,6 +458,8 @@ export class GroundFireEmitter {
                 visualEnergy,
             );
 
+        if (this.fireManager.isHoleFireExcluded(activation.x, activation.y, true)) return false;
+
         return this.spawnParticle(
             thermalRole
                 .textureVariant,
@@ -705,6 +707,7 @@ export class GroundFireEmitter {
          * This avoids a LocalWindSystem query for every active particle on
          * every frame while making strong Wind readable immediately.
          */
+        // HE-2: never emit ground-fire particles from inside the cup.
         const windResponse =
             this.getVisualWindResponse(
                 spawnX,

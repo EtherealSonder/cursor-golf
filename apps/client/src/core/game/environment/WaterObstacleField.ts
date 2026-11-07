@@ -1,3 +1,4 @@
+import type { HoleWaterExclusion } from "./HoleWaterExclusion";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 
 import type {
@@ -64,6 +65,23 @@ export class WaterObstacleField {
         this.courseMask = new Uint8Array(this.blocked.length);
     }
 
+    private holeExclusion: HoleWaterExclusion | null = null;
+
+    public setHoleExclusion(exclusion: HoleWaterExclusion | null): void {
+        this.holeExclusion = exclusion;
+        this.invalidateStaticOccupancy();
+        this.clear();
+    }
+
+    public applyHoleExclusion(): void {
+        if (!this.holeExclusion) return;
+        this.rasterizeCircle(
+            this.holeExclusion.x,
+            this.holeExclusion.y,
+            this.holeExclusion.getBlockedRadius(),
+        );
+    }
+
     private readonly courseMask: Uint8Array;
 
     // Immutable ground occupancy from static PhysicsWorld registrations.
@@ -88,6 +106,7 @@ export class WaterObstacleField {
         } else {
             this.blocked.set(this.courseMask);
         }
+        this.applyHoleExclusion();
     }
 
 
@@ -112,6 +131,7 @@ export class WaterObstacleField {
         void {
 
         this.blocked.set(this.courseMask);
+        this.applyHoleExclusion();
     }
 
     public getBlockedCellCount():

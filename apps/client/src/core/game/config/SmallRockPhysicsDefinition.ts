@@ -14,6 +14,10 @@ export interface SmallRockPhysicsDefinition {
     readonly roughSettleAngularSpeed: number;
     readonly maximumLinearSpeed: number;
     readonly maximumAngularSpeed: number;
+    readonly minimumLinearDampingMultiplier: number;
+    readonly maximumLinearDampingMultiplier: number;
+    readonly minimumAngularDampingMultiplier: number;
+    readonly maximumAngularDampingMultiplier: number;
 }
 
 /**
@@ -34,8 +38,8 @@ export const DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION:
             friction: 0.82,
         },
 
-        linearDamping: 4.8,
-        angularDamping: 6.2,
+        linearDamping: 3.9,
+        angularDamping: 5.5,
 
         sleepLinearSpeedThreshold: 5.5,
         sleepAngularSpeedThreshold: 0.16,
@@ -46,6 +50,10 @@ export const DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION:
 
         maximumLinearSpeed: 520,
         maximumAngularSpeed: 7.5,
+        minimumLinearDampingMultiplier: 0.85,
+        maximumLinearDampingMultiplier: 1.30,
+        minimumAngularDampingMultiplier: 0.90,
+        maximumAngularDampingMultiplier: 1.20,
     };
 
 export function calculateSmallRockMass(
@@ -66,11 +74,18 @@ export function createSmallRockRigidBodyDefinition(
     definition: SmallRockPhysicsDefinition =
         DEFAULT_SMALL_ROCK_PHYSICS_DEFINITION,
 ): RigidBodyDefinition {
+    // Pebbles lose momentum relatively quickly; medium rocks carry their
+    // momentum farther, but their greater mass makes them harder to launch.
+    const sizeRatio = Math.max(0, Math.min(1, (radius - 4) / 16));
+    const linearMultiplier = definition.maximumLinearDampingMultiplier +
+        (definition.minimumLinearDampingMultiplier - definition.maximumLinearDampingMultiplier) * sizeRatio;
+    const angularMultiplier = definition.maximumAngularDampingMultiplier +
+        (definition.minimumAngularDampingMultiplier - definition.maximumAngularDampingMultiplier) * sizeRatio;
     return {
         bodyType: "dynamic",
         mass: calculateSmallRockMass(radius, definition),
-        linearDamping: definition.linearDamping,
-        angularDamping: definition.angularDamping,
+        linearDamping: definition.linearDamping * linearMultiplier,
+        angularDamping: definition.angularDamping * angularMultiplier,
         sleepLinearSpeedThreshold:
             definition.sleepLinearSpeedThreshold,
         sleepAngularSpeedThreshold:

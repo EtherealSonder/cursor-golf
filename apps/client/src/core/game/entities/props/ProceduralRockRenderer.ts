@@ -70,6 +70,7 @@ export class ProceduralRockRenderer {
             0,
         );
 
+
         if (random() < profile.crackProbability) {
             this.drawCrack(random, radius, palette.detail, profile.outlineWidth);
         }

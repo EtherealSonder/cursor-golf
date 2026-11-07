@@ -1,3 +1,4 @@
+import type { HoleWaterExclusion } from "./HoleWaterExclusion";
 import { CourseGeometryAccelerationProfiler as Geo } from "../debug/CourseGeometryAccelerationProfiler";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 // O6 final Water optimization: preserve the O4 sparse-field solver semantics and allocation profile.
@@ -84,6 +85,12 @@ export class WaterField {
     /** Shared static-cell query for Water and ground interaction consumers. */
     public isCourseCellCenterValid(x:number,y:number,size:number):boolean {
         return !this.courseEnvironmentBoundary || this.courseEnvironmentBoundary.isValidCell(x,y,size,"center");
+    }
+
+    private holeWaterExclusion: HoleWaterExclusion | null = null;
+
+    public setHoleWaterExclusion(exclusion: HoleWaterExclusion | null): void {
+        this.holeWaterExclusion = exclusion;
     }
 
     private obstacleField:
@@ -474,6 +481,8 @@ export class WaterField {
 
         if (this.courseEnvironmentBoundary) Geo.add("cellCacheBypasses");
         if (this.courseEnvironmentBoundary && !this.courseEnvironmentBoundary.containsPoint(worldX, worldY)) return 0;
+        if (this.holeWaterExclusion?.contains(worldX, worldY) &&
+            !this.holeWaterExclusion.settings.redirectDeposits) return 0;
         const gridPosition =
             this.worldToGrid(
                 worldX,

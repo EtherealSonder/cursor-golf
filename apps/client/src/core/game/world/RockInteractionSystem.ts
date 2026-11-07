@@ -11,6 +11,12 @@ export class RockInteractionSystem {
             DEFAULT_ROCK_INTERACTION_DEFINITION,
     ) {}
 
+    /** Size-dependent impulse susceptibility for gameplay callers. */
+    public getImpactMobility(rock: Rock): number {
+        if (!rock.isSmallRock()) return 0;
+        return Math.pow(1 / Math.max(0.001, rock.getMass()), this.definition.smallRockImpactMassExponent);
+    }
+
     public shouldRegisterAsRobotTarget(rock: Rock): boolean {
         return rock.isSmallRock()
             ? this.definition.smallRockRobotTargetEnabled

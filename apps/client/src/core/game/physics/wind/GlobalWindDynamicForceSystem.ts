@@ -1,3 +1,5 @@
+import { Rock } from "../../entities/props/Rock";
+import { DEFAULT_ROCK_WIND_RESISTANCE_DEFINITION as ROCK_WIND } from "../../config/RockWindResistanceDefinition";
 import type { WindManager } from "../../environment/WindManager";
 import type { DynamicCollidable } from "../DynamicCollidable";
 import type { PhysicsWorld } from "../PhysicsWorld";
@@ -31,6 +33,8 @@ export class GlobalWindDynamicForceSystem {
         const minSpeedSquared = this.definition.minimumMovingSpeed ** 2;
         for (const body of this.physicsWorld.getRigidDynamicCollidables()) {
             if (this.isExcluded(body) || body.isFixedPivot?.()) continue;
+            // Stone is too dense for ordinary prevailing wind to sustain rolling.
+            if (body instanceof Rock && ROCK_WIND.globalWindMultiplier === 0) continue;
             const inverseMass = body.getInverseMass();
             if (!Number.isFinite(inverseMass) || inverseMass <= 0) continue;
             const vx = body.getVelocityX();

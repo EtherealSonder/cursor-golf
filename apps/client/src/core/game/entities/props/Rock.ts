@@ -113,6 +113,9 @@ export class Rock extends Entity implements DynamicCollidable {
     public isBoulder(): boolean {
         return this.options.type === RockPresentationType.Boulder;
     }
+    /** HC-2: freeze rock motion before the shared hole animation. */
+    public beginHoleCapture(): void { this.beginSuctionCapture(); this.beginVoidRemoval(); }
+    public setHoleCaptureScale(scale: number): void { this.container.scale.set(Math.max(0, Math.min(1, scale))); }
     public beginSuctionCapture(): void {
         if (this.isSmallRock()) this.suctionCaptured = true;
     }
@@ -181,6 +184,9 @@ export class Rock extends Entity implements DynamicCollidable {
         return this.rigidBody?.getAngularVelocity() ?? 0;
     }
 
+    /** RK-1: mass is derived from projected stone area. */
+    public getMass(): number { return this.rigidBody ? calculateSmallRockMass(this.options.radius) : Infinity; }
+
     public getInverseMass(): number {
         return this.rigidBody?.getInverseMass() ?? 0;
     }
@@ -233,8 +239,7 @@ export class Rock extends Entity implements DynamicCollidable {
         this.rotationRadians +=
             integration.rotationDelta;
 
-        this.container.rotation =
-            this.rotationRadians;
+        this.container.rotation = this.rotationRadians;
 
         // Stone should stop with a deliberate clunk rather than spend seconds
         // microsliding on grass. This is deterministic and never adds jitter.

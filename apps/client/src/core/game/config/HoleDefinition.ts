@@ -9,6 +9,8 @@ export interface HoleDefinition {
     readonly positionX: number;
     readonly positionY: number;
     readonly visualRadius: number;
+    /** HC-2: usable circular opening for non-player objects. */
+    readonly objectCaptureOpeningRadius: number;
     readonly captureAssistMargin: number;
     readonly attractionRadius: number;
     readonly attractionMaxAcceleration: number;
@@ -40,6 +42,7 @@ export const DEFAULT_HOLE_DEFINITION: HoleDefinition = {
     positionX: DEFAULT_GAME_VIEWPORT_DEFINITION.width * 0.75,
     positionY: DEFAULT_GAME_VIEWPORT_DEFINITION.height * 0.5,
     visualRadius: 18,
+    objectCaptureOpeningRadius: 18,
     captureAssistMargin: 8,
     attractionRadius: 60,
     attractionMaxAcceleration: 450,

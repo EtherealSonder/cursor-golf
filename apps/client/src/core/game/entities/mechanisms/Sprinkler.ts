@@ -190,6 +190,8 @@ export class Sprinkler extends Entity {
             this.rotationRadians;
     }
 
+    public getHoleCaptureRadius(): number { return this.definition.collisionRadius; }
+
     public getSourceId(): string {
         return this.sourceId;
     }
@@ -198,6 +200,9 @@ export class Sprinkler extends Entity {
         return this.enabled;
     }
 
+    /** HC-2: stop all nozzles before falling into the hole. */
+    public beginHoleCapture(): void { this.beginSuctionCapture(); }
+    public setHoleCaptureScale(scale: number): void { this.setSuctionCaptureScale(scale); }
     public beginVoidRemoval(): void {
         this.beginSuctionCapture();
     }
