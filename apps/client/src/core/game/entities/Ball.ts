@@ -1,3 +1,4 @@
+import { SurfaceType } from "../surface/SurfaceType";
 import { createPortalHandleStickyAttachment } from "../ball-effects/StickyBallPortalHandleAttachmentAdapter";
 import { Portal } from "../portal/Portal";
 import { Robot } from "./robots/Robot";
@@ -161,6 +162,12 @@ export interface BallImpactEvent {
 
     readonly resultingSpeed:
     number;
+
+    /** Optional audio metadata. Existing camera feedback remains compatible. */
+    readonly colliderId?: string;
+    readonly contactX?: number;
+    readonly contactY?: number;
+    readonly normalImpactSpeed?: number;
 }
 
 export type BallImpactListener = (
@@ -1684,6 +1691,10 @@ export class Ball extends Entity {
 
         resultingSpeed:
             number,
+        colliderId?: string,
+        contactX?: number,
+        contactY?: number,
+        normalImpactSpeed?: number,
     ): void {
 
         if (
@@ -1704,6 +1715,10 @@ export class Ball extends Entity {
             BallImpactEvent = {
 
             type,
+            colliderId,
+            contactX: contactX ?? this.getX(),
+            contactY: contactY ?? this.getY(),
+            normalImpactSpeed,
 
             impactSpeed:
                 Math.max(
@@ -2386,6 +2401,22 @@ export class Ball extends Entity {
         return this.lastSplashEvent;
     }
 
+    /** AUD-3: read-only surface/contact snapshot, without changing physics state. */
+    public getTraversalAudioSnapshot(): {
+        readonly x: number; readonly y: number; readonly speed: number;
+        readonly onSand: boolean; readonly inStandingWater: boolean; readonly active: boolean;
+    } {
+        const x = this.getX();
+        const y = this.getY();
+        const surface = this.surfaceSystem.getSurfaceAt(x, y);
+        return {
+            x, y, speed: this.getSpeed(),
+            onSand: surface.surfaceType === SurfaceType.Sand,
+            inStandingWater: this.lastWaterInteractionState?.isMeaningfullyWet === true,
+            active: this.gameplayState === BallGameplayState.Active && !this.isDeathPhysicsLocked,
+        };
+    }
+
     public getStandingWaterInteractionState(): BallWaterInteractionState | null {
         return this.lastWaterInteractionState;
     }
@@ -2488,6 +2519,15 @@ export class Ball extends Entity {
         const speedBeforeCollision =
             this.getSpeed();
 
+        // Measure the velocity directed into the collided boundary before
+        // reflection. Tangential travel must not exaggerate impact audio.
+        const boundaryNormalImpactSpeed = Math.max(
+            collision.collidedLeft && this.velocityX < 0 ? -this.velocityX : 0,
+            collision.collidedRight && this.velocityX > 0 ? this.velocityX : 0,
+            collision.collidedTop && this.velocityY < 0 ? -this.velocityY : 0,
+            collision.collidedBottom && this.velocityY > 0 ? this.velocityY : 0,
+        );
+
         if (this.stickyBallEnabled && speedBeforeCollision > 0.5 &&
             this.attachToStatic("course-boundary")) return;
 
@@ -2545,6 +2585,8 @@ export class Ball extends Entity {
             "course-boundary",
             speedBeforeCollision,
             speedAfterCollision,
+            "course-boundary",
+            this.getX(), this.getY(), boundaryNormalImpactSpeed,
         );
 
         this.logBoundaryCollision(
@@ -2850,6 +2892,8 @@ export class Ball extends Entity {
                 "static-obstacle",
                 speedBeforeCollision,
                 speedAfterCollision,
+                manifold.obstacleId,
+                this.getX(), this.getY(), -normalVelocity,
             );
             this.logStaticObstacleCollision(
                 manifold,
@@ -2899,6 +2943,8 @@ export class Ball extends Entity {
             "static-obstacle",
             speedBeforeCollision,
             speedAfterCollision,
+            manifold.obstacleId,
+            this.getX(), this.getY(), -normalVelocity,
         );
 
         this.logStaticObstacleCollision(
@@ -3103,6 +3149,10 @@ export class Ball extends Entity {
                     "dynamic-obstacle",
                     speedBeforeCollision,
                     ballSpeedAfterCollision,
+                    obstacleDefinition.id,
+                    dynamicManifold.contactPointX,
+                    dynamicManifold.contactPointY,
+                    result.closingNormalSpeed,
                 );
 
                 // R-9: physics collision is authoritative. Report the resolved

@@ -1,3 +1,8 @@
+import { BallMechanismAudioController } from "./audio/BallMechanismAudioController";
+import { BallPlatformAudioController } from "./audio/BallPlatformAudioController";
+import { BallTraversalAudioController } from "./audio/BallTraversalAudioController";
+import { BallCollisionAudioController } from "./audio/BallCollisionAudioController";
+import { SpatialAudioManager } from "./audio/SpatialAudioManager";
 import { GolfClubForegroundOverlay } from "./presentation/GolfClubForegroundOverlay";
 import { CrateRewardController } from "./crate/CrateRewardController";
 import { assertCrateRewardRegression } from "./debug/CrateRewardRegression";
@@ -81,6 +86,16 @@ import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation
 import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEquivalenceValidation";
 
 export class Game {
+    private readonly spatialAudio = new SpatialAudioManager();
+    private unsubscribeCrateDestructionAudio: (() => void) | null = null;
+    private ballCollisionAudio: BallCollisionAudioController | null = null;
+    private ballTraversalAudio: BallTraversalAudioController | null = null;
+    private ballMechanismAudio: BallMechanismAudioController | null = null;
+    private ballPlatformAudio: BallPlatformAudioController | null = null;
+    private readonly unlockAudioOnPointerDown = () => { this.spatialAudio.unlock(); };
+    public setAudioMuted(muted: boolean): void { this.spatialAudio.setMuted(muted); }
+    public setAudioMasterVolume(volume: number): void { this.spatialAudio.setMasterVolume(volume); }
+
     private readonly ballEffectController = new BallEffectController();
     private crateRewardController: CrateRewardController | null = null;
     private highPowerBallIndicator: HighPowerBallIndicator | null = null;
@@ -211,6 +226,7 @@ export class Game {
     ) {
         this.container =
             container;
+        this.container.addEventListener("pointerdown", this.unlockAudioOnPointerDown, { capture: true });
 
         this.renderer =
             new Renderer();
@@ -288,6 +304,38 @@ export class Game {
             );
 
         this.world.initialize();
+        this.spatialAudio.setCamera(this.world.getCamera());
+        this.unsubscribeCrateDestructionAudio?.();
+        this.unsubscribeCrateDestructionAudio = this.world.subscribeCrateDestructionAudio(event => {
+            const position = { x: event.x, y: event.y };
+            if (event.cause === "ballImpact") {
+                this.spatialAudio.play("crate-destroy", { position, gain: 0.3 });
+                this.spatialAudio.play("golf-crate-powerup", { position });
+            } else {
+                this.spatialAudio.play("crate-destroy", { position });
+            }
+        });
+        void this.spatialAudio.preload("crate-destroy");
+        void this.spatialAudio.preload("golf-crate-powerup");
+        void this.spatialAudio.preload("golf-ball-hit");
+        for (const id of ["golf-ball-wall-impact", "golf-ball-metal-hit", "golf-ball-robot-hit", "golf-ball-sticky-impact"] as const) {
+            void this.spatialAudio.preload(id);
+        }
+        this.ballCollisionAudio?.dispose();
+        this.ballTraversalAudio?.dispose();
+        this.ballMechanismAudio?.dispose();
+        this.ballPlatformAudio?.dispose();
+        const ballForAudio = this.world.getBall();
+        if (ballForAudio) this.ballCollisionAudio = new BallCollisionAudioController(
+            ballForAudio, this.world.getStickyBallAttachmentController(), this.spatialAudio,
+        );
+        this.ballTraversalAudio = ballForAudio ? new BallTraversalAudioController(ballForAudio, this.spatialAudio) : null;
+        this.ballMechanismAudio = ballForAudio ? new BallMechanismAudioController(ballForAudio, this.world, this.spatialAudio) : null;
+        this.ballPlatformAudio = ballForAudio ? new BallPlatformAudioController(ballForAudio, this.world, this.spatialAudio) : null;
+        for (const id of ["golf-ball-bumper", "golf-ball-bush", "golf-ball-roll", "golf-ball-holed"] as const) void this.spatialAudio.preload(id);
+        for (const id of ["golf-ball-water-splash-1", "golf-ball-water-splash-2", "golf-ball-water-splash-3", "golf-ball-sand"] as const) {
+            void this.spatialAudio.preload(id);
+        }
         this.golfClubForeground = new GolfClubForegroundOverlay(this.container);
         this.world.setBallEffectController(this.ballEffectController);
         this.notifyWorldModifier();
@@ -1052,6 +1100,8 @@ export class Game {
         this.shotController
             ?.update(deltaTime);
         if (this.shotController?.consumeSuccessfulContact()) {
+            const shotPosition = this.world?.getBallWorldPosition();
+            if (shotPosition) this.spatialAudio.play("golf-ball-hit", { position: shotPosition });
             this.shotCameraFollow.begin();
             this.cameraController?.setShotFollowLocked(true);
         }
@@ -1072,6 +1122,9 @@ export class Game {
                 this.world.updateCamera(0);
             }
         }
+        this.ballTraversalAudio?.update(deltaTime);
+        this.ballMechanismAudio?.update();
+        this.ballPlatformAudio?.update(deltaTime);
         this.shotPowerBaselineValidation?.update();
 
         }
@@ -1280,6 +1333,16 @@ export class Game {
     // -------------------------------------------------------------------------
 
     public stop(): void {
+        this.container.removeEventListener("pointerdown", this.unlockAudioOnPointerDown, { capture: true });
+        this.ballCollisionAudio?.dispose();
+        this.ballCollisionAudio = null;
+        this.ballTraversalAudio?.dispose();
+        this.ballTraversalAudio = null;
+        this.ballMechanismAudio?.dispose();
+        this.ballMechanismAudio = null;
+        this.ballPlatformAudio?.dispose();
+        this.ballPlatformAudio = null;
+        this.spatialAudio.dispose();
         this.golfClubForeground?.destroy();
         this.golfClubForeground = null;
 
@@ -1297,6 +1360,8 @@ export class Game {
 
         this.engineLoop.stop();
         this.ballEffectController.clear();
+        this.unsubscribeCrateDestructionAudio?.();
+        this.unsubscribeCrateDestructionAudio = null;
         this.world?.setCrateRewardListener(null);
         this.crateRewardController = null;
 

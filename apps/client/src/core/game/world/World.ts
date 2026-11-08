@@ -861,6 +861,27 @@ export class World {
         Fan[] = [];
 
     /** DB-5 deterministic multi-bumper test layout. */
+    private readonly ballMechanismAudioListeners = new Set<(event: { kind: "bush" | "bumper" | "rotator"; x: number; y: number; speed?: number }) => void>();
+    public subscribeBallMechanismAudio(listener: (event: { kind: "bush" | "bumper" | "rotator"; x: number; y: number; speed?: number }) => void): () => void {
+        this.ballMechanismAudioListeners.add(listener);
+        return () => { this.ballMechanismAudioListeners.delete(listener); };
+    }
+    private notifyBallMechanismAudio(event: { kind: "bush" | "bumper" | "rotator"; x: number; y: number; speed?: number }): void {
+        for (const listener of this.ballMechanismAudioListeners) listener(event);
+    }
+    public isRadialBumperCollider(id: string): boolean {
+        return this.radialBumpers.some(bumper => bumper.getCollisionDefinition().id === id);
+    }
+    public isBallOnPoweredPlatform(): boolean {
+        const ball = this.ball;
+        if (!ball || !ball.isAvailableForInteraction()) return false;
+        const x = ball.getX(), y = ball.getY(), radius = ball.getRadius();
+        if (this.conveyorBelts.some(belt => belt.getSurfaceContactWeight(x, y) > 0)) return true;
+        return this.rotatingPaddles.some(paddle => {
+            const distance = Math.hypot(x - paddle.getX(), y - paddle.getY());
+            return distance < paddle.getSurfaceRadius() + radius && distance > paddle.getCenterStopperRadius() + radius;
+        });
+    }
     private readonly radialBumpers: RadialBumper[] = [];
     private readonly directionalBumpers: DirectionalBumper[] = [];
     private readonly directionalBumperImpactVfx: DirectionalBumperImpactVfx[] = [];
@@ -1019,6 +1040,11 @@ export class World {
         this.crateRewardListener = listener;
     }
 
+    private readonly crateDestructionAudioListeners = new Set<(event: { crateId: string; x: number; y: number; cause: string | null }) => void>();
+    public subscribeCrateDestructionAudio(listener: (event: { crateId: string; x: number; y: number; cause: string | null }) => void): () => void {
+        this.crateDestructionAudioListeners.add(listener);
+        return () => { this.crateDestructionAudioListeners.delete(listener); };
+    }
     private readonly crateRobotUnregister = new Map<string, () => void>();
     private flushCrateDestructions(): void {
         for (const crate of this.pendingCrateDestructions) {
@@ -1034,6 +1060,9 @@ export class World {
                     );
                     this.crateRewardText.spawn(crate.x, crate.y, lines);
                 }
+            }
+            for (const listener of this.crateDestructionAudioListeners) {
+                listener({ crateId: crate.id, x: crate.x, y: crate.y, cause: crate.destruction.cause });
             }
             this.crateDestructionSystem?.spawn(crate.x,crate.y);
             crate.destroy();
@@ -2145,7 +2174,10 @@ export class World {
                 this.waterField,
                 new BushMovementController(
                     (center, radius) => this.getBushCoverage(center, radius).traversal,
-                    () => this.cameraShake.trigger(BUSH_MOVEMENT_DEFINITION.impactShake),
+                    () => {
+                        this.cameraShake.trigger(BUSH_MOVEMENT_DEFINITION.impactShake);
+                        if (this.ball) this.notifyBallMechanismAudio({ kind: "bush", x: this.ball.getX(), y: this.ball.getY() });
+                    },
                 ),
             );
 
@@ -3424,6 +3456,7 @@ export class World {
             this.lastRotatorShakeTime = Math.max(0, this.lastRotatorShakeTime - deltaTime);
             for (const rotator of this.rotators) {
                 const impact = this.rotatorBallCollisionSystem.resolve(deltaTime, this.ball, rotator);
+                if (impact && !this.ball.isStickyBallActive()) this.notifyBallMechanismAudio({ kind: "rotator", x: this.ball.getX(), y: this.ball.getY(), speed: impact.speed });
                 if (impact && impact.speed >= ROTATOR_DEFINITION.shakeImpactThreshold && this.lastRotatorShakeTime <= 0) {
                     this.cameraShake.trigger({ amplitude: Math.min(5, impact.speed / 110), duration: 0.14, frequency: 25, decayExponent: 1.8, roughness: 0.35, preferredDirectionX: impact.normalX, preferredDirectionY: impact.normalY, directionalBias: 0.45 });
                     this.lastRotatorShakeTime = 0.18;
@@ -3496,6 +3529,7 @@ export class World {
                     collisionSystem.resolve(this.ball, bumper, this.physicsWorld);
                     const impact = collisionSystem.consumePoweredImpact();
                     if (!impact) continue;
+                    if (!this.ball.isStickyBallActive()) this.notifyBallMechanismAudio({ kind: "bumper", x: impact.x, y: impact.y, speed: Math.hypot(impact.outgoingX, impact.outgoingY) });
 
                     bumper.playImpactAnimation();
                     const outgoingSpeed = Math.hypot(impact.outgoingX, impact.outgoingY);
