@@ -28,6 +28,9 @@ export class Club extends Entity {
     private clubSprite:
         Sprite | null = null;
 
+    /** Read-only sprite access for the browser foreground presentation. */
+    public getForegroundSprite(): Sprite | null { return this.clubSprite; }
+
     // -------------------------------------------------------
     // Club Definition
     // -------------------------------------------------------

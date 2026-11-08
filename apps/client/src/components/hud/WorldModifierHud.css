@@ -1,30 +1,37 @@
-.wm2-hud { position:absolute; top:18px; left:18px; z-index:35; display:flex; align-items:center; pointer-events:none; font-family:system-ui,sans-serif; filter:drop-shadow(0 3px 7px #0007); --wm-accent:#a7c8dd; --wm-dark:#243d50; }
-.wm2-hud--dune-surge { --wm-accent:#e8c780; --wm-dark:#67502d; }
-.wm2-hud--downpour { --wm-accent:#8bc9ee; --wm-dark:#294e75; }
-.wm2-hud--wildfire { --wm-accent:#ffa36a; --wm-dark:#713c2c; }
-.wm2-hud--gale-force { --wm-accent:#b5e8db; --wm-dark:#295d61; }
-.wm2-hud--overdrive { --wm-accent:#e5aaff; --wm-dark:#543769; }
-.wm2-hud__badge { width:56px; height:56px; box-sizing:border-box; border:3px solid var(--wm-accent); background:var(--wm-dark); border-radius:50%; display:grid; place-items:center; color:white; font-size:28px; font-weight:800; z-index:1; }
-.wm2-hud__tab { margin-left:-8px; padding:10px 20px 10px 19px; border-radius:0 24px 24px 0; background:var(--wm-dark); color:white; border:1px solid var(--wm-accent); text-transform:uppercase; letter-spacing:.08em; font-size:13px; font-weight:750; white-space:nowrap; }
-
-/* WM-3: stationary circular mask with a continuously scrolling sand tile. */
-.wm2-hud--dune-surge .wm2-hud__badge { overflow:hidden; position:relative; background:#c9a46d; }
-.wm3-dune-texture { position:absolute; inset:0; background-repeat:repeat; background-size:384px 384px; animation:wm3-dune-drift 16s linear infinite; }
-@keyframes wm3-dune-drift { from { background-position:0 0; } to { background-position:384px -384px; } }
-@media (prefers-reduced-motion:reduce) { .wm3-dune-texture { animation:none; } }
-
-/* WM-4: asset-free solid water badge. */
-.wm2-hud--downpour .wm2-hud__badge { overflow:hidden; position:relative; background:#3b9fcb; }
-.wm4-downpour-solid { position:absolute; inset:0; background:#4aa8d8; }
-
-/* WM-6B: the visible Gale Force badge uses the live global wind vector. */
-.wm2-hud--gale-force .wm2-hud__badge { overflow: hidden; }
-.wm6-gale-arrow { display: block; width: 38px; height: 38px; color: #fff; transform-origin: 50% 50%; transition: transform 220ms ease-out; will-change: transform; }
-@media (prefers-reduced-motion: reduce) { .wm6-gale-arrow { transition: none; } }
-
-/* WM-5D.1: Solid Wildfire badge fill, reserved for a future tiled fire texture. */
-.wm2-hud--wildfire .wm2-hud__badge { position:relative; overflow:hidden; background:#ed6738; }
-.wm5-wildfire-solid { position:absolute; inset:0; background:#ed6738; }
-
-/* WM-8: match the lives holder top margin and use a consistent HUD column. */
-.wm2-hud { min-height:56px; }
+/* The capsule uses the active modifier's pre-colored holder PNG. */
+.wm2-hud {
+    position: absolute; top: 18px; left: 18px; z-index: 35;
+    display: flex; align-items: center; min-height: 56px;
+    pointer-events: none; font-family: system-ui, sans-serif;
+    filter: drop-shadow(0 3px 6px #25142740);
+    --wm-outline: #35192e;
+}
+.wm2-hud__tab {
+    position: relative; isolation: isolate; box-sizing: border-box;
+    height: 56px; min-height: 56px; margin-left: -11px;
+    display: flex; align-items: center; gap: 7px;
+    padding: 0 18px 0 25px; white-space: nowrap;
+    color: var(--wm-outline); text-transform: uppercase;
+    letter-spacing: .055em; font-size: 12px; font-weight: 800;
+}
+/* Preserve the original holder artwork, including its colored interior and endcaps. */
+.wm2-hud__tab::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    border: 17px solid transparent;
+    border-image-source: var(--wm-holder-image);
+    border-image-slice: 47 95 47 95 fill;
+    border-image-width: 17px 31px;
+    border-image-repeat: stretch;
+}
+.wm2-hud__badge {
+    position: relative; z-index: 1; flex: 0 0 56px;
+    width: 56px; height: 56px; box-sizing: border-box;
+    border: 3px solid var(--wm-outline); border-radius: 50%;
+    background: white; overflow: hidden; display: grid; place-items: center;
+}
+.wm2-hud__icon { width: 100%; height: 100%; display: block; object-fit: contain; }
+.wm2-hud__direction {
+    flex: 0 0 19px; width: 19px; height: 19px;
+    transform-origin: center; transition: transform 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .wm2-hud__direction { transition: none; } }

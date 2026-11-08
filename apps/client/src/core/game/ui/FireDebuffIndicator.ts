@@ -32,11 +32,11 @@ export class FireDebuffIndicator {
     }
 
     private createPresentation(): void {
-        const holder = new Sprite(AssetLoader.getTexture("debuffHolder"));
+        const holder = new Sprite(AssetLoader.getTexture("debuffHolderNegative"));
         holder.anchor.set(0.5);
         holder.width = this.meterSize;
         holder.height = this.meterSize;
-        holder.tint = DEFAULT_DEBUFF_HUD_DEFINITION.holderColor;
+
         this.root.addChild(holder);
 
         const fireKeys = ["debuffFire1", "debuffFire2", "debuffFire3"] as const;

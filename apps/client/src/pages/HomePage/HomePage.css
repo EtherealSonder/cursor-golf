@@ -38,3 +38,6 @@
     max-width: none;
     max-height: none;
 }
+
+/* Club overlay is browser-level so it can cross above the React HUD. */
+.game-container > .golf-club-foreground { z-index: 1000; pointer-events: none; }

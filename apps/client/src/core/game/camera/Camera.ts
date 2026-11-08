@@ -14,6 +14,9 @@ import type {
     CourseBoundaryDefinition,
 } from "../config/CourseBoundaryDefinition";
 
+import { DEFAULT_CAMERA_COURSE_CLAMP_DEFINITION } from "../config/CameraCourseClampDefinition";
+import type { CameraCourseClampDefinition } from "../config/CameraCourseClampDefinition";
+
 export interface CameraPoint {
 
     readonly x:
@@ -37,6 +40,9 @@ export class Camera {
 
     private readonly courseBoundaryDefinition:
         CourseBoundaryDefinition;
+
+    private readonly viewingBounds: CourseBoundaryDefinition;
+    private readonly clampDefinition: CameraCourseClampDefinition;
 
     // -------------------------------------------------------
     // Logical Viewport
@@ -109,6 +115,9 @@ export class Camera {
         courseBoundaryDefinition:
             CourseBoundaryDefinition =
             DEFAULT_COURSE_BOUNDARY_DEFINITION,
+
+        viewingBounds: CourseBoundaryDefinition = courseBoundaryDefinition,
+        clampDefinition: CameraCourseClampDefinition = DEFAULT_CAMERA_COURSE_CLAMP_DEFINITION,
     ) {
 
         this.validateDefinition(
@@ -118,6 +127,15 @@ export class Camera {
         this.validateCourseBoundaryDefinition(
             courseBoundaryDefinition,
         );
+
+        this.validateCourseBoundaryDefinition(viewingBounds);
+        for (const fraction of [clampDefinition.horizontalOverscanFraction, clampDefinition.verticalOverscanFraction]) {
+            if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) {
+                throw new Error("Camera overscan fractions must be between zero and one.");
+            }
+        }
+        this.viewingBounds = viewingBounds;
+        this.clampDefinition = clampDefinition;
 
         this.definition =
             definition;
@@ -1141,24 +1159,26 @@ export class Camera {
 
         const horizontalLimits =
             this.calculateAxisLimits(
-                this.courseBoundaryDefinition
+                this.viewingBounds
                     .minimumX,
 
-                this.courseBoundaryDefinition
+                this.viewingBounds
                     .maximumX,
 
                 this.getVisibleWorldWidth(),
+                this.clampDefinition.horizontalOverscanFraction,
             );
 
         const verticalLimits =
             this.calculateAxisLimits(
-                this.courseBoundaryDefinition
+                this.viewingBounds
                     .minimumY,
 
-                this.courseBoundaryDefinition
+                this.viewingBounds
                     .maximumY,
 
                 this.getVisibleWorldHeight(),
+                this.clampDefinition.verticalOverscanFraction,
             );
 
         this.minimumPositionX =
@@ -1175,57 +1195,26 @@ export class Camera {
     }
 
     private calculateAxisLimits(
-        minimum:
-            number,
+        minimum: number,
+        maximum: number,
+        viewportSize: number,
+        overscanFraction: number,
+    ): { readonly minimum: number; readonly maximum: number } {
+        // Permit the viewport to extend beyond either course edge by at
+        // most the configured fraction of its visible world-space size.
+        // This is independent of the larger technical simulation envelope.
+        const lower = minimum - viewportSize * overscanFraction;
+        const upper = maximum - viewportSize * (1 - overscanFraction);
 
-        maximum:
-            number,
-
-        viewportSize:
-            number,
-    ): {
-        readonly minimum:
-        number;
-
-        readonly maximum:
-        number;
-    } {
-
-        const courseSize =
-            maximum -
-            minimum;
-
-        // When zoom makes the visible viewport larger than a level's
-        // technical envelope, lock the view to the envelope midpoint.
-        // This preserves zoom anchoring and prevents inverted clamp ranges.
-        if (
-            courseSize <=
-            viewportSize
-        ) {
-            const lockedPosition =
-                (
-                    minimum +
-                    maximum -
-                    viewportSize
-                ) /
-                2;
-
-            return {
-                minimum:
-                    lockedPosition,
-
-                maximum:
-                    lockedPosition,
-            };
+        // For very small courses, both edge constraints cannot be met
+        // simultaneously. Keep the course centered rather than allowing
+        // the viewport to wander with no playable terrain in view.
+        if (lower > upper) {
+            const centered = (minimum + maximum - viewportSize) / 2;
+            return { minimum: centered, maximum: centered };
         }
 
-        return {
-            minimum,
-
-            maximum:
-                maximum -
-                viewportSize,
-        };
+        return { minimum: lower, maximum: upper };
     }
 
     // -------------------------------------------------------

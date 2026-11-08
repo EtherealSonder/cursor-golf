@@ -15,6 +15,9 @@ import golfBallDimplesTexture from "../../assets/textures/golf/golf_ball_dimples
 import ballUiTexture from "../../assets/sprites/ui/ball_ui.png";
 import ballLivesHolderTexture from "../../assets/sprites/ui/ball_lives_holder.png";
 import debuffHolderTexture from "../../assets/sprites/ui/debuff_holder.png";
+import debuffHolderPositiveTexture from "../../assets/sprites/ui/debuff_holder_positive.png";
+import debuffHolderNegativeTexture from "../../assets/sprites/ui/debuff_holder_negative.png";
+import debuffHolderNeutralTexture from "../../assets/sprites/ui/debuff_holder_neutral.png";
 import debuffFire1Texture from "../../assets/sprites/ui/debuff_fire_1.png";
 import debuffFire2Texture from "../../assets/sprites/ui/debuff_fire_2.png";
 import debuffFire3Texture from "../../assets/sprites/ui/debuff_fire_3.png";
@@ -155,6 +158,9 @@ export class AssetLoader {
         );
 
         await this.loadTexture("debuffHolder", debuffHolderTexture);
+        await this.loadTexture("debuffHolderPositive", debuffHolderPositiveTexture);
+        await this.loadTexture("debuffHolderNegative", debuffHolderNegativeTexture);
+        await this.loadTexture("debuffHolderNeutral", debuffHolderNeutralTexture);
         await this.loadTexture("debuffFire1", debuffFire1Texture);
         await this.loadTexture("debuffFire2", debuffFire2Texture);
         await this.loadTexture("debuffFire3", debuffFire3Texture);

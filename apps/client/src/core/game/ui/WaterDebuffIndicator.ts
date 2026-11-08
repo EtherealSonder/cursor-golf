@@ -54,16 +54,13 @@ export class WaterDebuffIndicator {
         const holder =
             new Sprite(
                 AssetLoader.getTexture(
-                    "debuffHolder",
+                    "debuffHolderNegative",
                 ),
             );
 
         holder.anchor.set(0.5);
         holder.width = entrySize;
         holder.height = entrySize;
-        holder.tint =
-            DEFAULT_DEBUFF_HUD_DEFINITION
-                .holderColor;
 
         this.root.addChild(holder);
 

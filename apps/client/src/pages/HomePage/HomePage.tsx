@@ -93,7 +93,7 @@ function HomePage() {
         <main className="home-page">
             <div
                 ref={gameContainerRef}
-                className="game-container"
+                className="game-container game-container--club-foreground"
                 aria-label="Cursor Golf gameplay"
             >
                 <WorldModifierHud state={modifierState} windState={windState} />

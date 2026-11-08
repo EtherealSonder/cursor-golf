@@ -10,11 +10,11 @@ export class InvincibleBallIndicator {
         const config = INVINCIBLE_BALL_HUD;
         this.root.label = "InvincibleBallIndicator";
 
-        const holder = new Sprite(AssetLoader.getTexture("debuffHolder"));
+        const holder = new Sprite(AssetLoader.getTexture("debuffHolderPositive"));
         holder.anchor.set(0.5);
         holder.width = config.size;
         holder.height = config.size;
-        holder.tint = config.holderTint;
+
         this.root.addChild(holder);
 
         const icon = new Sprite(AssetLoader.getTexture("invincibleUi"));

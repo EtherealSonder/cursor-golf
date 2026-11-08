@@ -19,10 +19,9 @@ export const DEFAULT_DEBUFF_HUD_DEFINITION: DebuffHudDefinition = {
     rightMargin: 28,
     topOffsetFromLives: 104,
 
-    // Universal circular status/debuff holder. Larger than the first D-3 pass
-    // so the icon reads clearly beneath the lives bar.
-    entrySize: 92,
-    entrySpacing: 12,
+    // Secondary status holder, scaled to sit below the 330 x 72 lives HUD.
+    entrySize: 80,
+    entrySpacing: 10,
     newestEntryAnchorsRight: true,
 
     // Pale muted blush used by all circular status holders.
@@ -33,7 +32,7 @@ export const DEFAULT_DEBUFF_HUD_DEFINITION: DebuffHudDefinition = {
     reorderSeconds: 0.14,
     popOvershootScale: 1.08,
 
-    deathBadgeDiameter: 34,
-    deathBadgeOffsetY: 36,
-    deathSkullSize: 22.95,
+    deathBadgeDiameter: 30,
+    deathBadgeOffsetY: 31,
+    deathSkullSize: 20.25,
 };

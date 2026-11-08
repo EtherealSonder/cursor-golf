@@ -118,6 +118,8 @@ import { assertCourseWindBoundaryValidation } from "../debug/CourseWindBoundaryV
 import { assertCourseWindPerformanceValidation } from "../debug/CourseWindPerformanceValidation";
 import { assertCourseFireBoundaryValidation } from "../debug/CourseFireBoundaryValidation";
 import { CourseBackgroundAnimator } from "../../rendering/CourseBackgroundAnimator";
+import { CourseBackgroundLightningController } from "../../rendering/CourseBackgroundLightningController";
+import { getWorldModifierBackgroundPalette } from "../config/WorldModifierBackgroundDefinition";
 import { createCourseWallGraphics } from "../../rendering/CourseWallRenderer";
 import { firstMinePhysicalContact, type MineContactCircle, type MineContactSegment } from "../entities/mechanisms/ProximityMineContactDetection";
 import { applyDirectionalFireToMines, applyHoseWaterToMines, isMineDetonatingWaterSource } from "../entities/mechanisms/ProximityMineElementalInteraction";
@@ -674,6 +676,7 @@ export class World {
         this.overdriveController.setEnabled(this.worldModifierController.isOverdriveActive());
         this.synchronizeOverdriveMechanisms();
         this.overdriveVfx?.setEnabled(this.overdriveController.isEnabled());
+        this.synchronizeModifierBackground();
         return state;
     }
 
@@ -788,6 +791,7 @@ export class World {
     private courseGrassMask: Graphics | null = null;
     private courseOutsideBackground: Graphics | null = null;
     private courseBackgroundAnimator: CourseBackgroundAnimator | null = null;
+    private readonly courseBackgroundLightning = new CourseBackgroundLightningController();
     private courseWallGraphics: Graphics | null = null;
     private readonly ballOutOfBoundsController: BallOutOfBoundsController;
 
@@ -1502,10 +1506,19 @@ export class World {
         this.screenOverlayContainer =
             new Container();
 
+        // CAM-1: camera presentation limits follow the authored course,
+        // while technicalBounds remain the simulation safety envelope.
+        const courseViewingBounds = this.runtimeLevel.course.generatedGeometry?.bounds ?? {
+            minimumX: this.runtimeLevel.course.minimumX,
+            maximumX: this.runtimeLevel.course.maximumX,
+            minimumY: this.runtimeLevel.course.minimumY,
+            maximumY: this.runtimeLevel.course.maximumY,
+        };
         this.camera =
             new Camera(
                 undefined,
                 this.technicalBounds,
+                courseViewingBounds,
             );
 
         this.presentationVisibilityQuery =
@@ -2483,6 +2496,8 @@ export class World {
         // O3.1: Camera position is authoritative now. Refresh presentation
         // world bounds here so culling never uses the previous Camera frame.
         if (this.courseBackgroundAnimator && !this.p1BackgroundDisabled && !this.backgroundAnimationIsolationB4) {
+            this.synchronizeModifierBackground();
+            this.courseBackgroundAnimator.setLightningStrength(this.courseBackgroundLightning.update(deltaTime));
             this.courseBackgroundAnimator.update(deltaTime);
         }
         this.presentationVisibilityQuery.refresh();
@@ -4125,6 +4140,7 @@ export class World {
         this.courseGrassMask?.destroy();
         this.courseGrassMask = null;
         this.courseBackgroundAnimator = null;
+        this.courseBackgroundLightning.setEnabled(false);
         this.courseOutsideBackground?.destroy();
         this.courseOutsideBackground = null;
         this.courseWallGraphics?.destroy();
@@ -7284,6 +7300,15 @@ export class World {
     // Course Rendering
     // -------------------------------------------------------
 
+    /** Sync presentation to the effective modifier, including development overrides. */
+    private synchronizeModifierBackground(): void {
+        const modifier = this.worldModifierController.getState().modifier;
+        const palette = getWorldModifierBackgroundPalette(modifier);
+        this.courseBackgroundAnimator?.setPalette(palette.colors, palette.transitionSeconds);
+        this.courseBackgroundLightning.setEnabled(modifier === "downpour");
+        if (modifier !== "downpour") this.courseBackgroundAnimator?.setLightningStrength(0);
+    }
+
     private createCourse():
         void {
 
@@ -7301,11 +7326,13 @@ export class World {
         );
         // White geometry is created once; only its tint changes per frame.
         this.courseOutsideBackground.fill(0xffffff);
+        const backgroundPalette = getWorldModifierBackgroundPalette(this.worldModifierController.getState().modifier);
         this.courseBackgroundAnimator = new CourseBackgroundAnimator(
             this.courseOutsideBackground,
-            this.courseVisualDefinition.outsideBackgroundPalette,
-            this.courseVisualDefinition.outsideBackgroundTransitionSeconds,
+            backgroundPalette.colors,
+            backgroundPalette.transitionSeconds,
         );
+        this.synchronizeModifierBackground();
         this.presentationLayers.getLayer(WorldRenderLayer.BaseTerrain)
             .addChild(this.courseOutsideBackground);
 

@@ -10,11 +10,11 @@ export class HighPowerBallIndicator {
         const config = HIGH_POWER_BALL_HUD;
         this.root.label = "HighPowerBallIndicator";
 
-        const holder = new Sprite(AssetLoader.getTexture("debuffHolder"));
+        const holder = new Sprite(AssetLoader.getTexture("debuffHolderPositive"));
         holder.anchor.set(0.5);
         holder.width = config.size;
         holder.height = config.size;
-        holder.tint = config.holderTint;
+
         this.root.addChild(holder);
 
         const icon = new Sprite(AssetLoader.getTexture("highPowerUi"));

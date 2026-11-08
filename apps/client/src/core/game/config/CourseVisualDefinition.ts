@@ -28,7 +28,7 @@ export const DEFAULT_COURSE_VISUAL_DEFINITION:
     grassTileScale: 0.167,
     sandTileScale: 0.75,
     terrainAlpha: 1,
-    outsideBackgroundColor: 0xeee8ef,
+    outsideBackgroundColor: 0x302638,
     gameplayWallColor: 0x3b2a3c,
     gameplayWallOutlineColor: 0x251927,
     gameplayWallOutlineWidth: 3,
@@ -40,6 +40,7 @@ export const DEFAULT_COURSE_VISUAL_DEFINITION:
     gameplayWallCapColor: 0xf35b75,
     gameplayWallCapHighlightColor: 0xff9a9f,
     gameplayWallCapHighlightRadius: 3.8,
-    outsideBackgroundPalette: [0xd9b4f4, 0xf5b5d3, 0xffd0a3, 0xbfc7ff, 0xd6b6fa],
+    // Legacy fallback for code paths that do not use the modifier-aware animator.
+    outsideBackgroundPalette: [0x28212f, 0x302638, 0x392b40, 0x302b3c, 0x252331],
     outsideBackgroundTransitionSeconds: 18,
 };

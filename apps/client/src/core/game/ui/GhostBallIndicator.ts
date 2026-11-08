@@ -10,11 +10,11 @@ export class GhostBallIndicator {
         const config = GHOST_BALL_HUD;
         this.root.label = "GhostBallIndicator";
 
-        const holder = new Sprite(AssetLoader.getTexture("debuffHolder"));
+        const holder = new Sprite(AssetLoader.getTexture("debuffHolderNeutral"));
         holder.anchor.set(0.5);
         holder.width = config.size;
         holder.height = config.size;
-        holder.tint = config.holderTint;
+
         this.root.addChild(holder);
 
         const icon = new Sprite(AssetLoader.getTexture("ghostUi"));

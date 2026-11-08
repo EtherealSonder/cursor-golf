@@ -1,3 +1,4 @@
+import { GolfClubForegroundOverlay } from "./presentation/GolfClubForegroundOverlay";
 import { CrateRewardController } from "./crate/CrateRewardController";
 import { assertCrateRewardRegression } from "./debug/CrateRewardRegression";
 import type { WorldModifierResolvedState } from "./world-modifiers/WorldModifierDefinition";
@@ -142,6 +143,9 @@ export class Game {
     private world:
         World | null = null;
 
+    private golfClubForeground: GolfClubForegroundOverlay | null = null;
+
+
     private readonly shotCameraFollow = new ShotCameraFollowController();
 
     private cameraController:
@@ -284,6 +288,7 @@ export class Game {
             );
 
         this.world.initialize();
+        this.golfClubForeground = new GolfClubForegroundOverlay(this.container);
         this.world.setBallEffectController(this.ballEffectController);
         this.notifyWorldModifier();
         // Explicit, development-only validation; never runs in normal gameplay or benchmarks.
@@ -1242,6 +1247,11 @@ export class Game {
             ?.update(deltaTime);
 
         this.renderer.render();
+        this.golfClubForeground?.update(
+            this.world?.getClub()?.getForegroundSprite() ?? null,
+            this.renderer.getViewportWidth(),
+            this.renderer.getViewportHeight(),
+        );
 
         this.inputManager.update();
 
@@ -1270,6 +1280,8 @@ export class Game {
     // -------------------------------------------------------------------------
 
     public stop(): void {
+        this.golfClubForeground?.destroy();
+        this.golfClubForeground = null;
 
         if (
             this.state ===
