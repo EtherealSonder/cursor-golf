@@ -19,6 +19,8 @@ export class ProximityMine extends Entity {
     /** Normalized accumulated arming progress, not elapsed wall-clock time. */
     private armingProgress = 0;
     private pulseClock = 0;
+    private pendingAudioPulses = 0;
+    public consumeAudioPulses(): number { const count = this.pendingAudioPulses; this.pendingAudioPulses = 0; return count; }
     private ledSeconds = 0;
     private detected = 'none';
     private surfaceDistance = Infinity;
@@ -91,6 +93,7 @@ export class ProximityMine extends Entity {
                     this.pulseClock += delta;
                     if (this.pulseClock >= interval) {
                         this.pulseClock %= interval;
+                        this.pendingAudioPulses++;
                         this.ledSeconds = 0.11;
                         this.warningVfx.emit(result.target ? D.sonarAlertColor : D.sonarIdleColor);
                     }

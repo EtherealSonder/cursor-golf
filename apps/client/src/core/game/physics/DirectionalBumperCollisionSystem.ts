@@ -26,6 +26,7 @@ export class DirectionalBumperCollisionSystem {
     private readonly activeDynamicContacts = new Set<string>();
     private lastContact: DirectionalBumperContactDebug | null = null;
     private pendingPoweredImpact: DirectionalBumperContactDebug | null = null;
+    private readonly pendingAudioImpacts: Array<{ objectId: string; x: number; y: number; speed: number }> = [];
     private lastDiagnostic: DirectionalBumperCollisionDiagnostic = { physicalContact: false, poweredHit: false, reason: "no-contact" };
 
     public resolve(ball: Ball, bumper: DirectionalBumper, physicsWorld?: PhysicsWorld): boolean {
@@ -112,6 +113,7 @@ export class DirectionalBumperCollisionSystem {
         }
         ball.applyDirectionalBumperVelocity(outgoingX, outgoingY);
         this.publishPoweredImpact( collision.contactX, collision.contactY, collision.normalX, collision.normalY, outgoingX, outgoingY);
+        this.pendingAudioImpacts.push({ objectId: "ball", x: collision.contactX, y: collision.contactY, speed: Math.hypot(outgoingX, outgoingY) });
         this.lastDiagnostic = { physicalContact: true, poweredHit: true, reason: "powered-hit" };
         return true;
     }
@@ -162,6 +164,7 @@ export class DirectionalBumperCollisionSystem {
             body.applyImpulseAtWorldPoint((targetVX - vx) * mass, (targetVY - vy) * mass, manifold.contactPointX, manifold.contactPointY);
             body.notifyExternalImpact?.({ sourceKind: "other", sourceId: shape.id, positionX: manifold.contactPointX, positionY: manifold.contactPointY });
             this.publishPoweredImpact( manifold.contactPointX, manifold.contactPointY, manifold.normalX, manifold.normalY, targetVX, targetVY);
+            this.pendingAudioImpacts.push({ objectId: id, x: manifold.contactPointX, y: manifold.contactPointY, speed: Math.max(incomingSpeed, Math.abs(armNormalSpeed)) });
             poweredCount += 1;
         }
         this.activeDynamicContacts.clear();
@@ -174,10 +177,11 @@ export class DirectionalBumperCollisionSystem {
         this.pendingPoweredImpact = this.lastContact;
     }
 
+    public consumeAudioImpacts(): Array<{ objectId: string; x: number; y: number; speed: number }> { return this.pendingAudioImpacts.splice(0); }
     public consumePoweredImpact(): DirectionalBumperContactDebug | null { const v = this.pendingPoweredImpact; this.pendingPoweredImpact = null; return v; }
     public getLastContact(): DirectionalBumperContactDebug | null { return this.lastContact; }
     public getLastDiagnostic(): DirectionalBumperCollisionDiagnostic { return this.lastDiagnostic; }
-    public reset(): void { this.ballContactLatched = false; this.activeDynamicContacts.clear(); this.lastContact = null; this.pendingPoweredImpact = null; this.lastDiagnostic = { physicalContact: false, poweredHit: false, reason: "no-contact" }; }
+    public reset(): void { this.ballContactLatched = false; this.activeDynamicContacts.clear(); this.lastContact = null; this.pendingPoweredImpact = null; this.pendingAudioImpacts.length = 0; this.lastDiagnostic = { physicalContact: false, poweredHit: false, reason: "no-contact" }; }
 }
 
 interface CircleRectangleContact { readonly normalX:number; readonly normalY:number; readonly penetration:number; readonly contactX:number; readonly contactY:number; }

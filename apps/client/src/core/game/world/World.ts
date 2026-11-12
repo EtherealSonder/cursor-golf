@@ -869,6 +869,14 @@ export class World {
     private notifyBallMechanismAudio(event: { kind: "bush" | "bumper" | "rotator"; x: number; y: number; speed?: number }): void {
         for (const listener of this.ballMechanismAudioListeners) listener(event);
     }
+    private readonly bumperImpactAudioListeners = new Set<(event: { bumperId: string; objectId: string; x: number; y: number; speed: number }) => void>();
+    public subscribeBumperImpactAudio(listener: (event: { bumperId: string; objectId: string; x: number; y: number; speed: number }) => void): () => void {
+        this.bumperImpactAudioListeners.add(listener);
+        return () => { this.bumperImpactAudioListeners.delete(listener); };
+    }
+    private notifyBumperImpactAudio(event: { bumperId: string; objectId: string; x: number; y: number; speed: number }): void {
+        for (const listener of this.bumperImpactAudioListeners) listener(event);
+    }
     public isRadialBumperCollider(id: string): boolean {
         return this.radialBumpers.some(bumper => bumper.getCollisionDefinition().id === id);
     }
@@ -1256,6 +1264,22 @@ export class World {
 
     /** PM-1 mines owned by this World instance. */
     private readonly proximityMines: ProximityMine[] = [];
+    private readonly pendingMineExplosionAudio: Array<{ x: number; y: number; lethal: boolean }> = [];
+    public consumeMineAudioEvents(): { pulses: Array<{ x: number; y: number }>; explosions: Array<{ x: number; y: number; lethal: boolean }> } {
+        const pulses: Array<{ x: number; y: number }> = [];
+        for (const mine of this.proximityMines) {
+            if (mine.getState() === "DETONATED") continue;
+            if (mine.consumeAudioPulses() > 0) pulses.push({ x: mine.getX(), y: mine.getY() });
+        }
+        return { pulses, explosions: this.pendingMineExplosionAudio.splice(0) };
+    }
+    /** Audio-only view of active sprinkler entities; does not modify water simulation. */
+    public getAudioSprinklers(): readonly Sprinkler[] { return this.sprinklers; }
+    public getAudioFireCells() { return this.fireManager.getActiveCells(); }
+    public getAudioFireRobots(): readonly Robot[] {
+        return [this.fireRobot, this.secondFireRobot].filter((robot): robot is Robot => robot !== null);
+    }
+    public getAudioRobots(): readonly Robot[] { return [this.fireRobot, this.secondFireRobot, this.waterRobot, this.secondWaterRobot, this.windRobot, this.secondWindRobot].filter((r): r is Robot => r !== null); }
     private readonly mineWindMovement = new ProximityMineWindMovement();
     private readonly mineRobotUnregister = new Map<string, () => void>();
     private readonly proximityMineExplosionSystem = new ProximityMineExplosionSystem();
@@ -2294,6 +2318,24 @@ export class World {
                                 event.type,
                                 event.impactSpeed,
                             );
+
+                        // Radial bumpers resolve ball impacts through Ball's static
+                        // responder, not the generic rigid-body bumper solver.
+                        // Forward the authoritative contact to the shared audio bus.
+                        if (
+                            event.type === "static-obstacle" &&
+                            event.colliderId &&
+                            this.isRadialBumperCollider(event.colliderId) &&
+                            !this.ball?.isStickyBallActive()
+                        ) {
+                            this.notifyBumperImpactAudio({
+                                bumperId: event.colliderId,
+                                objectId: "ball",
+                                x: event.contactX ?? this.ball.getX(),
+                                y: event.contactY ?? this.ball.getY(),
+                                speed: event.normalImpactSpeed ?? event.impactSpeed,
+                            });
+                        }
                     },
                 );
 
@@ -3516,7 +3558,9 @@ export class World {
                 const bumper = this.radialBumpers[bumperIndex];
                 const collisionSystem = this.radialBumperCollisionSystems[bumperIndex];
                 if (!bumper || !collisionSystem) continue;
-                collisionSystem.resolve(this.physicsWorld, bumper);
+                collisionSystem.resolve(this.physicsWorld, bumper, (objectId, x, y, speed) => {
+                    this.notifyBumperImpactAudio({ bumperId: bumper.getCollisionDefinition().id, objectId, x, y, speed });
+                });
             }
 
             if (this.ball) {
@@ -3527,9 +3571,12 @@ export class World {
                     if (!bumper || !collisionSystem) continue;
 
                     collisionSystem.resolve(this.ball, bumper, this.physicsWorld);
+                    for (const hit of collisionSystem.consumeAudioImpacts()) {
+                        if (hit.objectId === "ball" && this.ball.isStickyBallActive()) continue;
+                        this.notifyBumperImpactAudio({ bumperId: bumper.getColliderId(), ...hit });
+                    }
                     const impact = collisionSystem.consumePoweredImpact();
                     if (!impact) continue;
-                    if (!this.ball.isStickyBallActive()) this.notifyBallMechanismAudio({ kind: "bumper", x: impact.x, y: impact.y, speed: Math.hypot(impact.outgoingX, impact.outgoingY) });
 
                     bumper.playImpactAnimation();
                     const outgoingSpeed = Math.hypot(impact.outgoingX, impact.outgoingY);
@@ -5577,6 +5624,7 @@ export class World {
                         },
                     );
 
+            this.pendingMineExplosionAudio.push({ x: event.x, y: event.y, lethal: ballCaughtInLethalCore });
             // C7: blast radius destroys crates, independently of knockback.
             // A mine touching a crate is also guaranteed to destroy it.
             for (const crate of this.crates) {

@@ -45,6 +45,8 @@ export class RobotLocomotionController {
 
     /** P4-B: discard an unfinished gait after discontinuous world relocation. */
     public resetAfterTeleport(): void { this.reset(); }
+    public getAudioGaitPhase(): RobotLocomotionPhase { return this.phase; }
+    public getAudioStepDurationSeconds(): number { return Math.max(0.001, this.legReachSeconds + this.bodyCatchupSeconds); }
 
     public update(deltaTime: number, maximumDistance: number): RobotLocomotionAdvance {
         if (!Number.isFinite(deltaTime) || deltaTime <= 0 || maximumDistance <= 0 || !Number.isFinite(maximumDistance)) {

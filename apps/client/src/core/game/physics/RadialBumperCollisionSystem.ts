@@ -12,7 +12,7 @@ import type { PhysicsWorld } from "./PhysicsWorld";
 export class RadialBumperCollisionSystem {
     private readonly activeContacts = new Set<string>();
 
-    public resolve(physicsWorld: PhysicsWorld, bumper: RadialBumper): number {
+    public resolve(physicsWorld: PhysicsWorld, bumper: RadialBumper, onImpact?: (objectId: string, x: number, y: number, speed: number) => void): number {
         const definition = bumper.getDefinition();
         const collision = bumper.getCollisionDefinition();
         if (collision.shape !== "circle") return 0;
@@ -89,6 +89,7 @@ export class RadialBumperCollisionSystem {
                 positionY: manifold.contactPointY,
             });
             bumper.triggerImpact();
+            onImpact?.(bodyId, manifold.contactPointX, manifold.contactPointY, incomingSpeed);
             poweredImpactCount += 1;
         }
 

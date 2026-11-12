@@ -146,6 +146,37 @@ export class Robot extends Entity {
         this.beginWaiting(0);
         this.synchronizeElementAttack();
     }
+    /** Fire attack audio follows the same directional source state and outlet geometry. */
+    /** Read-only water/wind source state for spatial attack audio. */
+    public getWaterWindAttackAudioState(): { kind: "water" | "wind" | null; active: boolean; x: number; y: number } {
+        const water = this.getWaterAttackSource();
+        if (water) {
+            const position = water.getNozzlePosition();
+            return { kind: "water", active: !this.isDestroyed() && !this.voidRemoving && water.isJetActive(), x: position.x, y: position.y };
+        }
+        if (this.elementAttackController instanceof RobotWindAttackController) {
+            const source = this.elementAttackController.getSuctionCaptureSourceSnapshot();
+            const offset = Math.max(0, this.definition.fireOutletOffset - 14);
+            return { kind: "wind", active: !this.isDestroyed() && !this.voidRemoving && !!source,
+                x: source?.positionX ?? this.getX() + this.getForwardX() * offset,
+                y: source?.positionY ?? this.getY() + this.getForwardY() * offset };
+        }
+        return { kind: null, active: false, x: this.getX(), y: this.getY() };
+    }
+    public getFireAttackAudioState(): { active: boolean; x: number; y: number } {
+        const phase = this.elementAttackController.getSnapshot().phase;
+        const offset = Math.max(0, this.definition.fireOutletOffset - 14);
+        return { active: !this.isDestroyed() && !this.voidRemoving && phase === "ATTACKING",
+            x: this.getX() + this.getForwardX() * offset,
+            y: this.getY() + this.getForwardY() * offset };
+    }
+    public getAudioState(): { walking: boolean; gaitPhase: import("./RobotLocomotionController").RobotLocomotionPhase; speedRatio: number; stepDuration: number; targetId: string | null } {
+        return { walking: this.state === "WANDERING" && this.locomotion !== null,
+            gaitPhase: this.locomotion?.getAudioGaitPhase() ?? "PLANTED",
+            speedRatio: this.movementSpeedRatio,
+            stepDuration: this.locomotion?.getAudioStepDurationSeconds() ?? 0.5,
+            targetId: this.detectedTargetId };
+    }
     private detectedTargetId: string | null = null;
     private detectedTargetLabel: string | null = null;
 

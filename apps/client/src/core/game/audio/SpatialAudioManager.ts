@@ -2,7 +2,7 @@ import type { Camera } from "../camera/Camera";
 import { AUDIO_ASSETS } from "./AudioAssetRegistry";
 import { AUDIO_CONFIG } from "./AudioConfig";
 import { projectAudioPosition } from "./CameraAudioProjection";
-import type { AudioPlaybackOptions, AudioSoundId } from "./AudioDefinition";
+import type { AudioPlaybackOptions, AudioSoundId, AudioVoiceHandle } from "./AudioDefinition";
 interface Voice { readonly id: AudioSoundId; readonly source: AudioBufferSourceNode; readonly gain: GainNode; readonly pan: StereoPannerNode; }
 /** One audio context per Game; no physics-side dependency or per-play MP3 decoding. */
 export class SpatialAudioManager {
@@ -70,10 +70,10 @@ export class SpatialAudioManager {
     public play(id: AudioSoundId, options: AudioPlaybackOptions = {}): void {
         if (this.disposed) return;
         const buffer = this.buffers.get(id);
-        if (!buffer) { void this.preload(id).then((loaded) => { if (loaded && !this.disposed) this.play(id, options); }); return; }
+        if (!buffer) { void this.preload(id); return; }
         this.unlock();
         const context = this.context;
-        if (!context || !this.master) return;
+        if (!context || !this.master || context.state !== "running") return;
         if (this.voices.size >= AUDIO_CONFIG.maximumVoices) return;
         const definition = AUDIO_ASSETS[id];
         if ([...this.voices].filter(voice => voice.id === id).length >= definition.maxVoices) return;
@@ -92,12 +92,43 @@ export class SpatialAudioManager {
         source.onended = () => { this.voices.delete(voice); source.disconnect(); gain.disconnect(); pan.disconnect(); };
         try { source.start(); } catch { this.voices.delete(voice); source.disconnect(); gain.disconnect(); pan.disconnect(); }
     }
-    /** A persistent source with an explicit stop handle and camera-following position. */
-    public playLoop(id: AudioSoundId, position: () => { x: number; y: number } | null, gainMultiplier = 1): { update: () => void; stop: () => void } | null {
+    /** A controllable one-shot, used for explosions that enter death slow-motion after triggering. */
+    public playControlled(id: AudioSoundId, options: AudioPlaybackOptions = {}): AudioVoiceHandle | null {
         if (this.disposed || !this.buffers.has(id)) { void this.preload(id); return null; }
         this.unlock();
         const context = this.context;
-        if (!context || !this.master || this.voices.size >= AUDIO_CONFIG.maximumVoices) return null;
+        if (!context || !this.master || context.state !== "running" || this.voices.size >= AUDIO_CONFIG.maximumVoices) return null;
+        const definition = AUDIO_ASSETS[id];
+        if ([...this.voices].filter(v => v.id === id).length >= definition.maxVoices) return null;
+        const source = context.createBufferSource(); source.buffer = this.buffers.get(id)!;
+        const gain = context.createGain(); const pan = context.createStereoPanner();
+        source.connect(gain); gain.connect(pan); pan.connect(this.master);
+        const voice: Voice = { id, source, gain, pan }; this.voices.add(voice);
+        let ended = false; let multiplier = options.gain ?? 1;
+        const cleanup = () => { ended = true; this.voices.delete(voice); source.disconnect(); gain.disconnect(); pan.disconnect(); };
+        source.onended = cleanup;
+        const update = () => {
+            if (ended || !this.context) return;
+            const spatial = options.position && this.camera ? projectAudioPosition(this.camera, options.position) : { pan: 0, gain: 1 };
+            gain.gain.setTargetAtTime(definition.gain * multiplier * spatial.gain, context.currentTime, 0.025);
+            pan.pan.setTargetAtTime(spatial.pan, context.currentTime, 0.025);
+        };
+        const handle: AudioVoiceHandle = {
+            update,
+            setPlaybackRate: rate => { if (!ended) source.playbackRate.setTargetAtTime(Math.max(0.1, Math.min(4, rate)), context.currentTime, 0.025); },
+            setGain: value => { multiplier = Math.max(0, value); update(); },
+            stop: () => { if (!ended) { try { source.stop(); } catch { /* already stopped */ } } },
+        };
+        source.playbackRate.value = Math.max(0.1, Math.min(4, options.playbackRate ?? 1));
+        try { source.start(); update(); } catch { cleanup(); return null; }
+        return handle;
+    }
+    /** A persistent source with an explicit stop handle and camera-following position. */
+    public playLoop(id: AudioSoundId, position: () => { x: number; y: number } | null, gainMultiplier = 1): AudioVoiceHandle | null {
+        if (this.disposed || !this.buffers.has(id)) { void this.preload(id); return null; }
+        this.unlock();
+        const context = this.context;
+        if (!context || !this.master || context.state !== "running" || this.voices.size >= AUDIO_CONFIG.maximumVoices) return null;
         const definition = AUDIO_ASSETS[id];
         if ([...this.voices].filter(voice => voice.id === id).length >= definition.maxVoices) return null;
         const source = context.createBufferSource();
@@ -110,6 +141,7 @@ export class SpatialAudioManager {
         const voice: Voice = { id, source, gain, pan };
         this.voices.add(voice);
         let stopped = false;
+        let level = gainMultiplier;
         const cleanup = () => { this.voices.delete(voice); source.disconnect(); gain.disconnect(); pan.disconnect(); };
         source.onended = cleanup;
         const update = () => {
@@ -117,7 +149,7 @@ export class SpatialAudioManager {
             const point = position();
             const spatial = point && this.camera ? projectAudioPosition(this.camera, point) : { pan: 0, gain: point ? 1 : 0 };
             const now = this.context.currentTime;
-            gain.gain.setTargetAtTime(definition.gain * gainMultiplier * spatial.gain, now, 0.045);
+            gain.gain.setTargetAtTime(definition.gain * level * spatial.gain, now, 0.045);
             pan.pan.setTargetAtTime(spatial.pan, now, 0.045);
         };
         const stop = () => {
@@ -128,7 +160,7 @@ export class SpatialAudioManager {
             try { source.stop(now + 0.16); } catch { cleanup(); }
         };
         try { source.start(); update(); } catch { cleanup(); return null; }
-        return { update, stop };
+        return { update, stop, setPlaybackRate: rate => { if (!stopped) source.playbackRate.setTargetAtTime(Math.max(0.1, Math.min(4, rate)), context.currentTime, 0.035); }, setGain: value => { level = Math.max(0, value); update(); } };
     }
     public getActiveVoiceCount(): number { return this.voices.size; }
     public dispose(): void {

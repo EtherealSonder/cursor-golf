@@ -83,6 +83,7 @@ export class Fan extends Entity {
 
     private rotationRadians = 0;
     private overdriveRotorSpeed: number | null = null;
+    public getAudioOperatingState(): { active: boolean; speedRatio: number } { return { active: !this.voidRemoving && !this.isDestroyed(), speedRatio: (this.overdriveRotorSpeed ?? this.definition.rotorRotationSpeed) / Math.max(0.001, this.definition.rotorRotationSpeed) }; }
 
     public setOverdriveProfile(profile: FanOverdriveProfile, enabled: boolean): void {
         this.overdriveRotorSpeed = enabled ? profile.rotorSpeedRadiansPerSecond : null;

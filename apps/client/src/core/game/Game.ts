@@ -1,7 +1,16 @@
 import { BallMechanismAudioController } from "./audio/BallMechanismAudioController";
+import { BumperImpactAudioController } from "./audio/BumperImpactAudioController";
 import { BallPlatformAudioController } from "./audio/BallPlatformAudioController";
 import { BallTraversalAudioController } from "./audio/BallTraversalAudioController";
 import { BallCollisionAudioController } from "./audio/BallCollisionAudioController";
+import { MineAudioController } from "./audio/MineAudioController";
+import { RobotAudioController } from "./audio/RobotAudioController";
+import { FanAudioController } from "./audio/FanAudioController";
+import { GroundFireAudioController } from "./audio/GroundFireAudioController";
+import { RobotFireAudioController } from "./audio/RobotFireAudioController";
+import { SprinklerAudioController } from "./audio/SprinklerAudioController";
+import { RobotWaterWindAudioController } from "./audio/RobotWaterWindAudioController";
+import { WaterFillingAudioController } from "./audio/WaterFillingAudioController";
 import { SpatialAudioManager } from "./audio/SpatialAudioManager";
 import { GolfClubForegroundOverlay } from "./presentation/GolfClubForegroundOverlay";
 import { CrateRewardController } from "./crate/CrateRewardController";
@@ -87,10 +96,19 @@ import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEqu
 
 export class Game {
     private readonly spatialAudio = new SpatialAudioManager();
+    private mineAudio: MineAudioController | null = null;
+    private robotAudio: RobotAudioController | null = null;
+    private fanAudio: FanAudioController | null = null;
+    private groundFireAudio: GroundFireAudioController | null = null;
+    private robotFireAudio: RobotFireAudioController | null = null;
+    private sprinklerAudio: SprinklerAudioController | null = null;
+    private robotWaterWindAudio: RobotWaterWindAudioController | null = null;
+    private waterFillingAudio: WaterFillingAudioController | null = null;
     private unsubscribeCrateDestructionAudio: (() => void) | null = null;
     private ballCollisionAudio: BallCollisionAudioController | null = null;
     private ballTraversalAudio: BallTraversalAudioController | null = null;
     private ballMechanismAudio: BallMechanismAudioController | null = null;
+    private bumperImpactAudio: BumperImpactAudioController | null = null;
     private ballPlatformAudio: BallPlatformAudioController | null = null;
     private readonly unlockAudioOnPointerDown = () => { this.spatialAudio.unlock(); };
     public setAudioMuted(muted: boolean): void { this.spatialAudio.setMuted(muted); }
@@ -227,6 +245,9 @@ export class Game {
         this.container =
             container;
         this.container.addEventListener("pointerdown", this.unlockAudioOnPointerDown, { capture: true });
+        window.addEventListener("pointerdown", this.unlockAudioOnPointerDown, { capture: true });
+        window.addEventListener("keydown", this.unlockAudioOnPointerDown, { capture: true });
+        this.spatialAudio.unlock();
 
         this.renderer =
             new Renderer();
@@ -305,6 +326,20 @@ export class Game {
 
         this.world.initialize();
         this.spatialAudio.setCamera(this.world.getCamera());
+        this.mineAudio?.dispose(); this.robotAudio?.dispose(); this.fanAudio?.dispose();
+        this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
+        this.mineAudio = new MineAudioController(this.world, this.spatialAudio);
+        this.robotAudio = new RobotAudioController(this.world, this.spatialAudio);
+        this.fanAudio = new FanAudioController(this.world, this.spatialAudio);
+        this.groundFireAudio = new GroundFireAudioController(this.world, this.spatialAudio);
+        this.robotFireAudio = new RobotFireAudioController(this.world, this.spatialAudio);
+        this.sprinklerAudio = new SprinklerAudioController(this.world, this.spatialAudio);
+        this.robotWaterWindAudio = new RobotWaterWindAudioController(this.world, this.spatialAudio);
+        this.waterFillingAudio = new WaterFillingAudioController(this.world, this.spatialAudio);
+        void this.spatialAudio.preload("ground-fire");
+        void this.spatialAudio.preload("robot-fire-attack");
+        for (const id of ["water-sprinkler", "robot-water-attack", "robot-wind-attack", "water-filling-ground"] as const) void this.spatialAudio.preload(id);
+        for (const id of ["mine-beep", "mine-explosion", "robot-walk", "robot-detected", "fan-wind"] as const) void this.spatialAudio.preload(id);
         this.unsubscribeCrateDestructionAudio?.();
         this.unsubscribeCrateDestructionAudio = this.world.subscribeCrateDestructionAudio(event => {
             const position = { x: event.x, y: event.y };
@@ -330,6 +365,8 @@ export class Game {
             ballForAudio, this.world.getStickyBallAttachmentController(), this.spatialAudio,
         );
         this.ballTraversalAudio = ballForAudio ? new BallTraversalAudioController(ballForAudio, this.spatialAudio) : null;
+        this.bumperImpactAudio?.dispose();
+        this.bumperImpactAudio = new BumperImpactAudioController(this.world, this.spatialAudio);
         this.ballMechanismAudio = ballForAudio ? new BallMechanismAudioController(ballForAudio, this.world, this.spatialAudio) : null;
         this.ballPlatformAudio = ballForAudio ? new BallPlatformAudioController(ballForAudio, this.world, this.spatialAudio) : null;
         for (const id of ["golf-ball-bumper", "golf-ball-bush", "golf-ball-roll", "golf-ball-holed"] as const) void this.spatialAudio.preload(id);
@@ -1047,6 +1084,9 @@ export class Game {
             P3C2.measure("worldUpdate", () => { this.world?.update(slowedDeltaTime); });
             if (this.p3a1Profiler || this.p3a2Profiler) p3a1WorldMs = performance.now() - p3a1SlowWorldStart;
 
+            this.mineAudio?.update(deltaTime, this.ballDeathTransitionController.getGameplayTimeScale());
+            this.robotAudio?.update(); this.fanAudio?.update();
+            this.groundFireAudio?.update(deltaTime); this.robotFireAudio?.update(); this.sprinklerAudio?.update(); this.robotWaterWindAudio?.update(); this.waterFillingAudio?.update(deltaTime);
             if (cameraFocusActive) {
                 this.world?.updateDeathCameraFocus(
                     transitionSnapshot.progress,
@@ -1122,6 +1162,11 @@ export class Game {
                 this.world.updateCamera(0);
             }
         }
+        this.mineAudio?.update(deltaTime, 1);
+        this.robotAudio?.update();
+        this.fanAudio?.update();
+        this.groundFireAudio?.update(deltaTime);
+        this.robotFireAudio?.update(); this.sprinklerAudio?.update(); this.robotWaterWindAudio?.update(); this.waterFillingAudio?.update(deltaTime);
         this.ballTraversalAudio?.update(deltaTime);
         this.ballMechanismAudio?.update();
         this.ballPlatformAudio?.update(deltaTime);
@@ -1334,14 +1379,22 @@ export class Game {
 
     public stop(): void {
         this.container.removeEventListener("pointerdown", this.unlockAudioOnPointerDown, { capture: true });
+        window.removeEventListener("pointerdown", this.unlockAudioOnPointerDown, { capture: true });
+        window.removeEventListener("keydown", this.unlockAudioOnPointerDown, { capture: true });
         this.ballCollisionAudio?.dispose();
         this.ballCollisionAudio = null;
         this.ballTraversalAudio?.dispose();
         this.ballTraversalAudio = null;
         this.ballMechanismAudio?.dispose();
         this.ballMechanismAudio = null;
+        this.bumperImpactAudio?.dispose();
+        this.bumperImpactAudio = null;
         this.ballPlatformAudio?.dispose();
         this.ballPlatformAudio = null;
+        this.mineAudio?.dispose(); this.robotAudio?.dispose(); this.fanAudio?.dispose();
+        this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
+        this.mineAudio = null; this.robotAudio = null; this.fanAudio = null;
+        this.groundFireAudio = null; this.robotFireAudio = null; this.sprinklerAudio = null; this.robotWaterWindAudio = null; this.waterFillingAudio = null;
         this.spatialAudio.dispose();
         this.golfClubForeground?.destroy();
         this.golfClubForeground = null;
