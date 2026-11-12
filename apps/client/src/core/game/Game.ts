@@ -1,3 +1,4 @@
+import { WorldModifierAmbienceController } from "./audio/WorldModifierAmbienceController";
 import { BallMechanismAudioController } from "./audio/BallMechanismAudioController";
 import { BumperImpactAudioController } from "./audio/BumperImpactAudioController";
 import { BallPlatformAudioController } from "./audio/BallPlatformAudioController";
@@ -96,6 +97,7 @@ import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEqu
 
 export class Game {
     private readonly spatialAudio = new SpatialAudioManager();
+    private readonly modifierAmbience = new WorldModifierAmbienceController(this.spatialAudio);
     private mineAudio: MineAudioController | null = null;
     private robotAudio: RobotAudioController | null = null;
     private fanAudio: FanAudioController | null = null;
@@ -336,6 +338,7 @@ export class Game {
         this.sprinklerAudio = new SprinklerAudioController(this.world, this.spatialAudio);
         this.robotWaterWindAudio = new RobotWaterWindAudioController(this.world, this.spatialAudio);
         this.waterFillingAudio = new WaterFillingAudioController(this.world, this.spatialAudio);
+        for (const id of ["world-modifier-downpour", "world-modifier-galewind"] as const) void this.spatialAudio.preload(id);
         void this.spatialAudio.preload("ground-fire");
         void this.spatialAudio.preload("robot-fire-attack");
         for (const id of ["water-sprinkler", "robot-water-attack", "robot-wind-attack", "water-filling-ground"] as const) void this.spatialAudio.preload(id);
@@ -1086,6 +1089,7 @@ export class Game {
 
             this.mineAudio?.update(deltaTime, this.ballDeathTransitionController.getGameplayTimeScale());
             this.robotAudio?.update(); this.fanAudio?.update();
+            this.modifierAmbience.update(this.getWorldModifierState()?.modifier ?? null, deltaTime);
             this.groundFireAudio?.update(deltaTime); this.robotFireAudio?.update(); this.sprinklerAudio?.update(); this.robotWaterWindAudio?.update(); this.waterFillingAudio?.update(deltaTime);
             if (cameraFocusActive) {
                 this.world?.updateDeathCameraFocus(
@@ -1165,6 +1169,7 @@ export class Game {
         this.mineAudio?.update(deltaTime, 1);
         this.robotAudio?.update();
         this.fanAudio?.update();
+        this.modifierAmbience.update(this.getWorldModifierState()?.modifier ?? null, deltaTime);
         this.groundFireAudio?.update(deltaTime);
         this.robotFireAudio?.update(); this.sprinklerAudio?.update(); this.robotWaterWindAudio?.update(); this.waterFillingAudio?.update(deltaTime);
         this.ballTraversalAudio?.update(deltaTime);
@@ -1395,6 +1400,7 @@ export class Game {
         this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
         this.mineAudio = null; this.robotAudio = null; this.fanAudio = null;
         this.groundFireAudio = null; this.robotFireAudio = null; this.sprinklerAudio = null; this.robotWaterWindAudio = null; this.waterFillingAudio = null;
+        this.modifierAmbience.dispose();
         this.spatialAudio.dispose();
         this.golfClubForeground?.destroy();
         this.golfClubForeground = null;

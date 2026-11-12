@@ -1,6 +1,8 @@
 import type { AudioAssetDefinition, AudioSoundId } from "./AudioDefinition";
 const files = import.meta.glob("../../../assets/audio/sfx/golf_ball/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const environmentFiles = import.meta.glob("../../../assets/audio/sfx/environment/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
+const modifierFiles = import.meta.glob("../../../assets/audio/sfx/world_modifiers/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
+function modifierAsset(filename: string): string { const url = modifierFiles[`../../../assets/audio/sfx/world_modifiers/${filename}.mp3`]; if (!url) throw new Error(`Missing modifier audio: ${filename}`); return url; }
 const robotFiles = import.meta.glob("../../../assets/audio/sfx/robots/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 function robotAsset(filename: string): string { const url = robotFiles[`../../../assets/audio/sfx/robots/${filename}.mp3`]; if (!url) throw new Error(`Missing robot audio: ${filename}`); return url; }
 function environmentAsset(filename: string): string {
@@ -39,5 +41,7 @@ export const AUDIO_ASSETS: Record<AudioSoundId, AudioAssetDefinition> = {
     "robot-water-attack": { url: robotAsset("robot_water_attack"), gain: 0.68, maxVoices: 2 },
     "robot-wind-attack": { url: robotAsset("robot_wind_attack"), gain: 0.62, maxVoices: 2 },
     "water-filling-ground": { url: environmentAsset("water_filling_ground"), gain: 0.16, maxVoices: 2 },
+    "world-modifier-downpour": { url: modifierAsset("world_modifier_downpour"), gain: 1, maxVoices: 1 },
+    "world-modifier-galewind": { url: modifierAsset("world_modifier_galewind"), gain: 1, maxVoices: 1 },
     "golf-ball-holed": { url: asset("golf_ball_holed"), gain: 0.85, maxVoices: 2 },
 };

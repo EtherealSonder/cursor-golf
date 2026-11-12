@@ -69,7 +69,7 @@ export class WildfireController {
                     this.fireSources.addSource({
                         id, type: FireSourceType.Point, enabled: true,
                         positionX: warning.x, positionY: warning.y,
-                        radius: WILDFIRE_CONFIG.pointFireRadius,
+                        radius: Math.max(WILDFIRE_CONFIG.pointFireRadius, WILDFIRE_CONFIG.warningRadius),
                         heatAmount: WILDFIRE_CONFIG.pointFireHeatAmount,
                     });
                     this.ownedSourceIds.add(id);
@@ -78,7 +78,7 @@ export class WildfireController {
             else this.warnings[i] = { ...warning, ageSeconds };
         }
         this.elapsedSeconds += deltaSeconds;
-        // One scheduled event per eight seconds. Avoid unbounded catch-up on large frame deltas.
+        // One scheduled event per configured ignition interval. Avoid unbounded catch-up on large frame deltas.
         let processed = 0;
         while (this.elapsedSeconds >= this.nextWarningAtSeconds && processed < 4) {
             this.scheduleWarning();

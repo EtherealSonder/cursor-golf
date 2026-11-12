@@ -1,7 +1,9 @@
+import { WILDFIRE_CONFIG } from "./WildfireConfig";
+
 /** WM-5C: presentation-only warning styling. All dimensions are world pixels. */
 export const WILDFIRE_WARNING_VFX = Object.freeze({
     poolSize: 3,
-    radius: 65,
+    radius: WILDFIRE_CONFIG.warningRadius,
     initialScale: 0,
     growInSeconds: 0.45,
     fadeOutSeconds: 0.50,

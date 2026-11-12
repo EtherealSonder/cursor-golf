@@ -162,6 +162,35 @@ export class SpatialAudioManager {
         try { source.start(); update(); } catch { cleanup(); return null; }
         return { update, stop, setPlaybackRate: rate => { if (!stopped) source.playbackRate.setTargetAtTime(Math.max(0.1, Math.min(4, rate)), context.currentTime, 0.035); }, setGain: value => { level = Math.max(0, value); update(); } };
     }
+    /** Non-spatial, centred stereo loop. Does not depend on camera or world coordinates. */
+    public playGlobalLoop(id: AudioSoundId, gainMultiplier = 1): AudioVoiceHandle | null {
+        if (this.disposed || !this.buffers.has(id)) { void this.preload(id); return null; }
+        this.unlock();
+        const context = this.context;
+        if (!context || !this.master || context.state !== "running" || this.voices.size >= AUDIO_CONFIG.maximumVoices) return null;
+        const definition = AUDIO_ASSETS[id];
+        if ([...this.voices].filter(v => v.id === id).length >= definition.maxVoices) return null;
+        const source = context.createBufferSource(); source.buffer = this.buffers.get(id)!; source.loop = true;
+        const gain = context.createGain(); gain.gain.value = 0;
+        const pan = context.createStereoPanner(); pan.pan.value = 0;
+        source.connect(gain); gain.connect(pan); pan.connect(this.master);
+        const voice: Voice = { id, source, gain, pan }; this.voices.add(voice);
+        let stopped = false; let level = Math.max(0, gainMultiplier);
+        const cleanup = () => { this.voices.delete(voice); source.disconnect(); gain.disconnect(); pan.disconnect(); };
+        source.onended = cleanup;
+        const update = () => { if (!stopped) gain.gain.setTargetAtTime(definition.gain * level, context.currentTime, 0.06); };
+        try { source.start(); update(); } catch { cleanup(); return null; }
+        return {
+            update,
+            setGain: value => { level = Math.max(0, value); update(); },
+            setPlaybackRate: rate => { if (!stopped) source.playbackRate.setTargetAtTime(Math.max(0.1, Math.min(4, rate)), context.currentTime, 0.04); },
+            stop: () => { if (stopped) return; stopped = true; const now = context.currentTime; gain.gain.setTargetAtTime(0, now, 0.03); try { source.stop(now + 0.15); } catch { cleanup(); } },
+        };
+    }
+    public getActiveVoiceCountExcluding(excluded: readonly AudioSoundId[]): number {
+        let count = 0; for (const voice of this.voices) if (!excluded.includes(voice.id)) count++;
+        return count;
+    }
     public getActiveVoiceCount(): number { return this.voices.size; }
     public dispose(): void {
         if (this.disposed) return;
