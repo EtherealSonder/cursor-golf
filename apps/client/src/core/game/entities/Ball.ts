@@ -1,3 +1,4 @@
+import { SHOT_INPUT_POLICY } from "../config/ShotInputPolicyDefinition";
 import { GALE_FORCE_PHYSICS } from "../config/GaleForcePhysicsDefinition";
 import { SurfaceType } from "../surface/SurfaceType";
 import { createPortalHandleStickyAttachment } from "../ball-effects/StickyBallPortalHandleAttachmentAdapter";
@@ -945,8 +946,7 @@ export class Ball extends Entity {
 
         return (
             normalizedPower >=
-            this.physicsDefinition
-                .minimumLaunchPower
+            (SHOT_INPUT_POLICY.enforceMultiplayerMinimumShot ? this.physicsDefinition.minimumLaunchPower : 0)
         );
     }
 
@@ -957,8 +957,7 @@ export class Ball extends Entity {
 
         return (
             preparationTime >=
-            this.physicsDefinition
-                .minimumShotPreparationTime
+            (SHOT_INPUT_POLICY.enforceMultiplayerMinimumShot ? this.physicsDefinition.minimumShotPreparationTime : 0)
         );
     }
 

@@ -1,3 +1,4 @@
+import { SHOT_INPUT_POLICY } from "../config/ShotInputPolicyDefinition";
 import { InputManager } from "../../input/InputManager";
 import { BallInteractionState } from "../entities/Ball";
 import { World } from "../world/World";
@@ -241,7 +242,12 @@ export class ShotController {
         // Oscillating Aim Indicator
         // -----------------------------
 
-        aimIndicator.show();
+        // A visible aim must correspond to an accepted shot.
+        const dragPixels = dragDistance * this.world.getCamera().getZoom();
+        const intentionalDrag = dragPixels >= SHOT_INPUT_POLICY.pointerDragDeadZonePixels;
+        const launchValid = intentionalDrag && ball.canLaunchShot(normalizedPower, this.preparationElapsedTime);
+        if (launchValid) aimIndicator.show();
+        else aimIndicator.hide();
 
         aimIndicator.setDirection(
             ball.getX(),
@@ -358,7 +364,7 @@ export class ShotController {
 
         this.world
             .getAimIndicator()
-            ?.show();
+            ?.hide();
 
         this.world
             .getCamera()
@@ -481,10 +487,8 @@ export class ShotController {
             );
 
         const shotCanLaunch =
-            ball.canLaunchShot(
-                releasedPower,
-                releasedPreparationTime,
-            );
+            this.shotPreparation.getDragDistance() * this.world.getCamera().getZoom() >= SHOT_INPUT_POLICY.pointerDragDeadZonePixels &&
+            ball.canLaunchShot(releasedPower, releasedPreparationTime);
 
         /*
          * Invalid quick clicks and tiny drags

@@ -1,4 +1,7 @@
 import type { AudioAssetDefinition, AudioSoundId } from "./AudioDefinition";
+const eventFiles = import.meta.glob("../../../assets/audio/sfx/events/*.wav", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
+const deathUrl = eventFiles["../../../assets/audio/sfx/events/ball_death.wav"];
+if (!deathUrl) throw new Error("Missing ball death audio: ball_death.wav");
 const files = import.meta.glob("../../../assets/audio/sfx/golf_ball/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const environmentFiles = import.meta.glob("../../../assets/audio/sfx/environment/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const modifierFiles = import.meta.glob("../../../assets/audio/sfx/world_modifiers/*.mp3", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
@@ -19,6 +22,7 @@ export const AUDIO_ASSETS: Record<AudioSoundId, AudioAssetDefinition> = {
     "portal-teleport": { url: environmentAsset("portal_teleport"), gain: 0.75, maxVoices: 5 },
     "marble-hit": { url: environmentAsset("marble_hit"), gain: 0.65, maxVoices: 8 },
     "rock-hit": { url: environmentAsset("rock_hit"), gain: 0.75, maxVoices: 8 },
+    "golf-ball-death": { url: deathUrl, gain: 0.85, maxVoices: 2 },
     "golf-ball-hit": { url: asset("golf_ball_hit"), gain: 0.85, maxVoices: 3 },
     "golf-ball-wall-impact": { url: asset("golf_ball_wall_impact"), gain: 0.8, maxVoices: 5 },
     "golf-ball-metal-hit": { url: asset("golf_ball_metal_hit"), gain: 0.8, maxVoices: 5 },

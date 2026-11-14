@@ -895,6 +895,7 @@ export class Game {
         void this.spatialAudio.preload("crate-destroy");
         void this.spatialAudio.preload("golf-crate-powerup");
         void this.spatialAudio.preload("golf-ball-hit");
+        void this.spatialAudio.preload("golf-ball-death");
         for (const id of ["golf-ball-wall-impact", "golf-ball-metal-hit", "golf-ball-robot-hit", "golf-ball-sticky-impact"] as const) {
             void this.spatialAudio.preload(id);
         }
@@ -927,6 +928,9 @@ export class Game {
                 if (!event) {
                     return;
                 }
+
+                const deathAudioPosition = world.getBallWorldPosition();
+                this.spatialAudio.play("golf-ball-death", deathAudioPosition ? { position: deathAudioPosition } : {});
 
                 // Only an accepted death ends a one-life ball effect.
                 this.ballEffectController.clear();

@@ -1,3 +1,4 @@
+import { SHOT_INPUT_POLICY } from "./ShotInputPolicyDefinition";
 export interface ShotPowerDefinition {
     readonly minimumNormalizedPower: number;
     readonly minimumBaselineTravelDistance: number;
@@ -8,8 +9,8 @@ export interface ShotPowerDefinition {
 }
 
 export const DEFAULT_SHOT_POWER_DEFINITION: ShotPowerDefinition = {
-    minimumNormalizedPower: 0.10,
-    minimumBaselineTravelDistance: 11.88,
+    minimumNormalizedPower: SHOT_INPUT_POLICY.enforceMultiplayerMinimumShot ? 0.10 : 0,
+    minimumBaselineTravelDistance: SHOT_INPUT_POLICY.enforceMultiplayerMinimumShot ? 11.88 : SHOT_INPUT_POLICY.singlePlayerMinimumBaselineTravelDistance,
     maximumBaselineTravelDistance: 1199.88,
     baselineDistanceExponent: 1.0,
     baselineRollingDeceleration: 600,
