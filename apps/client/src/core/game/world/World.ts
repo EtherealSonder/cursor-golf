@@ -1,3 +1,4 @@
+import { EffectiveFireWindSampler } from "../environment/EffectiveFireWindSampler";
 import { snapshotVisionOccluders } from "../entities/robots/RobotVisionOcclusionGeometry";
 import { assertRobotVisionOcclusionValidation } from "../debug/RobotVisionOcclusionValidation";
 import { RobotVisionConeCourseMask } from "../entities/robots/RobotVisionConeCourseMask";
@@ -664,9 +665,11 @@ export class World {
 
     public debugSetWorldModifier(selection: WorldModifierDebugSelection, seed: number): WorldModifierResolvedState {
         if (!import.meta.env.DEV) return this.getWorldModifierState();
+        const previous = this.getWorldModifierState();
         const state = this.worldModifierController.debugResolve(
             WorldModifierDebugController.createConfiguration(selection), seed, this.runtimeLevel.id,
         );
+        if (previous.modifier === state.modifier && (state.modifier !== "wildfire" || previous.seed === state.seed)) return state;
         this.updateDuneSurgeTerrain(state.modifier === "dune-surge");
         this.setGaleForceEnabled(state.modifier === "gale-force");
         this.windVfxSystem?.setGaleForcePresentationEnabled(state.modifier === "gale-force");
@@ -684,6 +687,7 @@ export class World {
 
     /** Apply one stable, high-strength global wind for the current Gale Force activation. */
     private setGaleForceEnabled(enabled: boolean): void {
+        this.ball?.setGaleForcePhysicsEnabled(enabled);
         if (enabled === this.galeForceActive) return;
 
         if (enabled) {
@@ -837,6 +841,8 @@ export class World {
 
     private readonly windManager:
         WindManager;
+
+    private effectiveFireWindSampler: EffectiveFireWindSampler | null = null;
 
     private windVfxSystem:
         WindVfxSystem | null =
@@ -1034,6 +1040,19 @@ export class World {
     private readonly portalDynamicAdapters = new PortalDynamicAdapterRegistry();
     private readonly portalAdapterCache = new Map<string, PortalTeleportAdapter>();
     private portalDynamicInteractions: PortalDynamicInteractionController | null = null;
+    private readonly objectAudioListeners = new Set<(event: { sound: "portal-teleport" | "marble-hit" | "rock-hit"; x: number; y: number; speed: number; key: string }) => void>();
+    public subscribeObjectAudio(listener: (event: { sound: "portal-teleport" | "marble-hit" | "rock-hit"; x: number; y: number; speed: number; key: string }) => void): () => void {
+        this.objectAudioListeners.add(listener);
+        return () => this.objectAudioListeners.delete(listener);
+    }
+    private emitObjectAudio(sound: "portal-teleport" | "marble-hit" | "rock-hit", x: number, y: number, speed: number, key: string): void {
+        for (const listener of this.objectAudioListeners) listener({ sound, x, y, speed, key });
+    }
+    private classifyDynamicAudio(body: { getDefinition(): { id: string } }): "marble-hit" | "rock-hit" | null {
+        const id = body.getDefinition().id;
+        return /marble/i.test(id) ? "marble-hit" : /(?:^|-)rock(?:-|$)|boulder/i.test(id) ? "rock-hit" : null;
+    }
+
     private readonly portalDiagnostic = new PortalPerformanceDiagnosticController();
     private portalDiagnosticOverlay: PortalPerformanceDiagnosticOverlay | null = null;
     private portalDiagnosticEnabled = false;
@@ -1749,6 +1768,14 @@ export class World {
                 this.localWindSystem,
             );
 
+        const effectiveFireWindSampler = new EffectiveFireWindSampler(
+            this.localWindSystem,
+            this.windManager,
+            () => this.worldModifierController.getState().modifier === "gale-force",
+        );
+        this.effectiveFireWindSampler = effectiveFireWindSampler;
+        this.fireManager.setEffectiveFireWindSampler(effectiveFireWindSampler);
+
         this.marbleDischargeController = new ElementalMarbleDischargeController(this.fireManager, this.waterSourceSystem);
         this.fireSourceSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
         this.fireManager.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
@@ -1781,6 +1808,14 @@ export class World {
 
         this.dynamicStaticCollisionSystem =
             new DynamicStaticCollisionSystem();
+        this.dynamicCollisionSystem.onAudioImpact = (first, second, x, y, speed) => {
+            const sound = this.classifyDynamicAudio(first) ?? this.classifyDynamicAudio(second);
+            if (sound) this.emitObjectAudio(sound, x, y, speed, `pair:${[first.getDefinition().id, second.getDefinition().id].sort().join(":")}`);
+        };
+        this.dynamicStaticCollisionSystem.onAudioImpact = (body, x, y, speed) => {
+            const sound = this.classifyDynamicAudio(body);
+            if (sound) this.emitObjectAudio(sound, x, y, speed, `static:${body.getDefinition().id}`);
+        };
 
     }
 
@@ -1792,6 +1827,9 @@ export class World {
             this.wildfireWarningRenderer?.clear();
             return;
         }
+        // Stop the old scheduler before replacing it during a live modifier change.
+        this.wildfireController?.stop();
+        this.wildfireController = null;
         const geometry = this.runtimeLevel.course.generatedGeometry;
         if (!geometry) return;
         this.wildfireController = new WildfireController(seed, geometry, this.runtimeLevel.hole, this.runtimeLevel.ball, this.surfaceSystem, this.fireManager, this.fireSourceSystem);
@@ -1876,6 +1914,7 @@ export class World {
         this.portalDynamicInteractions = new PortalDynamicInteractionController(
             this.portalBodies, this.portalDynamicAdapters,
             (x, y, radius, id) => this.isPortalDynamicExitClear(x, y, radius, id),
+            (id, x, y) => this.emitObjectAudio("portal-teleport", x, y, 1, `portal:${id}`),
         );
         void this.createPortalPreviews();
         if (this.portalDiagnosticEnabled && PORTAL_DIAGNOSTIC.showPortalColliders) {
@@ -2205,6 +2244,7 @@ export class World {
                 ),
             );
 
+        this.ball.setGaleForcePhysicsEnabled(this.galeForceActive);
         this.ball.setStickyAttachmentController(this.stickyBallAttachmentController);
         this.ball.setStickyRadialBumperIds(this.radialBumpers.map(bumper => bumper.getCollisionDefinition().id));
         this.addEntity(
@@ -6826,6 +6866,7 @@ export class World {
                 this.localWindSystem,
                 this.waterObstacleRegistrationSystem
                     .getAirborneCollisionField(),
+                this.effectiveFireWindSampler ?? undefined,
             );
 
         this.fireVfxSystem.setCourseEnvironmentBoundary(this.courseEnvironmentBoundary);
@@ -7528,6 +7569,7 @@ export class World {
             // Conservative portal exit clearance; other static obstacles are handled by the normal solver.
             return this.portalBodies.every(p=>Math.hypot(p.getX()-x,p.getY()-y)>radius+20);
         }, () => ({ x: this.camera.getPositionX(), y: this.camera.getPositionY() }), (x,y) => {
+            this.emitObjectAudio("portal-teleport", x, y, 1, "portal:ball");
             this.camera.followTeleportDestination(x,y);
             this.applyCameraTransform();
         });

@@ -7,11 +7,16 @@ type Ambience = { id: AudioSoundId; handle: AudioVoiceHandle; level: number; tar
 /** Weather audio stays centred and independent of camera position. */
 export class WorldModifierAmbienceController {
     private readonly tracks: Ambience[] = [];
+    private selected: AudioSoundId | null = null;
     public constructor(private readonly audio: SpatialAudioManager) {}
 
     public update(modifier: WorldModifierId | null, dt: number): void {
         const desired: AudioSoundId | null = modifier === "downpour" ? "world-modifier-downpour"
             : modifier === "gale-force" ? "world-modifier-galewind" : null;
+        if (desired !== this.selected) {
+            this.selected = desired;
+            if (desired) void this.audio.preload(desired);
+        }
         const seconds = Number.isFinite(dt) ? Math.max(0, Math.min(dt, 0.1)) : 0;
         // Exclude weather voices themselves when measuring competing sound activity.
         const competing = this.audio.getActiveVoiceCountExcluding(["world-modifier-downpour", "world-modifier-galewind"]);
@@ -37,5 +42,5 @@ export class WorldModifierAmbienceController {
             }
         }
     }
-    public dispose(): void { for (const track of this.tracks) track.handle.stop(); this.tracks.length = 0; }
+    public dispose(): void { for (const track of this.tracks) track.handle.stop(); this.tracks.length = 0; this.selected = null; }
 }

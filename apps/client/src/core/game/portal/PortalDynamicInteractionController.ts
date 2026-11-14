@@ -27,6 +27,7 @@ export class PortalDynamicInteractionController {
         private readonly registry: PortalDynamicAdapterRegistry,
         /** Must reject overlap with solid world obstacles. P4-B supplies authoritative query. */
         private readonly isExitClear: (x: number, y: number, radius: number, objectId: string) => boolean,
+        private readonly onTeleport?: (objectId: string, x: number, y: number) => void,
     ) {}
 
     public update(dt: number): void {
@@ -117,6 +118,7 @@ export class PortalDynamicInteractionController {
                 // The adapter is authoritative; reject any relocation it could not commit.
                 const committed = adapter.getPose();
                 if (Math.hypot(committed.x - exit.x, committed.y - exit.y) > 0.5) { this.trace(adapter.id, "ENTRY_REJECTED", { reason: "COMMIT_MISMATCH", expected: exit, committed }); continue; }
+                this.onTeleport?.(adapter.id, committed.x, committed.y);
                 this.trace(adapter.id, "TELEPORT_SUCCESS", { source: source.id, destination: destination.id, from: pose, to: committed });
                 this.postTeleport.set(adapter.id, { x: committed.x, y: committed.y, vx: committed.vx, vy: committed.vy });
                 this.lastPositions.set(adapter.id, { x: committed.x, y: committed.y });

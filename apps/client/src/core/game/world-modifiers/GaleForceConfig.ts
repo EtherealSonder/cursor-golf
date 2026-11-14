@@ -1,6 +1,8 @@
+import { GALE_FORCE_PHYSICS } from "../config/GaleForcePhysicsDefinition";
 /** WM-6A: Fixed high-speed prevailing wind, with one random heading per activation. */
 export const GALE_FORCE_CONFIG = Object.freeze({
     strengthKph: 90,
+    physics: GALE_FORCE_PHYSICS,
     minimumDirectionDegrees: 0,
     maximumDirectionDegrees: 360,
     roundDirectionToInteger: true,

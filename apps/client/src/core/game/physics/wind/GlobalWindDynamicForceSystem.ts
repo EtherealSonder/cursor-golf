@@ -42,7 +42,13 @@ export class GlobalWindDynamicForceSystem {
             if (!Number.isFinite(vx) || !Number.isFinite(vy) ||
                 vx * vx + vy * vy <= minSpeedSquared) continue;
 
-            const scale = this.definition.referenceMass * this.definition.accelerationMultiplier * dt;
+            // Wind cannot indefinitely sustain the final few pixels/second of motion.
+            // Smooth attenuation also avoids a hard force discontinuity at rest.
+            const speed = Math.hypot(vx, vy);
+            const fadeRange = Math.max(0.001, this.definition.fullWindSpeed - this.definition.windFadeStartSpeed);
+            const fade = Math.max(0, Math.min(1, (speed - this.definition.windFadeStartSpeed) / fadeRange));
+            if (fade <= 0) continue;
+            const scale = this.definition.referenceMass * this.definition.accelerationMultiplier * fade * dt;
             let impulseX = acceleration.x * scale;
             let impulseY = acceleration.y * scale;
             const magnitude = Math.hypot(impulseX, impulseY);

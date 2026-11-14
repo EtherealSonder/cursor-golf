@@ -1,3 +1,4 @@
+import type { EffectiveFireWindSampler } from "../environment/EffectiveFireWindSampler";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
 import {
     Container,
@@ -190,6 +191,8 @@ export class FireVfxSystem {
 
         airborneObstacleField:
             AirborneWaterCollisionField,
+
+        effectiveFireWindSampler?: EffectiveFireWindSampler,
     ) {
         this.textures =
             FireVfxTextureFactory.create();
@@ -272,6 +275,10 @@ export class FireVfxSystem {
                 },
                 this.directionalPresentationRegion,
             );
+
+        if (effectiveFireWindSampler) {
+            this.groundFireEmitter.setEffectiveFireWindSampler(effectiveFireWindSampler);
+        }
 
         this.jetFireEmitter =
             new JetFireEmitter(

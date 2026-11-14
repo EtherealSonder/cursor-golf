@@ -2,6 +2,10 @@
 export interface GlobalWindDynamicForceDefinition {
     /** Bodies below this linear speed are not started by global wind. */
     readonly minimumMovingSpeed: number;
+    /** Begin attenuating wind below this body speed. */
+    readonly windFadeStartSpeed: number;
+    /** Wind reaches full strength at this body speed. */
+    readonly fullWindSpeed: number;
     /** Reference mass used to convert environmental acceleration to impulse. */
     readonly referenceMass: number;
     /** Multiplier for global wind acceleration on dynamic objects. */
@@ -13,7 +17,9 @@ export interface GlobalWindDynamicForceDefinition {
 }
 
 export const DEFAULT_GLOBAL_WIND_DYNAMIC_FORCE_DEFINITION: GlobalWindDynamicForceDefinition = {
-    minimumMovingSpeed: 2,
+    minimumMovingSpeed: 5,
+    windFadeStartSpeed: 22,
+    fullWindSpeed: 85,
     referenceMass: 1,
     accelerationMultiplier: 1,
     maximumImpulsePerStep: 20,

@@ -1,3 +1,4 @@
+import { GALE_FORCE_PHYSICS } from "../config/GaleForcePhysicsDefinition";
 import { SurfaceType } from "../surface/SurfaceType";
 import { createPortalHandleStickyAttachment } from "../ball-effects/StickyBallPortalHandleAttachmentAdapter";
 import { Portal } from "../portal/Portal";
@@ -399,6 +400,12 @@ export class Ball extends Entity {
 
     private readonly dynamicCollidables:
         readonly DynamicCollidable[];
+
+    private galeForcePhysicsEnabled = false;
+
+    public setGaleForcePhysicsEnabled(enabled: boolean): void {
+        this.galeForcePhysicsEnabled = enabled;
+    }
 
     private readonly windManager:
         WindManager;
@@ -1980,10 +1987,12 @@ export class Ball extends Entity {
         // LocalWindDynamicForceSystem. Global course Wind remains Ball-specific.
         this.velocityX +=
             globalWindAcceleration.x *
+            (this.galeForcePhysicsEnabled ? GALE_FORCE_PHYSICS.ballAccelerationMultiplier : 1) *
             deltaTime;
 
         this.velocityY +=
             globalWindAcceleration.y *
+            (this.galeForcePhysicsEnabled ? GALE_FORCE_PHYSICS.ballAccelerationMultiplier : 1) *
             deltaTime;
 
         const speedAfterWind =

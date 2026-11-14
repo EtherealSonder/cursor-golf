@@ -16,6 +16,9 @@ function asset(filename: string): string {
     return url;
 }
 export const AUDIO_ASSETS: Record<AudioSoundId, AudioAssetDefinition> = {
+    "portal-teleport": { url: environmentAsset("portal_teleport"), gain: 0.75, maxVoices: 5 },
+    "marble-hit": { url: environmentAsset("marble_hit"), gain: 0.65, maxVoices: 8 },
+    "rock-hit": { url: environmentAsset("rock_hit"), gain: 0.75, maxVoices: 8 },
     "golf-ball-hit": { url: asset("golf_ball_hit"), gain: 0.85, maxVoices: 3 },
     "golf-ball-wall-impact": { url: asset("golf_ball_wall_impact"), gain: 0.8, maxVoices: 5 },
     "golf-ball-metal-hit": { url: asset("golf_ball_metal_hit"), gain: 0.8, maxVoices: 5 },

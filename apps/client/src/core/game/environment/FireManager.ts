@@ -1,3 +1,4 @@
+import type { EffectiveFireWindSampler } from "./EffectiveFireWindSampler";
 import type { HoleFireExclusion } from "./HoleFireExclusion";
 import { PerformanceInvestigationCounters as PassBCounters } from "../debug/PerformanceInvestigationCounters";
 import type { CourseEnvironmentBoundary } from "../level/CourseEnvironmentBoundary";
@@ -243,6 +244,12 @@ export class FireManager {
     private validationRandomState:
         number | null =
         null;
+
+    private effectiveFireWindSampler: EffectiveFireWindSampler | null = null;
+
+    public setEffectiveFireWindSampler(sampler: EffectiveFireWindSampler): void {
+        this.effectiveFireWindSampler = sampler;
+    }
 
     constructor(
         private readonly surfaceSystem:
@@ -905,7 +912,7 @@ export class FireManager {
             1;
 
         const localWind =
-            this.localWindSystem
+            (this.effectiveFireWindSampler ?? this.localWindSystem)
                 .getAccelerationAt(
                     sourceCell.getWorldCenterX(),
                     sourceCell.getWorldCenterY(),
@@ -1268,7 +1275,7 @@ export class FireManager {
         cell: FireCell,
     ): boolean {
         const wind =
-            this.localWindSystem.getAccelerationAt(
+            (this.effectiveFireWindSampler ?? this.localWindSystem).getAccelerationAt(
                 cell.getWorldCenterX(),
                 cell.getWorldCenterY(),
             );

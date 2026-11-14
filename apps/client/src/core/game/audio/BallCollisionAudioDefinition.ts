@@ -16,7 +16,9 @@ export const BALL_COLLISION_AUDIO = {
 export function classifyBallCollider(type: string, id: string | undefined): AudioSoundId | null {
     if (type === "course-boundary") return "golf-ball-wall-impact";
     if (!id) return null;
-    if (/^(?:course-wall-|wall-|rock-|small-rock-|boulder-)/i.test(id)) return "golf-ball-wall-impact";
+    if (/^(?:rock-|small-rock-|boulder-)/i.test(id)) return "rock-hit";
+    if (/marble/i.test(id)) return "marble-hit";
+    if (/^(?:course-wall-|wall-)/i.test(id)) return "golf-ball-wall-impact";
     if (/^(?:fan-|sprinkler-)/i.test(id)) return "golf-ball-metal-hit";
     if (/robot/i.test(id)) return "golf-ball-robot-hit";
     if (type === "static-obstacle") {

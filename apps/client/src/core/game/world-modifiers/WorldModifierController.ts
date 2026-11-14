@@ -7,6 +7,7 @@ import { rollWorldModifier } from "./WorldModifierRollController";
 export class WorldModifierController {
     private resolved: WorldModifierResolvedState;
     private configuration: WorldModifierConfiguration;
+    private runtimeSelectionActive = false;
     public constructor(config: WorldModifierConfiguration = DEFAULT_WORLD_MODIFIER_CONFIG, seed: number = createWorldModifierSeed()) {
         this.configuration = config;
         this.resolved = rollWorldModifier(seed, config);
@@ -15,11 +16,12 @@ export class WorldModifierController {
     public configureForLevel(config: WorldModifierConfiguration, seed: number = createWorldModifierSeed()): void {
         this.configuration = config;
         this.resolved = rollWorldModifier(seed, config);
+        this.runtimeSelectionActive = false;
     }
     public getRolledState(): WorldModifierResolvedState { return this.resolved; }
     public isOverdriveActive(): boolean { return this.getState().modifier === "overdrive"; }
     public getState(): WorldModifierResolvedState {
-        if (!import.meta.env.DEV || WORLD_MODIFIER_DEVELOPMENT_OVERRIDE === null) return this.resolved;
+        if (!import.meta.env.DEV || this.runtimeSelectionActive || WORLD_MODIFIER_DEVELOPMENT_OVERRIDE === null) return this.resolved;
         return Object.freeze({ ...this.resolved, modifier: WORLD_MODIFIER_DEVELOPMENT_OVERRIDE });
     }
 
@@ -29,6 +31,7 @@ export class WorldModifierController {
         const next = rollWorldModifier(seed, config);
         this.configuration = config;
         this.resolved = next;
+        this.runtimeSelectionActive = true;
         this.logRollDiagnostics(levelId);
         return this.getState();
     }

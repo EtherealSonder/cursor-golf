@@ -1,3 +1,4 @@
+import type { EffectiveFireWindSampler } from "../environment/EffectiveFireWindSampler";
 import {
     DEFAULT_FIRE_PARTICLE_VFX_DEFINITION,
 } from "../config/FireParticleVfxDefinition";
@@ -123,6 +124,12 @@ export class GroundFireEmitter {
 
     private updateSerial =
         0;
+
+    private effectiveFireWindSampler: EffectiveFireWindSampler | null = null;
+
+    public setEffectiveFireWindSampler(sampler: EffectiveFireWindSampler): void {
+        this.effectiveFireWindSampler = sampler;
+    }
 
     public constructor(
         private readonly fireManager:
@@ -962,7 +969,7 @@ export class GroundFireEmitter {
         }
 
         const sampled =
-            this.localWindSystem
+            (this.effectiveFireWindSampler ?? this.localWindSystem)
                 .getAccelerationAt(
                     worldX,
                     worldY,

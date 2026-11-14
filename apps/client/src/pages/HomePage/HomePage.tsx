@@ -4,6 +4,7 @@ import { WorldModifierHud } from "../../components/hud/WorldModifierHud";
 import { BallEffectDebugPanel } from "../../components/hud/BallEffectDebugPanel";
 import type { BallEffectSnapshot, BallEffectSelection } from "../../core/game/ball-effects/BallEffectDefinition";
 import type { WorldModifierResolvedState } from "../../core/game/world-modifiers/WorldModifierDefinition";
+import { WorldModifierDebugController, type WorldModifierDebugSelection } from "../../core/game/world-modifiers/WorldModifierDebugController";
 import {
     useEffect,
     useRef,
@@ -21,6 +22,9 @@ function HomePage() {
     const [showBallEffectDebug, setShowBallEffectDebug] = useState(false);
     const selectBallEffect = (effect: BallEffectSelection) => gameRef.current?.debugSetBallEffect(effect);
     const [modifierState, setModifierState] = useState<WorldModifierResolvedState | null>(null);
+    const selectWorldModifier = (selection: WorldModifierDebugSelection) => {
+        gameRef.current?.debugSetWorldModifier(selection, WorldModifierDebugController.newSeed());
+    };
     const [windState, setWindState] = useState<WindState | null>(null);
     const gameRef = useRef<Game | null>(null);
 
@@ -97,7 +101,7 @@ function HomePage() {
                 aria-label="Cursor Golf gameplay"
             >
                 <WorldModifierHud state={modifierState} windState={windState} />
-                {showBallEffectDebug && <BallEffectDebugPanel snapshot={ballEffect} onSelect={selectBallEffect} />}
+                {showBallEffectDebug && <BallEffectDebugPanel snapshot={ballEffect} onSelect={selectBallEffect} modifierState={modifierState} onSelectModifier={selectWorldModifier} />}
             </div>
         </main>
     );

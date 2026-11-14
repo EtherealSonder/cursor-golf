@@ -66,6 +66,15 @@ export class SpatialAudioManager {
         this.loading.set(id, task);
         return task;
     }
+    /** A committed event may arrive while the MP3 is still decoding. Play once when ready. */
+    public playWhenReady(id: AudioSoundId, options: AudioPlaybackOptions = {}): void {
+        if (this.disposed) return;
+        if (this.buffers.has(id)) { this.play(id, options); return; }
+        void this.preload(id).then(buffer => {
+            if (!buffer || this.disposed) return;
+            this.play(id, options);
+        });
+    }
     /** Plays a fixed-position one-shot. Future looping voices may update their position. */
     public play(id: AudioSoundId, options: AudioPlaybackOptions = {}): void {
         if (this.disposed) return;

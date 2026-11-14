@@ -55,6 +55,8 @@ export class DynamicStaticCollisionSystem {
     private readonly definition:
         DynamicStaticCollisionSystemDefinition;
 
+    public onAudioImpact?: (body: DynamicCollidable, x: number, y: number, speed: number) => void;
+
     public constructor(
         definition:
             DynamicStaticCollisionSystemDefinition =
@@ -177,6 +179,7 @@ export class DynamicStaticCollisionSystem {
                         );
 
                     if (result.normalImpulseMagnitude > 0) {
+                        this.onAudioImpact?.(collidable, manifold.contactPointX, manifold.contactPointY, result.closingNormalSpeed);
                         const severity = { closingNormalSpeed: result.closingNormalSpeed, effectiveMass: result.effectiveMass, normalImpulseMagnitude: result.normalImpulseMagnitude };
                         (collidable as typeof collidable & {notifyCollisionSeverity?: (source:"wall", severity:{closingNormalSpeed:number; effectiveMass:number; normalImpulseMagnitude:number})=>void}).notifyCollisionSeverity?.("wall",severity);
                     }

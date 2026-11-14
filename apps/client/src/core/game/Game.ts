@@ -1,3 +1,5 @@
+import { WorldObjectImpactAudioController } from "./audio/WorldObjectImpactAudioController";
+import { PortalTeleportAudioController } from "./audio/PortalTeleportAudioController";
 import { WorldModifierAmbienceController } from "./audio/WorldModifierAmbienceController";
 import { BallMechanismAudioController } from "./audio/BallMechanismAudioController";
 import { BumperImpactAudioController } from "./audio/BumperImpactAudioController";
@@ -98,6 +100,8 @@ import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEqu
 export class Game {
     private readonly spatialAudio = new SpatialAudioManager();
     private readonly modifierAmbience = new WorldModifierAmbienceController(this.spatialAudio);
+    private objectImpactAudio: WorldObjectImpactAudioController | null = null;
+    private portalTeleportAudio: PortalTeleportAudioController | null = null;
     private mineAudio: MineAudioController | null = null;
     private robotAudio: RobotAudioController | null = null;
     private fanAudio: FanAudioController | null = null;
@@ -152,8 +156,9 @@ export class Game {
         for (const listener of this.worldModifierListeners) listener(state);
     }
     public debugSetWorldModifier(selection: WorldModifierDebugSelection, seed: number): void {
-        if (!import.meta.env.DEV || !this.world) return;
+        if (!import.meta.env.DEV || !this.world || this.getLevelId() !== "level-test") return;
         this.world.debugSetWorldModifier(selection, seed);
+        this.modifierAmbience.update(this.getWorldModifierState()?.modifier ?? null, 1 / 60);
         this.notifyWorldModifier();
     }
 
@@ -330,6 +335,10 @@ export class Game {
         this.spatialAudio.setCamera(this.world.getCamera());
         this.mineAudio?.dispose(); this.robotAudio?.dispose(); this.fanAudio?.dispose();
         this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
+        this.objectImpactAudio?.dispose(); this.portalTeleportAudio?.dispose();
+        this.objectImpactAudio = new WorldObjectImpactAudioController(this.world, this.spatialAudio);
+        this.portalTeleportAudio = new PortalTeleportAudioController(this.world, this.spatialAudio);
+        for (const id of ["portal-teleport", "marble-hit", "rock-hit"] as const) void this.spatialAudio.preload(id);
         this.mineAudio = new MineAudioController(this.world, this.spatialAudio);
         this.robotAudio = new RobotAudioController(this.world, this.spatialAudio);
         this.fanAudio = new FanAudioController(this.world, this.spatialAudio);
@@ -1396,6 +1405,8 @@ export class Game {
         this.bumperImpactAudio = null;
         this.ballPlatformAudio?.dispose();
         this.ballPlatformAudio = null;
+        this.objectImpactAudio?.dispose(); this.portalTeleportAudio?.dispose();
+        this.objectImpactAudio = null; this.portalTeleportAudio = null;
         this.mineAudio?.dispose(); this.robotAudio?.dispose(); this.fanAudio?.dispose();
         this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
         this.mineAudio = null; this.robotAudio = null; this.fanAudio = null;

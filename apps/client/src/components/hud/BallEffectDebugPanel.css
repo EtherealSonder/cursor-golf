@@ -28,8 +28,8 @@
     font: inherit;
     cursor: pointer;
 }
-.ball-effect-debug-note { font-size: 10px; font-weight: 400; opacity: .75; }
+
 @media (max-width: 650px) {
     .ball-effect-debug { flex-wrap: wrap; justify-content: center; max-width: calc(100% - 16px); gap: 5px; }
-    .ball-effect-debug-note { display: none; }
+    .ball-effect-debug select { min-width: 125px; }
 }
