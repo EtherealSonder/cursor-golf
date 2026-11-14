@@ -1,3 +1,10 @@
+import { GameSessionController } from "./session/GameSessionController";
+import { LevelRuntimeLifecycle } from "./runtime/LevelRuntimeLifecycle";
+import { LevelRuntimeBindings } from "./runtime/LevelRuntimeBindings";
+import { LevelSelectionController } from "./transition/LevelSelectionController";
+import { LevelCompletionTransitionController } from "./transition/LevelCompletionTransitionController";
+import { LevelCompletionTransitionRenderer } from "./transition/LevelCompletionTransitionRenderer";
+import { LEVEL_COMPLETION_TRANSITION as LCT } from "./config/LevelCompletionTransitionDefinition";
 import { WorldObjectImpactAudioController } from "./audio/WorldObjectImpactAudioController";
 import { PortalTeleportAudioController } from "./audio/PortalTeleportAudioController";
 import { WorldModifierAmbienceController } from "./audio/WorldModifierAmbienceController";
@@ -98,6 +105,24 @@ import { ShotPowerBaselineValidation } from "./debug/ShotPowerBaselineValidation
 import { WaterSimulationEquivalenceValidation } from "./debug/WaterSimulationEquivalenceValidation";
 
 export class Game {
+    private readonly levelCompletionTransition = new LevelCompletionTransitionController();
+    private readonly levelSelection = new LevelSelectionController();
+    private levelCompletionRenderer: LevelCompletionTransitionRenderer | null = null;
+    private holeSoundStartedAt: number | null = null;
+    private completionHudExitStarted = false;
+    private completionStartZoom = 1.25;
+    private completionClubScale = 1;
+    private completionFlyoverStarted = false;
+    private readonly gameSession = new GameSessionController();
+    private readonly levelCompletionListeners = new Set<(shrinking: boolean) => void>();
+    public subscribeToLevelCompletion(listener: (shrinking: boolean) => void): () => void {
+        this.levelCompletionListeners.add(listener);
+        listener(this.levelCompletionTransition.isActive);
+        return () => { this.levelCompletionListeners.delete(listener); };
+    }
+    private notifyLevelCompletion(shrinking: boolean): void {
+        for (const listener of this.levelCompletionListeners) listener(shrinking);
+    }
     private readonly spatialAudio = new SpatialAudioManager();
     private readonly modifierAmbience = new WorldModifierAmbienceController(this.spatialAudio);
     private objectImpactAudio: WorldObjectImpactAudioController | null = null;
@@ -317,74 +342,8 @@ export class Game {
                     .getViewportHeight(),
             );
 
-        this.world =
-            new World(
-                app,
-            );
-
-        this.world
-            .resizeViewport(
-                this.renderer
-                    .getViewportWidth(),
-
-                this.renderer
-                    .getViewportHeight(),
-            );
-
-        this.world.initialize();
-        this.spatialAudio.setCamera(this.world.getCamera());
-        this.mineAudio?.dispose(); this.robotAudio?.dispose(); this.fanAudio?.dispose();
-        this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
-        this.objectImpactAudio?.dispose(); this.portalTeleportAudio?.dispose();
-        this.objectImpactAudio = new WorldObjectImpactAudioController(this.world, this.spatialAudio);
-        this.portalTeleportAudio = new PortalTeleportAudioController(this.world, this.spatialAudio);
-        for (const id of ["portal-teleport", "marble-hit", "rock-hit"] as const) void this.spatialAudio.preload(id);
-        this.mineAudio = new MineAudioController(this.world, this.spatialAudio);
-        this.robotAudio = new RobotAudioController(this.world, this.spatialAudio);
-        this.fanAudio = new FanAudioController(this.world, this.spatialAudio);
-        this.groundFireAudio = new GroundFireAudioController(this.world, this.spatialAudio);
-        this.robotFireAudio = new RobotFireAudioController(this.world, this.spatialAudio);
-        this.sprinklerAudio = new SprinklerAudioController(this.world, this.spatialAudio);
-        this.robotWaterWindAudio = new RobotWaterWindAudioController(this.world, this.spatialAudio);
-        this.waterFillingAudio = new WaterFillingAudioController(this.world, this.spatialAudio);
-        for (const id of ["world-modifier-downpour", "world-modifier-galewind"] as const) void this.spatialAudio.preload(id);
-        void this.spatialAudio.preload("ground-fire");
-        void this.spatialAudio.preload("robot-fire-attack");
-        for (const id of ["water-sprinkler", "robot-water-attack", "robot-wind-attack", "water-filling-ground"] as const) void this.spatialAudio.preload(id);
-        for (const id of ["mine-beep", "mine-explosion", "robot-walk", "robot-detected", "fan-wind"] as const) void this.spatialAudio.preload(id);
-        this.unsubscribeCrateDestructionAudio?.();
-        this.unsubscribeCrateDestructionAudio = this.world.subscribeCrateDestructionAudio(event => {
-            const position = { x: event.x, y: event.y };
-            if (event.cause === "ballImpact") {
-                this.spatialAudio.play("crate-destroy", { position, gain: 0.3 });
-                this.spatialAudio.play("golf-crate-powerup", { position });
-            } else {
-                this.spatialAudio.play("crate-destroy", { position });
-            }
-        });
-        void this.spatialAudio.preload("crate-destroy");
-        void this.spatialAudio.preload("golf-crate-powerup");
-        void this.spatialAudio.preload("golf-ball-hit");
-        for (const id of ["golf-ball-wall-impact", "golf-ball-metal-hit", "golf-ball-robot-hit", "golf-ball-sticky-impact"] as const) {
-            void this.spatialAudio.preload(id);
-        }
-        this.ballCollisionAudio?.dispose();
-        this.ballTraversalAudio?.dispose();
-        this.ballMechanismAudio?.dispose();
-        this.ballPlatformAudio?.dispose();
-        const ballForAudio = this.world.getBall();
-        if (ballForAudio) this.ballCollisionAudio = new BallCollisionAudioController(
-            ballForAudio, this.world.getStickyBallAttachmentController(), this.spatialAudio,
-        );
-        this.ballTraversalAudio = ballForAudio ? new BallTraversalAudioController(ballForAudio, this.spatialAudio) : null;
-        this.bumperImpactAudio?.dispose();
-        this.bumperImpactAudio = new BumperImpactAudioController(this.world, this.spatialAudio);
-        this.ballMechanismAudio = ballForAudio ? new BallMechanismAudioController(ballForAudio, this.world, this.spatialAudio) : null;
-        this.ballPlatformAudio = ballForAudio ? new BallPlatformAudioController(ballForAudio, this.world, this.spatialAudio) : null;
-        for (const id of ["golf-ball-bumper", "golf-ball-bush", "golf-ball-roll", "golf-ball-holed"] as const) void this.spatialAudio.preload(id);
-        for (const id of ["golf-ball-water-splash-1", "golf-ball-water-splash-2", "golf-ball-water-splash-3", "golf-ball-sand"] as const) {
-            void this.spatialAudio.preload(id);
-        }
+        this.world = this.levelRuntime.create(app, undefined, this.renderer.getViewportWidth(), this.renderer.getViewportHeight());
+        this.installWorldAudio(this.world);
         this.golfClubForeground = new GolfClubForegroundOverlay(this.container);
         this.world.setBallEffectController(this.ballEffectController);
         this.notifyWorldModifier();
@@ -393,7 +352,6 @@ export class Game {
             WaterSimulationEquivalenceValidation.run();
         }
         if (isPerformanceInvestigationEnabled()) console.info("[PERF] Pass A diagnostic dashboard enabled; rendering timing is CPU-side only.");
-        
 
         // Startup camera authority is the live Ball spawn, not CameraDefinition's
         // generic (0, 0) fallback. Viewport size has already been resolved above.
@@ -436,6 +394,7 @@ export class Game {
         app.stage.addChild(
             this.hudContainer,
         );
+        this.levelCompletionRenderer = new LevelCompletionTransitionRenderer(app.stage, this.hudContainer);
 
         this.ballDeathController =
             new BallDeathController();
@@ -444,50 +403,7 @@ export class Game {
         if (import.meta.env.DEV) assertCrateRewardRegression();
 
 
-        this.world.setBallDeathReporter(
-            (cause) => {
-                const event =
-                    this.ballDeathController
-                        ?.requestDeath(cause);
-
-                if (!event) {
-                    return;
-                }
-
-                // Only an accepted death ends a one-life ball effect.
-                this.ballEffectController.clear();
-                this.world?.lockBallForDeath();
-                this.world?.forceAllRobotsIntoDeathCooldown();
-
-                const deathPosition =
-                    this.world
-                        ?.getBallWorldPosition();
-
-                if (deathPosition) {
-                    this.ballDeathTransitionDeathX = deathPosition.x;
-                    this.ballDeathTransitionDeathY = deathPosition.y;
-
-                    this.ballDeathTransitionRenderer
-                        ?.setDeathWorldPoint(
-                            deathPosition.x,
-                            deathPosition.y,
-                        );
-                }
-
-                if (
-                    this.ballDeathTransitionController
-                        .begin()
-                ) {
-                    this.lifeLossAnimationTriggered = false;
-                    this.world?.beginDeathCameraFocus();
-                    this.playerController?.reset();
-                    this.shotCameraFollow.reset();
-        this.shotController?.reset();
-        this.cameraController?.setShotFollowLocked(false);
-                    this.world?.setClubVisible(false);
-                }
-            },
-        );
+        this.bindWorldDeathReporter(this.world);
 
         this.ballLivesHud =
             new BallLivesHud();
@@ -549,25 +465,9 @@ export class Game {
         this.ballDeathValidation =
             null;
 
-        this.shotController =
-            new ShotController(
-                this.world,
-                this.inputManager,
-            );
+        this.installWorldControls(this.world, false);
 
-        this.cameraController =
-            new CameraController(
-                this.inputManager,
-                this.world.getCamera(),
-            );
-
-        this.playerController =
-            new PlayerController(
-                this.inputManager,
-                this.world,
-                this.shotController,
-            );
-
+        this.notifyWorldChanged();
         this.state =
             EngineState.Running;
 
@@ -945,6 +845,214 @@ export class Game {
     // Frame Update
     // -------------------------------------------------------------------------
 
+    /** LCT-2A: replace the world only while the blackout is fully opaque.
+     * The stage HUD and BallDeathController survive, so remaining lives persist.
+     * LCT-2B will reveal the new world and restore player controls.
+     */
+    private readonly levelRuntime = new LevelRuntimeLifecycle();
+    private readonly runtimeBindings = new LevelRuntimeBindings();
+    private readonly worldChangedListeners = new Set<() => void>();
+
+    public subscribeToWorldChanged(listener: () => void): () => void {
+        this.worldChangedListeners.add(listener);
+        return () => { this.worldChangedListeners.delete(listener); };
+    }
+    private notifyWorldChanged(): void {
+        for (const listener of this.worldChangedListeners) listener();
+    }
+
+    private installWorldAudio(world: World): void {
+        this.spatialAudio.setCamera(world.getCamera());
+        this.mineAudio?.dispose(); this.robotAudio?.dispose(); this.fanAudio?.dispose();
+        this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
+        this.objectImpactAudio?.dispose(); this.portalTeleportAudio?.dispose();
+        this.objectImpactAudio = new WorldObjectImpactAudioController(world, this.spatialAudio);
+        this.portalTeleportAudio = new PortalTeleportAudioController(world, this.spatialAudio);
+        for (const id of ["portal-teleport", "marble-hit", "rock-hit"] as const) void this.spatialAudio.preload(id);
+        this.mineAudio = new MineAudioController(world, this.spatialAudio);
+        this.robotAudio = new RobotAudioController(world, this.spatialAudio);
+        this.fanAudio = new FanAudioController(world, this.spatialAudio);
+        this.groundFireAudio = new GroundFireAudioController(world, this.spatialAudio);
+        this.robotFireAudio = new RobotFireAudioController(world, this.spatialAudio);
+        this.sprinklerAudio = new SprinklerAudioController(world, this.spatialAudio);
+        this.robotWaterWindAudio = new RobotWaterWindAudioController(world, this.spatialAudio);
+        this.waterFillingAudio = new WaterFillingAudioController(world, this.spatialAudio);
+        for (const id of ["world-modifier-downpour", "world-modifier-galewind"] as const) void this.spatialAudio.preload(id);
+        void this.spatialAudio.preload("ground-fire");
+        void this.spatialAudio.preload("robot-fire-attack");
+        for (const id of ["water-sprinkler", "robot-water-attack", "robot-wind-attack", "water-filling-ground"] as const) void this.spatialAudio.preload(id);
+        for (const id of ["mine-beep", "mine-explosion", "robot-walk", "robot-detected", "fan-wind"] as const) void this.spatialAudio.preload(id);
+        this.unsubscribeCrateDestructionAudio?.();
+        this.unsubscribeCrateDestructionAudio = this.runtimeBindings.track(world.subscribeCrateDestructionAudio(event => {
+            const position = { x: event.x, y: event.y };
+            if (event.cause === "ballImpact") {
+                this.spatialAudio.play("crate-destroy", { position, gain: 0.3 });
+                this.spatialAudio.play("golf-crate-powerup", { position });
+            } else {
+                this.spatialAudio.play("crate-destroy", { position });
+            }
+        }));
+        void this.spatialAudio.preload("crate-destroy");
+        void this.spatialAudio.preload("golf-crate-powerup");
+        void this.spatialAudio.preload("golf-ball-hit");
+        for (const id of ["golf-ball-wall-impact", "golf-ball-metal-hit", "golf-ball-robot-hit", "golf-ball-sticky-impact"] as const) {
+            void this.spatialAudio.preload(id);
+        }
+        this.ballCollisionAudio?.dispose();
+        this.ballTraversalAudio?.dispose();
+        this.ballMechanismAudio?.dispose();
+        this.ballPlatformAudio?.dispose();
+        const ballForAudio = world.getBall();
+        if (ballForAudio) this.ballCollisionAudio = new BallCollisionAudioController(
+            ballForAudio, world.getStickyBallAttachmentController(), this.spatialAudio,
+        );
+        this.ballTraversalAudio = ballForAudio ? new BallTraversalAudioController(ballForAudio, this.spatialAudio) : null;
+        this.bumperImpactAudio?.dispose();
+        this.bumperImpactAudio = new BumperImpactAudioController(world, this.spatialAudio);
+        this.ballMechanismAudio = ballForAudio ? new BallMechanismAudioController(ballForAudio, world, this.spatialAudio) : null;
+        this.ballPlatformAudio = ballForAudio ? new BallPlatformAudioController(ballForAudio, world, this.spatialAudio) : null;
+        for (const id of ["golf-ball-bumper", "golf-ball-bush", "golf-ball-roll", "golf-ball-holed"] as const) void this.spatialAudio.preload(id);
+        for (const id of ["golf-ball-water-splash-1", "golf-ball-water-splash-2", "golf-ball-water-splash-3", "golf-ball-sand"] as const) {
+            void this.spatialAudio.preload(id);
+        }
+    }
+
+    private bindWorldDeathReporter(world: World): void {
+        this.world.setBallDeathReporter(
+            (cause) => {
+                const event =
+                    this.ballDeathController
+                        ?.requestDeath(cause);
+
+                if (!event) {
+                    return;
+                }
+
+                // Only an accepted death ends a one-life ball effect.
+                this.ballEffectController.clear();
+                this.world?.lockBallForDeath();
+                this.world?.forceAllRobotsIntoDeathCooldown();
+
+                const deathPosition =
+                    this.world
+                        ?.getBallWorldPosition();
+
+                if (deathPosition) {
+                    this.ballDeathTransitionDeathX = deathPosition.x;
+                    this.ballDeathTransitionDeathY = deathPosition.y;
+
+                    this.ballDeathTransitionRenderer
+                        ?.setDeathWorldPoint(
+                            deathPosition.x,
+                            deathPosition.y,
+                        );
+                }
+
+                if (
+                    this.ballDeathTransitionController
+                        .begin()
+                ) {
+                    this.lifeLossAnimationTriggered = false;
+                    this.world?.beginDeathCameraFocus();
+                    this.playerController?.reset();
+                    this.shotCameraFollow.reset();
+        this.shotController?.reset();
+        this.cameraController?.setShotFollowLocked(false);
+                    this.world?.setClubVisible(false);
+                }
+            },
+        );
+
+    }
+
+    private installWorldControls(world: World, cinematic: boolean): void {
+        this.shotController = new ShotController(world, this.inputManager);
+        this.cameraController = new CameraController(this.inputManager, world.getCamera());
+        if (cinematic) this.cameraController.setEnabled(false);
+        this.playerController = new PlayerController(this.inputManager, world, this.shotController);
+        if (cinematic) this.playerController.reset();
+    }
+
+    private installWorldOverlays(world: World): void {
+        const app = this.renderer.getApplication();
+        if (!app) return;
+        const ball = world.getBall();
+        if (ball) {
+            this.ballHeatOverlay = new BallHeatOverlay(ball);
+            this.ballDrowningOverlay = new BallDrowningOverlay(ball);
+        }
+        this.ballDeathTransitionRenderer = new BallDeathTransitionRenderer(world.getCamera());
+        this.ballDeathTransitionRenderer.resize(this.renderer.getViewportWidth(), this.renderer.getViewportHeight());
+        app.stage.addChild(this.ballDeathTransitionRenderer.getContainer());
+    }
+
+    private disposeWorldRuntime(): void {
+        this.runtimeBindings.clear();
+        this.unsubscribeCrateDestructionAudio?.();
+        this.unsubscribeCrateDestructionAudio = null;
+        this.ballCollisionAudio?.dispose(); this.ballCollisionAudio = null;
+        this.ballTraversalAudio?.dispose(); this.ballTraversalAudio = null;
+        this.ballMechanismAudio?.dispose(); this.ballMechanismAudio = null;
+        this.ballPlatformAudio?.dispose(); this.ballPlatformAudio = null;
+        this.bumperImpactAudio?.dispose(); this.bumperImpactAudio = null;
+        this.objectImpactAudio?.dispose(); this.objectImpactAudio = null;
+        this.portalTeleportAudio?.dispose(); this.portalTeleportAudio = null;
+        this.mineAudio?.dispose(); this.mineAudio = null;
+        this.robotAudio?.dispose(); this.robotAudio = null;
+        this.fanAudio?.dispose(); this.fanAudio = null;
+        this.groundFireAudio?.dispose(); this.groundFireAudio = null;
+        this.robotFireAudio?.dispose(); this.robotFireAudio = null;
+        this.sprinklerAudio?.dispose(); this.sprinklerAudio = null;
+        this.robotWaterWindAudio?.dispose(); this.robotWaterWindAudio = null;
+        this.waterFillingAudio?.dispose(); this.waterFillingAudio = null;
+        this.ballHeatOverlay?.destroy(); this.ballHeatOverlay = null;
+        this.ballDrowningOverlay?.destroy(); this.ballDrowningOverlay = null;
+        this.ballDeathTransitionRenderer?.destroy(); this.ballDeathTransitionRenderer = null;
+        this.playerController?.reset(); this.playerController = null;
+        this.shotController?.reset(); this.shotController = null;
+        this.cameraController = null;
+        this.shotCameraFollow.reset();
+    }
+
+    private replaceCompletedWorld(): void {
+        const previous = this.world;
+        const app = this.renderer.getApplication();
+        if (!previous || !app) return;
+        const nextId = this.levelSelection.selectNext(previous.getLevelId());
+        if (!nextId) {
+            console.warn("[LCT-F1] No alternate playable level available; holding blackout.");
+            return;
+        }
+        this.gameSession.capture(this.ballDeathController, this.ballEffectController);
+        this.ballDeathTransitionController.prepareForNewLevel();
+        this.disposeWorldRuntime();
+        this.levelRuntime.dispose(previous);
+        this.world = null;
+        this.spatialAudio.setCamera(null);
+        const next = this.levelRuntime.create(app, nextId, this.renderer.getViewportWidth(), this.renderer.getViewportHeight());
+        this.world = next;
+        this.installWorldAudio(next);
+        next.setBallEffectController(this.ballEffectController);
+        next.setCrateRewardListener(event => this.crateRewardController?.award(event)?.lines ?? null);
+        this.bindWorldDeathReporter(next);
+        this.gameSession.restore(this.ballDeathController, this.ballEffectController);
+        this.installWorldControls(next, true);
+        this.installWorldOverlays(next);
+        // World initialization appends new stage layers; keep the blackout and HUD on top.
+        const blackout = app.stage.children.find(child => child.label === "LevelCompletionBlackout");
+        if (blackout && this.hudContainer) {
+            app.stage.setChildIndex(blackout, app.stage.children.length - 1);
+            app.stage.setChildIndex(this.hudContainer, app.stage.children.length - 1);
+        }
+        const hole = next.getHoleWorldPosition();
+        next.focusCompletionCamera(hole.x, hole.y, LCT.cinematicHoleZoom);
+        next.setClubVisible(false);
+        this.holeSoundStartedAt = null;
+        this.completionFlyoverStarted = false;
+        this.notifyWorldModifier();
+        this.notifyWorldChanged();
+    }
+
     private update = (
         deltaTime: number,
     ): void => {
@@ -953,6 +1061,89 @@ export class Game {
             this.state !==
             EngineState.Running
         ) {
+            return;
+        }
+
+        // The LCT-1 cinematic freezes world simulation and all gameplay input.
+        // Renderer and HUD remain live, but the camera is controlled exclusively
+        // by the completion transition until LCT-2 replaces the level.
+        if (this.levelCompletionTransition.isActive) {
+            const snapshot = this.levelCompletionTransition.update(deltaTime);
+            if (snapshot.phase === "entering-hole" || snapshot.phase === "black") {
+                this.world?.hideCompletionBallTrail();
+            }
+            if (this.levelCompletionTransition.claimBlackHandoff()) {
+                this.replaceCompletedWorld();
+                this.levelCompletionTransition.markNextLevelReady();
+            }
+            if (snapshot.phase === "revealing-new-hole" || snapshot.phase === "awaiting-flyover") {
+                const hole = this.world?.getHoleWorldPosition();
+                if (hole) {
+                    const t = snapshot.progress;
+                    const eased = t * t * (3 - 2 * t);
+                    const zoom = LCT.cinematicHoleZoom * Math.pow(LCT.newHoleWideZoom / LCT.cinematicHoleZoom, eased);
+                    this.world?.focusCompletionCamera(hole.x, hole.y, zoom);
+                }
+            }
+            if (snapshot.phase === "awaiting-flyover" && !this.completionFlyoverStarted) {
+                this.completionFlyoverStarted = true;
+                this.levelCompletionTransition.beginFlyover();
+            }
+            if (snapshot.phase === "flying-to-ball") {
+                const hole = this.world?.getHoleWorldPosition();
+                const ball = this.world?.getBallWorldPosition();
+                if (hole && ball && this.world) {
+                    this.world.getCamera().interpolateCinematicTravel(
+                        hole.x, hole.y, ball.x, ball.y,
+                        LCT.newHoleWideZoom, LCT.normalGameplayZoom, snapshot.progress,
+                    );
+                    // Apply the camera pose through the existing World bridge.
+                    const t = snapshot.progress;
+                    const eased = t * t * (3 - 2 * t);
+                    const x = hole.x + (ball.x - hole.x) * eased;
+                    const y = hole.y + (ball.y - hole.y) * eased;
+                    const zoom = LCT.newHoleWideZoom * Math.pow(LCT.normalGameplayZoom / LCT.newHoleWideZoom, eased);
+                    this.world.focusCompletionCamera(x, y, zoom);
+                }
+                if (snapshot.progress >= 1 && this.levelCompletionTransition.completeFlyover()) {
+                    this.world?.setClubVisible(true);
+                    this.debuffHud?.restoreAfterLevel();
+                    this.cameraController?.setEnabled(true);
+                    this.playerController?.reset();
+                    this.shotController?.reset();
+                    this.shotCameraFollow.reset();
+                    this.completionHudExitStarted = false;
+                    this.completionFlyoverStarted = false;
+                    this.container.style.cursor = "";
+                    this.notifyLevelCompletion(false);
+                }
+            }
+            const target = snapshot.phase === "entering-hole" || snapshot.phase === "waiting-for-sound"
+                ? this.world?.getCompletedHolePosition() : null;
+            if (this.levelCompletionTransition.isActive && snapshot.phase !== "waiting-for-sound" && !this.completionHudExitStarted) {
+                this.completionHudExitStarted = true;
+                this.notifyLevelCompletion(true);
+            }
+            if (target && snapshot.phase !== "waiting-for-sound") {
+                const eased = snapshot.progress * snapshot.progress * (3 - 2 * snapshot.progress);
+                const zoom = this.completionStartZoom * Math.pow(LCT.cinematicHoleZoom / this.completionStartZoom, eased);
+                this.world?.focusCompletionCamera(target.x, target.y, zoom);
+                const club = this.world?.getClub()?.getForegroundSprite();
+                if (club && !club.destroyed) {
+                    club.scale.set(Math.max(0.001, this.completionClubScale * snapshot.hudScale));
+                    if (snapshot.hudScale <= 0) this.world?.setClubVisible(false);
+                }
+            }
+            if (this.levelCompletionTransition.isActive) {
+                this.debuffHud?.setCompletionScale(snapshot.hudScale);
+            }
+            this.debuffHud?.update(deltaTime);
+            this.levelCompletionRenderer?.render(snapshot.blackOpacity,
+                this.renderer.getViewportWidth(), this.renderer.getViewportHeight());
+            this.ballLivesHud?.update(deltaTime);
+            this.renderer.render();
+            this.golfClubForeground?.update(this.world?.getClub()?.getForegroundSprite() ?? null,
+                this.renderer.getViewportWidth(), this.renderer.getViewportHeight());
             return;
         }
 
@@ -1352,6 +1543,24 @@ export class Game {
             this.ghostBallIndicator = null;
         }
 
+        // Track the hole audio's actual start, not the later completed-capture frame.
+        const capturedBall = this.world?.getBall();
+        if (capturedBall?.isBeingCaptured() && this.holeSoundStartedAt === null) {
+            this.holeSoundStartedAt = performance.now();
+        }
+        if (!this.levelCompletionTransition.isActive && this.world?.getCompletedHolePosition()) {
+            const soundDuration = this.spatialAudio.getLoadedDuration("golf-ball-holed") ?? LCT.fallbackHoleSoundSeconds;
+            const elapsed = this.holeSoundStartedAt === null ? 0 : (performance.now() - this.holeSoundStartedAt) / 1000;
+            this.levelCompletionTransition.begin(Math.max(0, soundDuration - elapsed));
+            this.completionStartZoom = this.world?.getCamera().getZoom() ?? 1.25;
+            this.completionClubScale = this.world?.getClub()?.getForegroundSprite()?.scale.x ?? 1;
+            this.cameraController?.setEnabled(false);
+            this.shotController?.reset();
+            this.playerController?.reset();
+            this.shotCameraFollow.reset();
+            this.container.style.cursor = "none";
+        }
+
         this.ballLivesHud
             ?.update(deltaTime);
 
@@ -1411,6 +1620,13 @@ export class Game {
         this.groundFireAudio?.dispose(); this.robotFireAudio?.dispose(); this.sprinklerAudio?.dispose(); this.robotWaterWindAudio?.dispose(); this.waterFillingAudio?.dispose();
         this.mineAudio = null; this.robotAudio = null; this.fanAudio = null;
         this.groundFireAudio = null; this.robotFireAudio = null; this.sprinklerAudio = null; this.robotWaterWindAudio = null; this.waterFillingAudio = null;
+        this.levelCompletionRenderer?.destroy();
+        this.levelCompletionRenderer = null;
+        this.gameSession.clear();
+        this.levelCompletionListeners.clear();
+        this.worldChangedListeners.clear();
+        this.runtimeBindings.clear();
+        this.container.style.cursor = "";
         this.modifierAmbience.dispose();
         this.spatialAudio.dispose();
         this.golfClubForeground?.destroy();

@@ -26,9 +26,11 @@ export class HoleAttractionSystem {
         const alignment = speed > 0.001 ? (velocityX * nx + velocityY * ny) / speed : 0;
         const departureWeight = alignment < 0 ?
             definition.attractionDepartureFactor + (1 - definition.attractionDepartureFactor) * (1 + alignment) : 1;
+        // Reduce excessive inward acceleration on an already-centred approach.
+        const approachWeight = alignment > 0 ? 1 - 0.35 * alignment : 1;
         // Prevent the cup from waking a stationary ball from a distance.
         if (speed < 0.5 && distance > definition.visualRadius + 12) return { x: 0, y: 0 };
-        const acceleration = definition.attractionMaxAcceleration * spatialWeight * speedWeight * departureWeight;
+        const acceleration = definition.attractionMaxAcceleration * spatialWeight * speedWeight * departureWeight * approachWeight;
         const step = Math.min(Math.max(0, deltaTime), 1 / 30);
         return { x: nx * acceleration * step, y: ny * acceleration * step };
     }

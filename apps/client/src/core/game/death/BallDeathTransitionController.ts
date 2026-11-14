@@ -96,6 +96,9 @@ export class BallDeathTransitionController {
         this.reset();
     }
 
+    /** Cancel any transient death cinematic before binding a fresh world. */
+    public prepareForNewLevel(): void { this.reset(); }
+
     public reset(): void {
         this.state = "idle";
         this.elapsedSeconds = 0;

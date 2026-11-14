@@ -35,3 +35,23 @@
     transform-origin: center; transition: transform 200ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) { .wm2-hud__direction { transition: none; } }
+
+/* LCT-1: shrink the modifier when hole entry begins. */
+.wm2-hud--completion-exit { transform-origin: 28px 28px; animation: wm2-completion-exit 450ms ease-in forwards; }
+@keyframes wm2-completion-exit { from { transform: scale(1); opacity: 1; } to { transform: scale(0); opacity: 0; } }
+
+/* LCT-3: entrance runs only after the flyover unlocks gameplay. */
+.wm2-hud--completion-entrance {
+    transform-origin: 28px 28px;
+    animation: wm2-completion-entrance 550ms cubic-bezier(.2,.85,.25,1) both;
+}
+@keyframes wm2-completion-entrance {
+    from { transform: scale(.55) translateY(-12px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .wm2-hud--completion-entrance { animation-duration: 1ms; }
+}
+
+/* A hidden modifier must not inherit a stale exit animation. */
+.wm2-hud--completion-hidden { transform: scale(0); opacity: 0; animation: none; }

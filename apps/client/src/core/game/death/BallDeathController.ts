@@ -59,6 +59,17 @@ export class BallDeathController {
         }
     }
 
+    /** Prepare the persistent life counter for a newly constructed level runtime. */
+    public restoreForNewLevel(lives: number): void {
+        if (!Number.isFinite(lives)) throw new Error("Invalid session lives");
+        this.currentLives = Math.max(0, Math.min(this.definition.maximumLives, Math.trunc(lives)));
+        this.state = this.currentLives > 0 ? BallLifeState.Alive : BallLifeState.GameOver;
+        this.activeDeath = null;
+        this.dyingElapsedSeconds = 0;
+        this.retryProtection.reset();
+        this.emit();
+    }
+
     /** Grants lives without changing death/retry state; returns actual number granted. */
     public grantLives(amount: number): number {
         const safe = Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)) : 0;

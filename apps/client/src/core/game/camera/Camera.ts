@@ -766,6 +766,37 @@ export class Camera {
         }
     }
 
+    /** LCT cinematic override, deliberately bypassing normal shot zoom bounds. */
+    public setCinematicZoom(zoom: number, worldX: number, worldY: number): void {
+        if (!Number.isFinite(zoom) || zoom <= 0) return;
+        this.shotPreparationZoomActive = false;
+        this.zoomAnchorX = null;
+        this.zoomAnchorY = null;
+        this.currentZoom = zoom;
+        this.targetZoom = zoom;
+        this.recalculatePositionLimits();
+        this.setPosition(worldX - this.viewportWidth / (2 * zoom), worldY - this.viewportHeight / (2 * zoom));
+    }
+
+    /** Camera-owned cinematic zoom interpolation, independent of shot controls. */
+    public interpolateCinematicZoom(start: number, end: number, progress: number, x: number, y: number): void {
+        const t = Math.max(0, Math.min(1, progress));
+        const eased = t * t * (3 - 2 * t);
+        this.setCinematicZoom(start * Math.pow(end / start, eased), x, y);
+    }
+
+    /** LCT-3: interpolate world-space camera centre and zoom as one cinematic pose. */
+    public interpolateCinematicTravel(
+        fromX: number, fromY: number, toX: number, toY: number,
+        startZoom: number, endZoom: number, progress: number,
+    ): void {
+        const t = Math.max(0, Math.min(1, progress));
+        const eased = t * t * (3 - 2 * t);
+        const x = fromX + (toX - fromX) * eased;
+        const y = fromY + (toY - fromY) * eased;
+        this.setCinematicZoom(startZoom * Math.pow(endZoom / startZoom, eased), x, y);
+    }
+
     public getTargetZoom(): number {
         return this.targetZoom;
     }

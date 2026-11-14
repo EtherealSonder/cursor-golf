@@ -66,6 +66,10 @@ export class SpatialAudioManager {
         this.loading.set(id, task);
         return task;
     }
+    /** Decoded clip duration, or null when not yet loaded. */
+    public getLoadedDuration(id: AudioSoundId): number | null {
+        return this.buffers.get(id)?.duration ?? null;
+    }
     /** A committed event may arrive while the MP3 is still decoding. Play once when ready. */
     public playWhenReady(id: AudioSoundId, options: AudioPlaybackOptions = {}): void {
         if (this.disposed) return;

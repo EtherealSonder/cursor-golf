@@ -15,6 +15,7 @@ import { HoleObjectCaptureController } from "../hole/HoleObjectCaptureController
 import type { HoleCaptureTarget } from "../hole/HoleCaptureTarget";
 import { ELEMENTAL_MARBLE_PHYSICS } from "../marble/ElementalMarbleDefinition";
 import { HoleAttractionSystem } from "../physics/HoleAttractionSystem";
+import { HoleRimDynamicsSystem } from "../physics/HoleRimDynamicsSystem";
 import { CrateRewardFloatingText } from "../vfx/CrateRewardFloatingText";
 import { StickyBallSplash } from "../vfx/StickyBallSplash";
 import { assertStickyBallRegression } from "../debug/StickyBallRegression";
@@ -1437,6 +1438,7 @@ export class World {
         courseVisualDefinition:
             CourseVisualDefinition =
             DEFAULT_COURSE_VISUAL_DEFINITION,
+        explicitLevelId?: string,
     ) {
 
         this.app =
@@ -1460,11 +1462,11 @@ export class World {
             ? new URLSearchParams(window.location.search).get("level")
             : null;
         // Preserve the historical short URL aliases.
-        const selectedLevelId = requestedLevel === "geometry-test"
+        const selectedLevelId = explicitLevelId ?? (requestedLevel === "geometry-test"
             ? "level-geometry-test"
             : requestedLevel === "figma-test"
                 ? "level-figma-test"
-                : requestedLevel || "level-00-dev";
+                : requestedLevel || "level-00-dev");
         this.performanceLevelId = selectedLevelId;
         const selectedLevel = requireLevelById(selectedLevelId);
         const levelLoad = loadLevelDefinition(selectedLevel, {
@@ -3335,6 +3337,12 @@ export class World {
                 this.hole.getX(), this.hole.getY(), deltaTime,
             );
             this.ball.applyHoleAttraction(delta.x, delta.y);
+            const rimDelta = HoleRimDynamicsSystem.calculateVelocityDelta(
+                definition, this.ball.getX(), this.ball.getY(),
+                this.ball.getVelocityX(), this.ball.getVelocityY(),
+                this.hole.getX(), this.hole.getY(), deltaTime,
+            );
+            this.ball.applyHoleAttraction(rimDelta.x, rimDelta.y);
         }
         for (let entityIndex = 0; entityIndex < this.entities.length; entityIndex += 1) {
             const entity = this.entities[entityIndex];
@@ -3895,6 +3903,10 @@ export class World {
 
     public destroy():
         void {
+        // World-owned callbacks must never survive a runtime replacement.
+        this.ballDeathReporter = null;
+        this.crateRewardListener = null;
+        this.crateDestructionAudioListeners.clear();
         this.stickyBallAttachmentController.clear();
         this.stickyBallSplashUnsubscribe();
         this.stickyBallSplash.destroy();
@@ -6667,6 +6679,28 @@ export class World {
             this.club?.hide();
             this.aimIndicator?.hide();
         }
+    }
+
+    /** LCT-2 destination camera target, available before any capture occurs. */
+    public getHoleWorldPosition(): { x: number; y: number } {
+        return { x: this.runtimeLevel.hole.x, y: this.runtimeLevel.hole.y };
+    }
+
+    /** Clear the existing trajectory and suppress trail updates during hole entry. */
+    public hideCompletionBallTrail(): void {
+        this.ballTrail?.reset();
+        const trailContainer = this.ballTrail?.getContainer();
+        if (trailContainer) trailContainer.visible = false;
+    }
+
+    /** LCT-1 read-only completion target. */
+    public getCompletedHolePosition(): { x: number; y: number } | null {
+        return this.hole?.isHoled() ? { x: this.hole.getX(), y: this.hole.getY() } : null;
+    }
+    /** Camera rendering bridge for the level-completion cinematic. */
+    public focusCompletionCamera(x: number, y: number, zoom: number): void {
+        this.camera.setCinematicZoom(zoom, x, y);
+        this.applyCameraTransform();
     }
 
     public getBallWorldPosition(): {

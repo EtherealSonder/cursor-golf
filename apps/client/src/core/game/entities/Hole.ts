@@ -929,6 +929,11 @@ export class Hole extends Entity {
             d.attractionFullSpeed,
             d.attractionFadeSpeed,
             d.attractionDepartureFactor,
+            d.rimRadius,
+            d.rimDampingPerSecond,
+            d.rimFullEffectSpeed,
+            d.rimFadeSpeed,
+            d.rimSteeringAcceleration,
             d.minimumEntryRatio,
             d.minimumCaptureSpeed,
             d.maximumCaptureSpeed,
@@ -962,6 +967,12 @@ export class Hole extends Entity {
             throw new Error(
                 "Hole visualRadius must be greater than zero.",
             );
+        }
+
+        if (d.rimRadius <= 0 || d.rimDampingPerSecond < 0 ||
+            d.rimFullEffectSpeed < 0 || d.rimFadeSpeed <= d.rimFullEffectSpeed ||
+            d.rimSteeringAcceleration < 0) {
+            throw new Error("Hole rim dynamics configuration is invalid.");
         }
 
         if (

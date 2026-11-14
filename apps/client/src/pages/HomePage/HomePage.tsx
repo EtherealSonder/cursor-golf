@@ -25,6 +25,8 @@ function HomePage() {
     const selectWorldModifier = (selection: WorldModifierDebugSelection) => {
         gameRef.current?.debugSetWorldModifier(selection, WorldModifierDebugController.newSeed());
     };
+    const [modifierHudPhase, setModifierHudPhase] = useState<"visible" | "exiting" | "hidden" | "entering">("visible");
+    const [modifierHudRevision, setModifierHudRevision] = useState(0);
     const [windState, setWindState] = useState<WindState | null>(null);
     const gameRef = useRef<Game | null>(null);
 
@@ -48,12 +50,22 @@ function HomePage() {
                 );
 
             gameRef.current = game;
+            const unsubscribeCompletion = game.subscribeToLevelCompletion((shrinking) => {
+                setModifierHudPhase(shrinking ? "exiting" : "entering");
+                if (!shrinking) setModifierHudRevision(revision => revision + 1);
+            });
             const unsubscribeModifier = game.subscribeToWorldModifier(setModifierState);
             const unsubscribeBallEffect = game.subscribeToBallEffect(setBallEffect);
 
             let disposed =
                 false;
             let unsubscribeWind: (() => void) | null = null;
+            const unsubscribeWorldChanged = game.subscribeToWorldChanged(() => {
+                unsubscribeWind?.();
+                unsubscribeWind = game.subscribeToWindState(setWindState);
+                setShowBallEffectDebug(import.meta.env.DEV && game.getLevelId() === "level-test");
+                setModifierHudPhase(phase => phase === "exiting" ? "hidden" : phase);
+            });
 
             const initializeGame =
                 async (): Promise<void> => {
@@ -65,8 +77,6 @@ function HomePage() {
                     }
 
                     setShowBallEffectDebug(import.meta.env.DEV && game.getLevelId() === "level-test");
-                    // World exists after start(). Subscribe to the authoritative wind state.
-                    unsubscribeWind = game.subscribeToWindState(setWindState);
 
                     game.setFireSourceDebugVisible(
                         false,
@@ -83,9 +93,11 @@ function HomePage() {
                 disposed =
                     true;
 
+                unsubscribeCompletion();
                 unsubscribeModifier();
                 unsubscribeBallEffect();
                 unsubscribeWind?.();
+                unsubscribeWorldChanged();
                 if (gameRef.current === game) gameRef.current = null;
                 game.stop();
             };
@@ -100,7 +112,9 @@ function HomePage() {
                 className="game-container game-container--club-foreground"
                 aria-label="Cursor Golf gameplay"
             >
-                <WorldModifierHud state={modifierState} windState={windState} />
+                <div className="wm2-hud-slot">
+                    <WorldModifierHud key={modifierHudRevision} state={modifierState} windState={windState} phase={modifierHudPhase} />
+                </div>
                 {showBallEffectDebug && <BallEffectDebugPanel snapshot={ballEffect} onSelect={selectBallEffect} modifierState={modifierState} onSelectModifier={selectWorldModifier} />}
             </div>
         </main>

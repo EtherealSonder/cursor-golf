@@ -24,6 +24,25 @@ export class DebuffHud {
     }
 
     public getContainer(): Container { return this.root; }
+    /** Shrink the whole queue without removing individual effects yet. */
+    public setCompletionScale(scale: number): void {
+        this.root.scale.set(Math.max(0, Math.min(1, scale)));
+    }
+
+
+    /** Replay the normal pop-in animation for effects retained between levels. */
+    public restoreAfterLevel(): void {
+        this.setCompletionScale(1);
+        this.replayEntrance();
+    }
+
+    public replayEntrance(): void {
+        for (const entry of this.entries) {
+            if (entry.removing) continue;
+            entry.animationElapsed = 0;
+            entry.container.scale.set(0);
+        }
+    }
 
     public add(id: string, container: Container): void {
         const existing =
