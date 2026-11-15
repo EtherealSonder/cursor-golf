@@ -8,6 +8,9 @@ import { loadLevelDefinition } from '../../src/core/game/level/LevelLoader';
 import { identifyFigmaObject, getFigmaLevelObjectHandler } from './FigmaObjectRegistry';
 import type { FigmaConvertedObject } from './FigmaNodeDefinition';
 
+assert.equal(identifyFigmaObject('camera_point_2')?.kind, 'cameraPoint');
+assert.equal(identifyFigmaObject('camera_point_2')?.index, 2);
+assert.equal(getFigmaLevelObjectHandler('cameraPoint'), undefined, 'Camera points must not create gameplay objects');
 const bushIdentity = identifyFigmaObject('bush_5');
 assert.equal(bushIdentity?.id, 'bush-5');
 assert.ok(bushIdentity);

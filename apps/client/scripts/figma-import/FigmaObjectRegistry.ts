@@ -28,6 +28,7 @@ const PROFILES: Readonly<Record<FigmaGameplayObjectKind, FigmaTransformProfile>>
     wallOpening: GEOMETRY,
     ballSpawn: CENTER,
     hole: CENTER,
+    cameraPoint: CENTER,
     metalBox: { ...CENTER, sizing: "authored" },
     radialBumper: CENTER,
     directionalBumper: DIRECTIONAL,

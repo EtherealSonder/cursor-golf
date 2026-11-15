@@ -56,3 +56,11 @@ export const LEVEL_00_PROCEDURAL_SAND_CONFIG: ProceduralSandConfig = {
         high: { minimumDiameter: 90, maximumDiameter: 220, aspectMinimum: 0.65, aspectMaximum: 1.5, lobeMinimum: 4, lobeMaximum: 7, irregularity: 1.2 },
     },
 };
+
+/** Resolve a level-specific density and coverage without mutating global presets. */
+export function resolveLevelSandConfig(
+    density: ProceduralSandDensity,
+    targetCoverage: Readonly<Record<ProceduralSandDensity, number>>,
+): ProceduralSandConfig {
+    return { ...DEFAULT_PROCEDURAL_SAND_CONFIG, density, targetCoverage: { ...targetCoverage } };
+}

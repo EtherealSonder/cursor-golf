@@ -33,6 +33,7 @@ export type FigmaGameplayObjectKind =
     | "wallOpening"
     | "ballSpawn"
     | "hole"
+    | "cameraPoint"
     | "metalBox"
     | "radialBumper"
     | "directionalBumper"

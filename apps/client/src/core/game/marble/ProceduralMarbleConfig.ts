@@ -12,8 +12,8 @@ export const PROCEDURAL_MARBLE_CONFIG = {
     objectClearance: 10,
     attemptsPerMarble: 90,
 } as const;
-export function marbleTargetForArea(area: number): number {
+export function marbleTargetForArea(area: number, config: {minimum:number;maximum:number;areaPerMarble:number} = {minimum:PROCEDURAL_MARBLE_CONFIG.minimum,maximum:PROCEDURAL_MARBLE_CONFIG.maximum,areaPerMarble:PROCEDURAL_MARBLE_CONFIG.areaPerMarble}): number {
     if (!Number.isFinite(area) || area <= 0) return 0;
-    return Math.max(PROCEDURAL_MARBLE_CONFIG.minimum,
-        Math.min(PROCEDURAL_MARBLE_CONFIG.maximum, Math.round(area / PROCEDURAL_MARBLE_CONFIG.areaPerMarble)));
+    return Math.max(config.minimum,
+        Math.min(config.maximum, Math.round(area / config.areaPerMarble)));
 }

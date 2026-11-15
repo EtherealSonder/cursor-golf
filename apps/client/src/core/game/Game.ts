@@ -1,6 +1,8 @@
 import { GameSessionController } from "./session/GameSessionController";
 import { LevelRuntimeLifecycle } from "./runtime/LevelRuntimeLifecycle";
 import { LevelRuntimeBindings } from "./runtime/LevelRuntimeBindings";
+import { LevelCameraFlyoverController } from "./camera/LevelCameraFlyoverController";
+import { getLevelById } from "./level/LevelRegistry";
 import { LevelSelectionController } from "./transition/LevelSelectionController";
 import { LevelCompletionTransitionController } from "./transition/LevelCompletionTransitionController";
 import { LevelCompletionTransitionRenderer } from "./transition/LevelCompletionTransitionRenderer";
@@ -113,6 +115,7 @@ export class Game {
     private completionStartZoom = 1.25;
     private completionClubScale = 1;
     private completionFlyoverStarted = false;
+    private readonly completionFlyover = new LevelCameraFlyoverController();
     private readonly gameSession = new GameSessionController();
     private readonly levelCompletionListeners = new Set<(shrinking: boolean) => void>();
     public subscribeToLevelCompletion(listener: (shrinking: boolean) => void): () => void {
@@ -1091,23 +1094,29 @@ export class Game {
             }
             if (snapshot.phase === "awaiting-flyover" && !this.completionFlyoverStarted) {
                 this.completionFlyoverStarted = true;
-                this.levelCompletionTransition.beginFlyover();
-            }
-            if (snapshot.phase === "flying-to-ball") {
                 const hole = this.world?.getHoleWorldPosition();
                 const ball = this.world?.getBallWorldPosition();
-                if (hole && ball && this.world) {
-                    this.world.getCamera().interpolateCinematicTravel(
-                        hole.x, hole.y, ball.x, ball.y,
-                        LCT.newHoleWideZoom, LCT.normalGameplayZoom, snapshot.progress,
+                const authored = this.world ? getLevelById(this.world.getLevelId()) : undefined;
+                if (hole && ball) {
+                    // The runtime hole is authoritative for level-local -> world translation.
+                    const offsetX = hole.x - (authored?.hole.x ?? hole.x);
+                    const offsetY = hole.y - (authored?.hole.y ?? hole.y);
+                    const points = (authored?.cameraPoints ?? []).map(point => ({
+                        ...point, x: point.x + offsetX, y: point.y + offsetY,
+                    }));
+                    const duration = this.completionFlyover.configure(
+                        { ...hole, zoom: LCT.newHoleWideZoom }, points,
+                        { ...ball, zoom: LCT.normalGameplayZoom },
                     );
-                    // Apply the camera pose through the existing World bridge.
-                    const t = snapshot.progress;
-                    const eased = t * t * (3 - 2 * t);
-                    const x = hole.x + (ball.x - hole.x) * eased;
-                    const y = hole.y + (ball.y - hole.y) * eased;
-                    const zoom = LCT.newHoleWideZoom * Math.pow(LCT.normalGameplayZoom / LCT.newHoleWideZoom, eased);
-                    this.world.focusCompletionCamera(x, y, zoom);
+                    this.levelCompletionTransition.beginFlyover(duration);
+                } else {
+                    this.levelCompletionTransition.beginFlyover();
+                }
+            }
+            if (snapshot.phase === "flying-to-ball") {
+                if (this.world) {
+                    const pose = this.completionFlyover.pose(snapshot.progress);
+                    this.world.focusCompletionCamera(pose.x, pose.y, pose.zoom);
                 }
                 if (snapshot.progress >= 1 && this.levelCompletionTransition.completeFlyover()) {
                     this.world?.setClubVisible(true);

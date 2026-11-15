@@ -18,7 +18,8 @@ export const DEFAULT_ROCK_SIZE_DISTRIBUTION = {
 } as const;
 
 /** Pass the world's seeded RNG so level-test placement remains reproducible. */
-export function sampleSmallRockRadius(random: () => number): number {
+export function sampleSmallRockRadius(random: () => number, bounds?: {min:number;max:number}): number {
+    if (bounds) return bounds.min + random() * (bounds.max - bounds.min);
     const bands = DEFAULT_ROCK_SIZE_DISTRIBUTION.bands;
     const roll = random();
     let accumulated = 0;

@@ -4,209 +4,144 @@
   "name": "level_02",
   "course": {
     "type": "polygon",
-    "width": 2500,
-    "height": 2000,
+    "width": 1570,
+    "height": 1140,
     "baseSurface": "grass",
     "vertices": [
       {
-        "x": 1548,
-        "y": 230
+        "x": 1362,
+        "y": 220
       },
       {
-        "x": 1167.5,
-        "y": 230
+        "x": 207,
+        "y": 220
       },
       {
-        "x": 1167.5,
-        "y": 539.5
+        "x": 207,
+        "y": 479.5
       },
       {
-        "x": 449,
-        "y": 539.5
+        "x": 1029.5,
+        "y": 479.5
       },
       {
-        "x": 449,
-        "y": 660
+        "x": 1029.5,
+        "y": 603.5
       },
       {
-        "x": 449,
-        "y": 1527.5
+        "x": 207,
+        "y": 603.5
       },
       {
-        "x": 1574.5,
-        "y": 1527.5
+        "x": 207,
+        "y": 859.5
       },
       {
-        "x": 1574.5,
-        "y": 1843
-      },
-      {
-        "x": 2277.5,
-        "y": 1843
-      },
-      {
-        "x": 2277.5,
-        "y": 1396.5
-      },
-      {
-        "x": 2094,
-        "y": 1186
-      },
-      {
-        "x": 850.5,
-        "y": 1186
-      },
-      {
-        "x": 850.5,
-        "y": 835
-      },
-      {
-        "x": 1372.5,
-        "y": 835
-      },
-      {
-        "x": 1548,
-        "y": 539.5
+        "x": 1362,
+        "y": 859.5
       }
     ],
     "openings": [
       {
-        "edgeIndex": 1,
-        "start": 180,
-        "end": 280
+        "edgeIndex": 7,
+        "start": 394.5,
+        "end": 614.5
       },
       {
-        "edgeIndex": 2,
-        "start": 67.5,
-        "end": 187.5
-      },
-      {
-        "edgeIndex": 4,
-        "start": 327,
-        "end": 447
+        "edgeIndex": 7,
+        "start": 29.5,
+        "end": 249.5
       }
     ]
   },
   "ball": {
-    "x": 1346,
-    "y": 300
+    "x": 372,
+    "y": 350
   },
   "hole": {
-    "x": 1713,
-    "y": 1788
+    "x": 372,
+    "y": 738
   },
+  "cameraPoints": [
+    {
+      "id": "camera-point-1",
+      "index": 1,
+      "x": 372,
+      "y": 738
+    },
+    {
+      "id": "camera-point-2",
+      "index": 2,
+      "x": 1175,
+      "y": 738
+    },
+    {
+      "id": "camera-point-3",
+      "index": 3,
+      "x": 1175,
+      "y": 355
+    },
+    {
+      "id": "camera-point-4",
+      "index": 4,
+      "x": 372,
+      "y": 355
+    }
+  ],
   "terrain": [],
   "objects": [
     {
-      "id": "conveyer-belt-bg-3",
-      "x": 1935.5,
-      "y": 1590,
-      "type": "conveyorBelt",
-      "rotation": 4.71238898038469
-    },
-    {
-      "id": "conveyer-belt-bg-4",
-      "x": 2064.5,
-      "y": 1590,
-      "type": "conveyorBelt",
-      "rotation": 4.71238898038469
-    },
-    {
-      "id": "conveyer-belt-bg-5",
-      "x": 2193.5,
-      "y": 1590,
-      "type": "conveyorBelt",
-      "rotation": 4.71238898038469
-    },
-    {
-      "id": "conveyer-belt-bg-2",
-      "x": 669.9999999999999,
-      "y": 1041.5,
-      "type": "conveyorBelt",
-      "rotation": 3.141592653589793
-    },
-    {
-      "id": "water-robot-1",
-      "x": 1491,
-      "y": 1355,
-      "type": "waterRobot"
-    },
-    {
-      "id": "bush-2",
-      "x": 672,
-      "y": 1355,
-      "type": "bush"
-    },
-    {
-      "id": "rotator-anticlockwise-1",
-      "x": 670,
-      "y": 763.5,
-      "type": "rotator",
-      "direction": "counterClockwise"
-    },
-    {
-      "id": "fan-2",
-      "x": 1490,
-      "y": 459.5,
-      "type": "fan",
-      "rotation": 3.141592653589793
-    },
-    {
       "id": "box-1",
-      "x": 1283,
-      "y": 557.5,
+      "x": 1175,
+      "y": 355,
       "type": "staticMetalBox",
-      "width": 66,
-      "height": 65,
+      "width": 70,
+      "height": 70,
       "rotation": 0
     },
     {
-      "id": "fire-robot-1",
-      "x": 979.5,
-      "y": 1367.5,
-      "type": "fireRobot"
+      "id": "box-6",
+      "x": 1175,
+      "y": 760,
+      "type": "staticMetalBox",
+      "width": 70,
+      "height": 70,
+      "rotation": 0
+    },
+    {
+      "id": "box-2",
+      "x": 1010,
+      "y": 682.5,
+      "type": "staticMetalBox",
+      "width": 40,
+      "height": 155,
+      "rotation": 0
     },
     {
       "id": "box-3",
-      "x": 1712.5,
-      "y": 1560,
+      "x": 860,
+      "y": 781.5,
       "type": "staticMetalBox",
-      "width": 275,
-      "height": 60,
+      "width": 40,
+      "height": 155,
       "rotation": 0
     },
     {
-      "id": "bush-1",
-      "x": 1758,
-      "y": 1368,
-      "type": "bush"
-    },
-    {
-      "id": "conveyer-belt-bg-1",
-      "x": 1041.5,
-      "y": 695,
-      "type": "conveyorBelt",
-      "rotation": 4.71238898038469
-    },
-    {
-      "id": "rotator-clockwise-1",
-      "x": 1220,
-      "y": 1367.5,
-      "type": "rotator",
-      "direction": "clockwise"
-    },
-    {
-      "id": "portal-1-1",
-      "x": 1254,
-      "y": 694.5,
-      "type": "portal1",
+      "id": "box-4",
+      "x": 710,
+      "y": 681.5,
+      "type": "staticMetalBox",
+      "width": 40,
+      "height": 155,
       "rotation": 0
     },
     {
-      "id": "portal-1-2",
-      "x": 2070,
-      "y": 1748.5,
-      "type": "portal1",
+      "id": "box-5",
+      "x": 560,
+      "y": 781.5,
+      "type": "staticMetalBox",
+      "width": 40,
+      "height": 155,
       "rotation": 0
     }
   ]

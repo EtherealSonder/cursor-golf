@@ -101,6 +101,7 @@ export interface RuntimeLevelDefinition {
     readonly course: RuntimeLevelCourseDefinition;
     readonly ball: WorldPosition;
     readonly hole: WorldPosition;
+    readonly cameraPoints?: readonly import("./LevelDefinition").LevelCameraPoint[];
     readonly terrain: readonly RuntimeTerrainPlacement[];
     readonly objects: readonly RuntimeLevelObjectPlacement[];
 }

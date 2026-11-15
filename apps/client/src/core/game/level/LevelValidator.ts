@@ -237,6 +237,29 @@ export function validateLevelDefinition(input: unknown): LevelValidationResult {
 
     validatePoint(input.ball, "ball", "BALL");
     validatePoint(input.hole, "hole", "HOLE");
+    if (input.cameraPoints !== undefined) {
+        if (!Array.isArray(input.cameraPoints)) {
+            error("CAMERA_POINTS_INVALID", "cameraPoints must be an array.", "cameraPoints");
+        } else {
+            const indices = new Set<number>();
+            const ids = new Set<string>();
+            for (const [i, point] of input.cameraPoints.entries()) {
+                const path = `cameraPoints[${i}]`;
+                if (!isRecord(point)) { error("CAMERA_POINT_INVALID", "Camera point must be an object.", path); continue; }
+                if (!Number.isSafeInteger(point.index) || Number(point.index) < 1 ||
+                    typeof point.id !== "string" || point.id !== `camera-point-${point.index}`) {
+                    error("CAMERA_POINT_INDEX", "Camera point requires id camera-point-N and positive integer index N.", path);
+                }
+                if (indices.has(Number(point.index)) || ids.has(String(point.id)))
+                    error("CAMERA_POINT_DUPLICATE", "Duplicate camera point index or id.", path);
+                indices.add(Number(point.index)); ids.add(String(point.id));
+                validatePoint(point, path, "CAMERA_POINT");
+            }
+            for (let i=1; i<=input.cameraPoints.length; i++) {
+                if (!indices.has(i)) error("CAMERA_POINT_MISSING", `Missing camera_point_${i}.`, "cameraPoints");
+            }
+        }
+    }
 
     const usedIds = new Map<string, string>();
     const registerId = (id: unknown, path: string, objectId?: string): void => {

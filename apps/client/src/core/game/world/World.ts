@@ -31,7 +31,10 @@ import { DownpourRainVfx } from "../water-vfx/DownpourRainVfx";
 import { createDuneSurgeSandConfig } from "../world-modifiers/DuneSurgeConfig";
 import { WorldModifierDebugController, type WorldModifierDebugSelection } from "../world-modifiers/WorldModifierDebugController";
 import { WorldModifierController } from "../world-modifiers/WorldModifierController";
-import { getLevelWorldModifierConfig } from "../level/LevelConfigRegistry";
+import { getLevelWorldModifierConfig, getLevelProceduralConfig } from "../level/LevelConfigRegistry";
+import type { LevelProceduralConfig } from "../level/LevelProceduralConfig";
+import { generateProceduralRocks } from "../procedural/ProceduralRockPlacementController";
+import { assertLevelProceduralConfigValidation } from "../debug/LevelProceduralConfigValidation";
 import type { WorldModifierResolvedState } from "../world-modifiers/WorldModifierDefinition";
 import { DEFAULT_WORLD_MODIFIER_CONFIG } from "../world-modifiers/WorldModifierConfig";
 import { createPortalCollisionGeometry } from "../portal/PortalCollisionGeometry";
@@ -51,7 +54,7 @@ import { PortalDynamicInteractionController } from "../portal/PortalDynamicInter
 import { PortalPreviewRenderer } from "../portal/PortalPreviewRenderer";
 import { PortalPairVoidController } from "../portal/PortalPairVoidController";
 import { selectValidPortalPairs } from "../portal/PortalPairController";
-import { DEFAULT_PROCEDURAL_SAND_CONFIG, LEVEL_00_PROCEDURAL_SAND_CONFIG } from "../procedural/ProceduralSandConfig";
+import { resolveLevelSandConfig } from "../procedural/ProceduralSandConfig";
 import { rollLevelGeneration } from "../procedural/LevelGenerationRollController";
 import { PROCEDURAL_MARBLE_CONFIG as MARBLE_CONFIG } from "../marble/ProceduralMarbleConfig";
 import { generateProceduralMarbles, isMarblePositionFree, type MarbleExclusion } from "../marble/ProceduralMarblePlacementController";
@@ -159,7 +162,6 @@ import { runtimeObjectsOfType, type RuntimeLevelDefinition } from "../level/Leve
 import { BallOutOfBoundsController } from "../death/BallOutOfBoundsController";
 import { Rock } from "../entities/props/Rock";
 import { RockPresentationType } from "../entities/props/RockPresentationType";
-import { DEFAULT_ROCK_SIZE_DISTRIBUTION, sampleSmallRockRadius } from "../config/RockSizeDistributionDefinition";
 import { SmallRockPhysicsValidation } from "../debug/SmallRockPhysicsValidation";
 import { RockInteractionValidation } from "../debug/RockInteractionValidation";
 import { RockInteractionSystem } from "./RockInteractionSystem";
@@ -1422,6 +1424,7 @@ export class World {
     private readonly runtimeLevel: RuntimeLevelDefinition;
     private readonly proceduralSandController: ProceduralSandController | null;
     private readonly marbleGenerationRoll = rollLevelGeneration();
+    private readonly levelProceduralConfig: LevelProceduralConfig;
     private proceduralSandRenderer: ProceduralSandRenderer | null = null;
     private proceduralSandDebugControls: ProceduralSandDebugControls | null = null;
     /** Resolved level identifier, retained for benchmark identity reporting. */
@@ -1482,6 +1485,8 @@ export class World {
             throw new Error(`World could not load ${selectedLevelId}.\n${details}`);
         }
         this.runtimeLevel = levelLoad.level;
+        this.levelProceduralConfig = getLevelProceduralConfig(this.runtimeLevel.id);
+        if (import.meta.env.DEV) assertLevelProceduralConfigValidation();
         const levelModifierConfig = getLevelWorldModifierConfig(this.runtimeLevel.id);
         this.worldModifierController.configureForLevel(levelModifierConfig ?? {
             ...DEFAULT_WORLD_MODIFIER_CONFIG, mode: "disabled",
@@ -1493,14 +1498,14 @@ export class World {
         TeleportDebug.reset();
         // Do not instantiate the generator in the isolated portal benchmark.
         // Its constructor generates sand immediately, even without rendering.
-        if (this.portalDiagnosticEnabled && this.runtimeLevel.id !== "level-00") {
+        if (this.levelProceduralConfig.sand.mode === "disabled" || (this.portalDiagnosticEnabled && this.runtimeLevel.id !== "level-00")) {
             this.proceduralSandController = null;
         } else {
             const sandRoll = rollLevelGeneration();
             this.proceduralSandController = new ProceduralSandController(this.runtimeLevel,
-                this.runtimeLevel.id === "level-00"
-                    ? LEVEL_00_PROCEDURAL_SAND_CONFIG
-                    : { ...DEFAULT_PROCEDURAL_SAND_CONFIG, density: sandRoll.intensity },
+                resolveLevelSandConfig(
+                    this.levelProceduralConfig.sand.mode === "fixed" ? this.levelProceduralConfig.sand.density : sandRoll.intensity,
+                    this.levelProceduralConfig.sand.targetCoverage),
             );
         }
         this.updateDuneSurgeTerrain(this.getWorldModifierState().modifier === "dune-surge");
@@ -2170,44 +2175,20 @@ export class World {
             })),
         ];
 
-        // P-4B: reproducible test-only rock/boulder placement. Keep away from
-        // the ball, hole, authored mechanisms and one another.
-        if (this.runtimeLevel.id === "level-test") {
-            let seed = 0x4b1d;
-            const random = (): number => {
-                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-                return seed / 4294967296;
-            };
-            const occupied = [
-                { x: this.runtimeLevel.ball.x, y: this.runtimeLevel.ball.y, radius: 140 },
-                { x: this.runtimeLevel.hole.x, y: this.runtimeLevel.hole.y, radius: 125 },
-                ...this.runtimeLevel.objects.map(o => ({ x: o.x, y: o.y, radius: 115 })),
-                ...rockPresentationPlacements.map(o => ({ x: o.x, y: o.y, radius: o.radius + 35 })),
-            ];
-            const courseBounds = this.runtimeLevel.course.generatedGeometry?.bounds;
-            if (!courseBounds) throw new Error("P-4B test placement requires generated course geometry.");
-            for (let i = 0; i < 11; i++) {
-                const large = i < 5;
-                const radius = large
-                    ? DEFAULT_ROCK_SIZE_DISTRIBUTION.boulderMinimumRadius + random() *
-                        (DEFAULT_ROCK_SIZE_DISTRIBUTION.boulderMaximumRadius - DEFAULT_ROCK_SIZE_DISTRIBUTION.boulderMinimumRadius)
-                    : sampleSmallRockRadius(random);
-                for (let attempt = 0; attempt < 300; attempt++) {
-                    const x = courseBounds.minimumX + random() * (courseBounds.maximumX - courseBounds.minimumX);
-                    const y = courseBounds.minimumY + random() * (courseBounds.maximumY - courseBounds.minimumY);
-                    // Check the entire footprint, not merely the centre. A generous
-                    // edge clearance keeps both boulders and rocks off the walls.
-                    if (!this.courseEnvironmentBoundary.containsCircle(x, y, radius + DEFAULT_ROCK_SIZE_DISTRIBUTION.minimumWallClearance)) continue;
-                    if (occupied.some(o => Math.hypot(x - o.x, y - o.y) < radius + o.radius + DEFAULT_ROCK_SIZE_DISTRIBUTION.minimumObjectClearance)) continue;
-                    rockPresentationPlacements.push({
-                        id: `p4b-test-${i}`, x, y, radius,
-                        seed: Math.floor(random() * 1000000),
-                        type: large ? RockPresentationType.Boulder : RockPresentationType.SmallRock,
-                    });
-                    occupied.push({ x, y, radius });
-                    break;
-                }
-            }
+        // Per-level generated rocks augment authored placements without changing them.
+        // Preserve the old seeded test sample when no procedural section exists.
+        const rockConfig = this.levelProceduralConfig.rocks;
+        const occupiedRocks = [
+            { x: this.runtimeLevel.ball.x, y: this.runtimeLevel.ball.y, radius: 140 },
+            { x: this.runtimeLevel.hole.x, y: this.runtimeLevel.hole.y, radius: 125 },
+            ...this.runtimeLevel.objects.map(o => ({ x: o.x, y: o.y, radius: 115 })),
+            ...rockPresentationPlacements.map(o => ({ x: o.x, y: o.y, radius: o.radius + 35 })),
+        ];
+        const rockGeometry = this.runtimeLevel.course.generatedGeometry;
+        if (rockGeometry) {
+            const generatedRocks = generateProceduralRocks(rockGeometry, rockConfig, occupiedRocks,
+                (x,y,r) => this.courseEnvironmentBoundary.containsCircle(x,y,r));
+            rockPresentationPlacements.push(...generatedRocks.placements);
         }
 
         for (const placement of rockPresentationPlacements) {
@@ -7717,7 +7698,7 @@ export class World {
             return valid;
         });
         const generated = generateProceduralMarbles(geometry, exclusions, validAuthored.length, Math.random,
-            this.runtimeLevel.id === "level-00" ? 100 : this.marbleGenerationRoll.value);
+            this.marbleGenerationRoll.value, this.levelProceduralConfig.marbles);
         const fireExtra = Math.random() < 0.5;
         const placements = [
             ...validAuthored.map(object => ({ id: object.id, kind: object.type === "fireMarble" ? "fire" as const : "water" as const, x: object.x, y: object.y })),

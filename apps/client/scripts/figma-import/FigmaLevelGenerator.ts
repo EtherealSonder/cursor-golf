@@ -41,10 +41,18 @@ export function generateFigmaLevel(document: unknown, levelId?: string, svg?: Fi
     const hole = converted.filter(item => item.object.identity.kind === "hole");
     if (ball.length !== 1) diagnostics.push({ severity: "error", code: "BALL_COUNT", path: [], message: `Expected one ball spawn; found ${ball.length}.` });
     if (hole.length !== 1) diagnostics.push({ severity: "error", code: "HOLE_COUNT", path: [], message: `Expected one hole; found ${hole.length}.` });
+    const cameraPoints = converted.filter(item => item.object.identity.kind === "cameraPoint")
+        .map(item => ({ id: item.object.identity.id, index: item.object.identity.index!,
+            x: item.transform.position.x, y: item.transform.position.y }))
+        .sort((a,b) => a.index - b.index);
+    for (let i=0; i<cameraPoints.length; i++) {
+        if (cameraPoints[i].index !== i+1)
+            diagnostics.push({ severity: "error", code: "CAMERA_POINT_SEQUENCE", path: [], message: `Missing camera_point_${i+1} or duplicate camera index.` });
+    }
     const objects: LevelObjectPlacement[] = [];
     for (const item of converted) {
         const kind = item.object.identity.kind;
-        if (kind === "courseBoundary" || kind === "wallOpening" || kind === "ballSpawn" || kind === "hole") continue;
+        if (kind === "courseBoundary" || kind === "wallOpening" || kind === "ballSpawn" || kind === "hole" || kind === "cameraPoint") continue;
         const handler = getFigmaLevelObjectHandler(kind);
         if (!handler) {
             diagnostics.push({ severity: "error", code: "MISSING_OBJECT_HANDLER", path: item.object.nodePath, message: `No level handler registered for ${kind}.` });
@@ -64,7 +72,7 @@ export function generateFigmaLevel(document: unknown, levelId?: string, svg?: Fi
         course: geometry.course,
         ball: ball[0].transform.position,
         hole: hole[0].transform.position,
-        terrain: [], objects,
+        cameraPoints, terrain: [], objects,
     };
-    return { level, diagnostics, objectCount: parsed.objects.length, serializedCount: objects.length + ball.length + hole.length + converted.filter(item => item.object.identity.kind === "wallOpening" || item.object.identity.kind === "courseBoundary").length, sourceNames: parsed.objects.map(item => item.name) };
+    return { level, diagnostics, objectCount: parsed.objects.length, serializedCount: objects.length + ball.length + hole.length + cameraPoints.length + converted.filter(item => item.object.identity.kind === "wallOpening" || item.object.identity.kind === "courseBoundary").length, sourceNames: parsed.objects.map(item => item.name) };
 }

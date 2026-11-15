@@ -10,5 +10,6 @@ export const LEVEL_COMPLETION_TRANSITION = {
     newHoleWideZoom: 0.85,
     revealBlackFadeFraction: 0.36,
     flyoverSeconds: 2.2,
+    flyoverWaypointSeconds: 1.0,
     normalGameplayZoom: 1.25,
 } as const;

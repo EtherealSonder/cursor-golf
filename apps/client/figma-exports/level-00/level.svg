@@ -1,8 +1,8 @@
 <svg width="980" height="1240" viewBox="0 0 980 1240" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
 <rect width="980" height="1240" fill="#28242C"/>
-<path d="M780 380H200V860H780V380Z" fill="#48FF55" stroke="black"/>
-<rect x="290" y="624" width="20" height="20" fill="url(#pattern0_48_21)"/>
-<circle cx="712" cy="638" r="18" fill="black"/>
+<path d="M780 220H200V1040H780V220Z" fill="#48FF55" stroke="black"/>
+<rect x="480" y="900" width="20" height="20" fill="url(#pattern0_48_21)"/>
+<circle cx="492" cy="328" r="18" fill="black"/>
 <defs>
 <pattern id="pattern0_48_21" patternContentUnits="objectBoundingBox" width="1" height="1">
 <use xlink:href="#image0_48_21" transform="scale(0.00195312)"/>

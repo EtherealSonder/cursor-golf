@@ -98,6 +98,7 @@ export function loadLevelDefinition(
             },
             ball: toWorld(definition.ball.x, definition.ball.y),
             hole: toWorld(definition.hole.x, definition.hole.y),
+            cameraPoints: definition.cameraPoints?.map(point => ({ ...point, ...toWorld(point.x, point.y) })) ?? [],
             terrain,
             objects,
         },

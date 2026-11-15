@@ -1,3 +1,4 @@
+import type { MarbleGenerationConfig } from "../level/LevelProceduralConfig";
 import type { GeneratedCourseGeometry } from "../level/LevelRuntimeDefinition";
 import { PROCEDURAL_MARBLE_CONFIG as C, marbleTargetForArea } from "./ProceduralMarbleConfig";
 export interface MarblePoint { readonly x: number; readonly y: number }
@@ -37,9 +38,11 @@ export function isMarblePositionFree(point: MarblePoint, geometry: GeneratedCour
 }
 /** Random on every call; authored placements are reserved before procedural generation. */
 export function generateProceduralMarbles(geometry: GeneratedCourseGeometry,
-    exclusions: readonly MarbleExclusion[], authoredCount: number, random: () => number = Math.random, rollPercent = 100): MarblePlacementResult {
+    exclusions: readonly MarbleExclusion[], authoredCount: number, random: () => number = Math.random, rollPercent = 100, config?: MarbleGenerationConfig): MarblePlacementResult {
     const area = polygonArea(geometry.vertices);
-    const target = Math.round(marbleTargetForArea(area) * Math.max(0, Math.min(100, rollPercent)) / 100);
+    const target = config?.mode === "disabled" ? 0 : config?.mode === "fixed" ? config.count :
+        Math.round(marbleTargetForArea(area, config ? {minimum:0,maximum:config.maximum,areaPerMarble:config.areaPerMarble} : undefined) *
+        Math.max(0, Math.min(100, rollPercent)) / 100 * (config?.rollMultiplier ?? 1));
     const desired = Math.max(0, target - authoredCount);
     const { minimumX, maximumX, minimumY, maximumY } = geometry.bounds;
     const occupied = [...exclusions];

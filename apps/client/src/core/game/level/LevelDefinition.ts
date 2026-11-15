@@ -24,6 +24,8 @@ export interface LevelDefinition {
     readonly course: LevelCourseDefinition;
     readonly ball: BallPlacement;
     readonly hole: HolePlacement;
+    /** Optional ordered camera markers, in level-local coordinates. */
+    readonly cameraPoints?: readonly LevelCameraPoint[];
     readonly terrain: readonly TerrainPlacement[];
     readonly objects: readonly LevelObjectPlacement[];
 }
@@ -31,6 +33,13 @@ export interface LevelDefinition {
 // -----------------------------------------------------------------------------
 // Shared authored geometry
 // -----------------------------------------------------------------------------
+
+export interface LevelCameraPoint {
+    readonly id: string;
+    readonly index: number;
+    readonly x: number;
+    readonly y: number;
+}
 
 export interface LevelPoint {
     readonly x: number;
