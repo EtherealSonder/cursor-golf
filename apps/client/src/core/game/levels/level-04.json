@@ -88,7 +88,7 @@
       },
       {
         "edgeIndex": 12,
-        "start": 101,
+        "start": 87,
         "end": 202
       },
       {
@@ -153,6 +153,12 @@
       "type": "radialBumper"
     },
     {
+      "id": "radial-bumper-5",
+      "x": 885,
+      "y": 508,
+      "type": "radialBumper"
+    },
+    {
       "id": "directional-bumper-1",
       "x": 1663.453262786596,
       "y": 473.3994490358127,
@@ -188,37 +194,21 @@
     },
     {
       "id": "box-1",
-      "x": 999,
-      "y": 567.5,
+      "x": 2536.5,
+      "y": 322.5,
       "type": "staticMetalBox",
-      "width": 178,
-      "height": 33,
+      "width": 93,
+      "height": 81,
       "rotation": 0
     },
     {
       "id": "box-2",
-      "x": 761,
-      "y": 565.5,
+      "x": 2536.5,
+      "y": 704.5,
       "type": "staticMetalBox",
-      "width": 178,
-      "height": 33,
+      "width": 93,
+      "height": 81,
       "rotation": 0
-    },
-    {
-      "id": "boulder-1",
-      "x": 988,
-      "y": 1020,
-      "type": "boulder",
-      "radius": 50,
-      "seed": 1
-    },
-    {
-      "id": "boulder-2",
-      "x": 756,
-      "y": 1020,
-      "type": "boulder",
-      "radius": 50,
-      "seed": 2
     }
   ]
 }

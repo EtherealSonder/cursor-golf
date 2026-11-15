@@ -8,11 +8,11 @@
   },
   "procedural": {
     "sand": {
-      "mode": "random",
-      "density": "medium",
+      "mode": "fixed",
+      "density": "low",
       "targetCoverage": {
         "low": 0.015,
-        "medium": 0.1,
+        "medium": 0.04,
         "high": 0.075
       }
     },
@@ -24,12 +24,12 @@
       "rollMultiplier": 1
     },
     "rocks": {
-      "mode": "fixed",
+      "mode": "random",
       "boulderCount": 0,
-      "smallRockCount": 8,
-      "areaPerRock": 180000,
-      "maximum": 20,
-      "boulderRatio": 0.35,
+      "smallRockCount": 0,
+      "areaPerRock": 100000,
+      "maximum": 12,
+      "boulderRatio": 0,
       "boulderRadius": {
         "min": 38,
         "max": 62

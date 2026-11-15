@@ -6,6 +6,11 @@ import type { BallEffectController } from "../ball-effects/BallEffectController"
 export class CrateRewardController {
   private readonly awarded = new Set<string>();
   constructor(private readonly lives: BallDeathController, private readonly effects: BallEffectController) {}
+  /** Clear per-world crate reward history when entering a new level. */
+  public resetForNewLevel(): void {
+    this.awarded.clear();
+  }
+
   public award(event: CrateDestructionRewardEvent): { result: CrateRewardResult; lines: string[] } | null {
     if (this.awarded.has(event.crateId)) return null;
     this.awarded.add(event.crateId);

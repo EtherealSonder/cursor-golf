@@ -1038,6 +1038,8 @@ export class Game {
         this.spatialAudio.setCamera(null);
         const next = this.levelRuntime.create(app, nextId, this.renderer.getViewportWidth(), this.renderer.getViewportHeight());
         this.world = next;
+        // Crate IDs are unique only within a level, not across level transitions.
+        this.crateRewardController?.resetForNewLevel();
         this.installWorldAudio(next);
         next.setBallEffectController(this.ballEffectController);
         next.setCrateRewardListener(event => this.crateRewardController?.award(event)?.lines ?? null);
