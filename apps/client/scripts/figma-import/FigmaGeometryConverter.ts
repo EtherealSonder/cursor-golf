@@ -95,7 +95,11 @@ export function convertFigmaGeometry(
         const longLength = Math.hypot(longAxis.x, longAxis.y);
         if (longLength < 1e-6) { report("INVALID_OPENING", "Opening has zero projected length.", opening.object.nodePath); continue; }
         const unitLong = { x: longAxis.x / longLength, y: longAxis.y / longLength };
-        let best: { edgeIndex: number; start: number; end: number; score: number } | null = null;
+        // An authored opening may cross vertices which subdivide one straight wall.
+        // Project its entire long axis onto every aligned, collinear boundary edge.
+        // A single Figma marker can therefore yield multiple edge intervals.
+        const maxOffset = svgOpening ? Math.min(b.width, b.height) * 0.5 + 3 : 40;
+        const candidates: { edgeIndex: number; start: number; end: number; perpendicular: number; parallel: number }[] = [];
         for (let i = 0; i < vertices.length; i++) {
             const a = vertices[i], z = vertices[(i + 1) % vertices.length];
             const length = dist(a, z);
@@ -105,25 +109,34 @@ export function convertFigmaGeometry(
             if (parallel < 0.95) continue;
             const offset = sub(center, a);
             const perpendicular = Math.abs(offset.x * u.y - offset.y * u.x);
+            if (perpendicular > maxOffset) continue;
             const projectedCenter = dot(offset, u);
             const span = longLength * parallel / 2;
             const start = Math.max(0, projectedCenter - span);
             const end = Math.min(length, projectedCenter + span);
-            if (end - start < 1e-5) continue;
-            const score = perpendicular + (1 - parallel) * 100;
-            if (!best || score < best.score) best = { edgeIndex: i, start, end, score };
+            if (end - start > 1e-5) candidates.push({ edgeIndex: i, start, end, perpendicular, parallel });
         }
-        // With SVG input, the wall should cross the opening rectangle's short axis.
-        // This tolerance derives from the opening thickness, not a global 40px guess.
-        const maxOffset = svgOpening ? Math.min(b.width, b.height) * 0.5 + 3 : 40;
-        if (!best || best.score > maxOffset) {
-            report("OPENING_NOT_ON_EDGE", "Opening does not align with any course edge; check its geometry/transform.", opening.object.nodePath);
+        if (!candidates.length) {
+            report('OPENING_NOT_ON_EDGE', `Opening ${opening.object.name} does not intersect an aligned boundary edge.`, opening.object.nodePath);
             continue;
         }
-        openings.push({ edgeIndex: best.edgeIndex, start: best.start, end: best.end });
+        // Keep the closest supporting wall line. This prevents a wide opening
+        // from accidentally removing a second nearby parallel wall.
+        const bestOffset = Math.min(...candidates.map(c => c.perpendicular));
+        const selected = candidates.filter(c => c.perpendicular <= bestOffset + 0.5);
+        for (const interval of selected) {
+            openings.push({ edgeIndex: interval.edgeIndex, start: interval.start, end: interval.end });
+        }
+        const covered = selected.reduce((sum, c) => sum + c.end - c.start, 0);
+        // An opening straddling a polygon vertex must retain its entire span.
+        // Flag clipping, misalignment and overlap with corners explicitly.
+        if (Math.abs(covered - longLength) > 1.0) {
+            report('OPENING_COVERAGE_MISMATCH',
+                `Opening ${opening.object.name}: expected ${longLength.toFixed(2)}px but assigned ${covered.toFixed(2)}px across ${selected.length} edge(s).`,
+                opening.object.nodePath);
+        }
     }
-    if (svg && openings.length !== converted.filter(c => c.object.identity.kind === 'wallOpening').length) {
-        report('OPENING_COUNT_MISMATCH', 'Not all SVG openings could be assigned to polygon edges.', []);
-    }
+    // Interval count can exceed authored marker count when a marker spans edges.
+    // Missing and truncated markers are reported individually above.
     return { course: { type: "polygon", width: frameWidth, height: frameHeight, baseSurface: "grass", vertices, openings }, diagnostics };
 }

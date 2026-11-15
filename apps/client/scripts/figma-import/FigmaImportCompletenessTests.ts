@@ -77,3 +77,18 @@ if (!existsSync(jsonPath) || !existsSync(svgPath)) {
     }
     console.log('FI-5C.1C Level_01 completeness, runtime loading, and saved output checks passed (21/21)');
 }
+
+// Real Level-04 regression: three Figma markers cross straight-wall vertices.
+// Their combined serialized intervals must retain the complete authored lengths.
+const level04Json = resolve('figma-exports/level-04/level.json');
+const level04Svg = resolve('figma-exports/level-04/level.svg');
+if (existsSync(level04Json) && existsSync(level04Svg)) {
+    const source = JSON.parse(readFileSync(level04Json, 'utf8')) as unknown;
+    const result = runFigmaImportPipeline(source, readFileSync(level04Svg, 'utf8'), 'level-04');
+    assert.equal(result.validation.valid, true, JSON.stringify(result.validation.diagnostics));
+    const openings = result.generation.level?.course.openings ?? [];
+    const total = openings.reduce((sum, opening) => sum + opening.end - opening.start, 0);
+    assert.equal(openings.length, 6, 'Three authored Level-04 openings should split across six boundary edges');
+    assert.ok(Math.abs(total - 743) <= 1, `Level-04 expected 743px of openings, received ${total}px`);
+    console.log('Level-04 split-opening coverage regression passed (230 + 230 + 283 = 743px)');
+}

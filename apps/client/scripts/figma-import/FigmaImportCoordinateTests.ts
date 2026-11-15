@@ -60,3 +60,18 @@ if(process.argv[2]&&process.argv[3]) {
     console.log(`Real fixture: ${result.matches.length}/${real.objects.length} recognized objects matched`);
 }
 console.log('FI-5C.1C coordinate and naming regression tests passed');
+
+// Regression: one 230px vertical opening spanning a vertex on a straight wall
+// must create TWO intervals rather than truncate to one edge.
+const splitRoot: FigmaNode = { name: 'Split', type: 'FRAME', x: 0, y: 0, width: 500, height: 500, children: [
+    { name: 'COURSE_BOUNDARY', type: 'VECTOR', x: 100, y: 100, width: 300, height: 300 },
+    { name: 'opening_1', type: 'RECTANGLE', x: 386, y: 170, width: 28, height: 230 },
+] };
+const splitSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><path d="M100 100H400V270V400H100Z"/><rect x="386" y="170" width="28" height="230"/></svg>`;
+const splitParsed = parseFigmaNodes(splitRoot);
+const splitMatched = matchFigmaSvgNodes(splitParsed.objects, extractFigmaSvgGeometry(parseFigmaSvg(splitSvg)));
+assert.equal(splitMatched.unmatched.length, 0, JSON.stringify(splitMatched.diagnostics));
+const splitConverted = convertFigmaObjects(splitParsed.objects, splitRoot, resolveFigmaMatchedGeometry(splitMatched));
+const splitGeometry = convertFigmaGeometry(splitConverted, 500, 500, resolveFigmaMatchedGeometry(splitMatched));
+assert.equal(splitGeometry.course?.openings.length, 2, JSON.stringify(splitGeometry.diagnostics));
+near(splitGeometry.course!.openings.reduce((total, o) => total + o.end - o.start, 0), 230);

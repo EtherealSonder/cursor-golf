@@ -1,0 +1,30 @@
+
+{
+  "version": 1,
+  "worldModifier": {
+    "mode": "disabled"
+  },
+  "procedural": {
+    "sand": {
+      "mode": "random",
+      "density": "medium",
+      "targetCoverage": {
+        "low": 0.015,
+        "medium": 0.10,
+        "high": 0.075
+      }
+    },
+    "marbles": {
+      "mode": "disabled"
+    },
+    "rocks": {
+      "mode": "fixed",
+      "boulderCount": 0,
+      "smallRockCount": 8,
+      "smallRockRadius": {
+        "min": 5,
+        "max": 15
+      }
+    }
+  }
+}

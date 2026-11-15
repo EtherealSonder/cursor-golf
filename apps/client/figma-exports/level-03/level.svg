@@ -11,8 +11,8 @@
 <rect x="889" y="1163" width="50" height="50" fill="#D9D9D9"/>
 <rect x="1187" y="717" width="28" height="102" fill="#4360FF"/>
 <rect x="616" y="717" width="28" height="102" fill="#4360FF"/>
-<rect x="782.838" y="1516.02" width="28" height="141.255" transform="rotate(148.954 782.838 1516.02)" fill="#4360FF"/>
-<rect x="1074.38" y="1531.78" width="28" height="141.255" transform="rotate(-150.558 1074.38 1531.78)" fill="#4360FF"/>
+<rect x="686.981" y="1408.57" width="28" height="141.255" transform="rotate(-30 686.981 1408.57)" fill="#4360FF"/>
+<rect x="1120.1" y="1395.22" width="28" height="141.255" transform="rotate(30 1120.1 1395.22)" fill="#4360FF"/>
 <circle cx="916" cy="1588" r="25" fill="#FC0B0B" fill-opacity="0.46"/>
 <circle cx="913" cy="315" r="25" fill="#FC0B0B" fill-opacity="0.46"/>
 <defs>

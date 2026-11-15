@@ -1,0 +1,224 @@
+{
+  "version": 1,
+  "id": "level-04",
+  "name": "level_04",
+  "course": {
+    "type": "polygon",
+    "width": 2954,
+    "height": 1788,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 2585,
+        "y": 281.5
+      },
+      {
+        "x": 1559,
+        "y": 281.5
+      },
+      {
+        "x": 1484.5,
+        "y": 438.5
+      },
+      {
+        "x": 972.5,
+        "y": 438.5
+      },
+      {
+        "x": 671.5,
+        "y": 438.5
+      },
+      {
+        "x": 671.5,
+        "y": 747
+      },
+      {
+        "x": 671.5,
+        "y": 1093
+      },
+      {
+        "x": 1089.5,
+        "y": 1093
+      },
+      {
+        "x": 1089.5,
+        "y": 747
+      },
+      {
+        "x": 1089.5,
+        "y": 584.5
+      },
+      {
+        "x": 1484.5,
+        "y": 584.5
+      },
+      {
+        "x": 1559,
+        "y": 739
+      },
+      {
+        "x": 2585,
+        "y": 747
+      },
+      {
+        "x": 2585,
+        "y": 545
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 7,
+        "start": 253,
+        "end": 346
+      },
+      {
+        "edgeIndex": 8,
+        "start": 0,
+        "end": 137
+      },
+      {
+        "edgeIndex": 4,
+        "start": 171.5,
+        "end": 308.5
+      },
+      {
+        "edgeIndex": 5,
+        "start": 0,
+        "end": 93
+      },
+      {
+        "edgeIndex": 12,
+        "start": 101,
+        "end": 202
+      },
+      {
+        "edgeIndex": 13,
+        "start": 0,
+        "end": 182
+      }
+    ]
+  },
+  "ball": {
+    "x": 2450,
+    "y": 515
+  },
+  "hole": {
+    "x": 872,
+    "y": 1038
+  },
+  "cameraPoints": [
+    {
+      "id": "camera-point-1",
+      "index": 1,
+      "x": 872,
+      "y": 1038
+    },
+    {
+      "id": "camera-point-2",
+      "index": 2,
+      "x": 885,
+      "y": 526
+    },
+    {
+      "id": "camera-point-3",
+      "index": 3,
+      "x": 2450,
+      "y": 515
+    }
+  ],
+  "terrain": [],
+  "objects": [
+    {
+      "id": "radial-bumper-1",
+      "x": 2152,
+      "y": 515,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-2",
+      "x": 1926,
+      "y": 349,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-3",
+      "x": 1926,
+      "y": 680,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-4",
+      "x": 1278,
+      "y": 508,
+      "type": "radialBumper"
+    },
+    {
+      "id": "directional-bumper-1",
+      "x": 1663.453262786596,
+      "y": 473.3994490358127,
+      "type": "directionalBumper",
+      "rotation": -1.5707963267948966
+    },
+    {
+      "id": "directional-bumper-2",
+      "x": 1663.546737213404,
+      "y": 556.6005509641873,
+      "type": "directionalBumper",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "directional-bumper-3",
+      "x": 762.6005509641873,
+      "y": 867.4532627865962,
+      "type": "directionalBumper",
+      "rotation": 0
+    },
+    {
+      "id": "directional-bumper-4",
+      "x": 999.3994490358125,
+      "y": 867.546737213404,
+      "type": "directionalBumper",
+      "rotation": 3.141592653589793
+    },
+    {
+      "id": "crate-1",
+      "x": 1926,
+      "y": 514.5,
+      "type": "crate"
+    },
+    {
+      "id": "box-1",
+      "x": 999,
+      "y": 567.5,
+      "type": "staticMetalBox",
+      "width": 178,
+      "height": 33,
+      "rotation": 0
+    },
+    {
+      "id": "box-2",
+      "x": 761,
+      "y": 565.5,
+      "type": "staticMetalBox",
+      "width": 178,
+      "height": 33,
+      "rotation": 0
+    },
+    {
+      "id": "boulder-1",
+      "x": 988,
+      "y": 1020,
+      "type": "boulder",
+      "radius": 50,
+      "seed": 1
+    },
+    {
+      "id": "boulder-2",
+      "x": 756,
+      "y": 1020,
+      "type": "boulder",
+      "radius": 50,
+      "seed": 2
+    }
+  ]
+}

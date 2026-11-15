@@ -42,6 +42,8 @@ export function convertFigmaObject(object: FigmaParsedObject, document?: FigmaEx
         diagnostics.push({ severity, code, message, path: object.nodePath });
     const profile = getFigmaTransformProfile(object.identity.kind);
     const matched = svg?.shapes.get(object.identity.id);
+    // Matched SVG geometry is authoritative for openings. The JSON rotation-only
+    // fallback is ambiguous for 180-degree rectangles, but must not override SVG.
     let matrix: Matrix | null = matched?.matrix ?? null;
     let frameOrigin: Matrix = IDENTITY;
     if (!matrix && document) {
@@ -79,7 +81,7 @@ export function convertFigmaObject(object: FigmaParsedObject, document?: FigmaEx
         if (object.nodePath.length > 2) warn("MISSING_PARENT_TRANSFORM", "Nested node has no resolvable parent transform; coordinates may be incorrect.", "error");
         const angle = object.rotationDegrees ?? 0;
         matrix = mul(translation(object.bounds.x, object.bounds.y), rotation(angle));
-        if (Math.abs(Math.abs(angle) - 180) < 0.01) warn("AMBIGUOUS_180_TRANSFORM", "180-degree rotation cannot distinguish mirroring; export an affine matrix.");
+        if (Math.abs(Math.abs(angle) - 180) < 0.01) warn("AMBIGUOUS_180_TRANSFORM", "180-degree rotation cannot distinguish mirroring; supply SVG geometry or an affine matrix.", "error");
         if (angle !== 0) warn("ROTATION_FALLBACK", "Rotation-only export assumes x/y represent the local origin; verify against SVG.");
     }
     const invRoot = matched ? IDENTITY : inverse(frameOrigin);
