@@ -352,6 +352,7 @@ export class Ball extends Entity {
         if (this.ballShellSprite) this.ballShellSprite.visible = !enabled;
         if (this.ballDimpleSprite) this.ballDimpleSprite.visible = !enabled;
     }
+    public isHighPowerEnabled(): boolean { return this.highPowerEnabled; }
     public updateHighPowerVisual(dt: number): void { if (this.highPowerEnabled) this.highPowerVisual?.update(dt); }
     private ballShellSprite:
         Sprite | null = null;
@@ -3457,9 +3458,22 @@ export class Ball extends Entity {
     // Launch-Speed Calculation
     // -------------------------------------------------------
 
+    private calculateProgressiveHighPowerLaunchSpeed(normalizedPower: number): number {
+        const power = Math.max(0, Math.min(1, normalizedPower));
+        const normalSpeed = DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(power);
+        const boostedSpeed = DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(
+            power, 1, HIGH_POWER_BALL.maximumBaselineShotDistance,
+            HIGH_POWER_BALL.maximumLaunchSpeed,
+        );
+        const start = HIGH_POWER_BALL.precisionDragFraction;
+        const t = Math.max(0, Math.min(1, (power - start) / (1 - start)));
+        const smooth = t * t * (3 - 2 * t);
+        return normalSpeed + (boostedSpeed - normalSpeed) * smooth;
+    }
+
     private calculateLaunchSpeed(normalizedPower: number): number {
         return this.highPowerEnabled
-            ? DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(normalizedPower, 1, HIGH_POWER_BALL.maximumBaselineShotDistance, HIGH_POWER_BALL.maximumLaunchSpeed)
+            ? this.calculateProgressiveHighPowerLaunchSpeed(normalizedPower)
             : this.heavyBallEnabled
                 ? DEFAULT_SHOT_POWER_MODEL.getLaunchSpeedForMaximumDistance(normalizedPower, HEAVY_BALL.maximumBaselineShotDistance)
                 : DEFAULT_SHOT_POWER_MODEL.getLaunchSpeed(normalizedPower);

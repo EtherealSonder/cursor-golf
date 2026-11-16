@@ -7,6 +7,8 @@ export const CRATE_REWARDS = {
     4: { extraLives: 5, highPower: 63, invincible: 27, ghost: 5 },
     5: { extraLives: 0, highPower: 66.5, invincible: 28.5, ghost: 5 },
   },
+  // Powered-up balls favor life recovery; remaining weight selects a different powerup.
+  poweredUpExtraLifeChanceByLives: { 1: 90, 2: 85, 3: 75, 4: 60, 5: 0 },
   extraLivesAmountByLives: {
     1: { plus1: 15, plus2: 25, plus3: 60 },
     2: { plus1: 10, plus2: 55, plus3: 35 },

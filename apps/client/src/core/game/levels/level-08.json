@@ -1,0 +1,323 @@
+{
+  "version": 1,
+  "id": "level-08",
+  "name": "level_08",
+  "course": {
+    "type": "polygon",
+    "width": 5216,
+    "height": 1896,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 1147.5,
+        "y": 670
+      },
+      {
+        "x": 356.5,
+        "y": 670
+      },
+      {
+        "x": 356.5,
+        "y": 1570
+      },
+      {
+        "x": 642,
+        "y": 1570
+      },
+      {
+        "x": 642,
+        "y": 812
+      },
+      {
+        "x": 1147.5,
+        "y": 812
+      },
+      {
+        "x": 1151.5,
+        "y": 1593
+      },
+      {
+        "x": 3052,
+        "y": 1593
+      },
+      {
+        "x": 3052,
+        "y": 810.5
+      },
+      {
+        "x": 3523.5,
+        "y": 810.5
+      },
+      {
+        "x": 3523.5,
+        "y": 1593
+      },
+      {
+        "x": 5118.5,
+        "y": 1593
+      },
+      {
+        "x": 5118.5,
+        "y": 670
+      },
+      {
+        "x": 4763,
+        "y": 670
+      },
+      {
+        "x": 4763,
+        "y": 1457
+      },
+      {
+        "x": 4257.5,
+        "y": 1457
+      },
+      {
+        "x": 4257.5,
+        "y": 670
+      },
+      {
+        "x": 2370.5,
+        "y": 670
+      },
+      {
+        "x": 2370.5,
+        "y": 1451
+      },
+      {
+        "x": 1858.5,
+        "y": 1451
+      },
+      {
+        "x": 1858.5,
+        "y": 670
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 13,
+        "start": 416,
+        "end": 590
+      },
+      {
+        "edgeIndex": 11,
+        "start": 133,
+        "end": 307
+      },
+      {
+        "edgeIndex": 17,
+        "start": 330,
+        "end": 560
+      },
+      {
+        "edgeIndex": 7,
+        "start": 363,
+        "end": 593
+      }
+    ]
+  },
+  "ball": {
+    "x": 490,
+    "y": 1490
+  },
+  "hole": {
+    "x": 4948,
+    "y": 808
+  },
+  "cameraPoints": [
+    {
+      "id": "camera-point-1",
+      "index": 1,
+      "x": 4948,
+      "y": 808
+    },
+    {
+      "id": "camera-point-2",
+      "index": 2,
+      "x": 4945,
+      "y": 1505
+    },
+    {
+      "id": "camera-point-3",
+      "index": 3,
+      "x": 3912,
+      "y": 1515
+    },
+    {
+      "id": "camera-point-4",
+      "index": 4,
+      "x": 3912,
+      "y": 741
+    },
+    {
+      "id": "camera-point-5",
+      "index": 5,
+      "x": 2713,
+      "y": 741
+    },
+    {
+      "id": "camera-point-6",
+      "index": 6,
+      "x": 2713,
+      "y": 1515
+    },
+    {
+      "id": "camera-point-7",
+      "index": 7,
+      "x": 1513,
+      "y": 1515
+    },
+    {
+      "id": "camera-point-8",
+      "index": 8,
+      "x": 1513,
+      "y": 741
+    },
+    {
+      "id": "camera-point-9",
+      "index": 9,
+      "x": 490,
+      "y": 741
+    },
+    {
+      "id": "camera-point-10",
+      "index": 10,
+      "x": 490,
+      "y": 1490
+    }
+  ],
+  "terrain": [],
+  "objects": [
+    {
+      "id": "radial-bumper-1",
+      "x": 912,
+      "y": 739,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-2",
+      "x": 2122,
+      "y": 1521,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-3",
+      "x": 3282,
+      "y": 741,
+      "type": "radialBumper"
+    },
+    {
+      "id": "radial-bumper-4",
+      "x": 4508,
+      "y": 1527,
+      "type": "radialBumper"
+    },
+    {
+      "id": "fire-robot-1",
+      "x": 1487.5,
+      "y": 1137.5,
+      "type": "fireRobot"
+    },
+    {
+      "id": "water-robot-1",
+      "x": 2729,
+      "y": 1128,
+      "type": "waterRobot"
+    },
+    {
+      "id": "wind-robot-1",
+      "x": 3913.264,
+      "y": 1124.5,
+      "type": "windRobot"
+    },
+    {
+      "id": "crate-1",
+      "x": 490,
+      "y": 766.5,
+      "type": "crate"
+    },
+    {
+      "id": "crate-2",
+      "x": 4948,
+      "y": 1506.5,
+      "type": "crate"
+    },
+    {
+      "id": "bush-1",
+      "x": 1762,
+      "y": 758,
+      "type": "bush"
+    },
+    {
+      "id": "bush-2",
+      "x": 2468,
+      "y": 1368,
+      "type": "bush"
+    },
+    {
+      "id": "bush-3",
+      "x": 3638,
+      "y": 1138,
+      "type": "bush"
+    },
+    {
+      "id": "proximity-mine-1",
+      "x": 3912,
+      "y": 1512,
+      "type": "proximityMine"
+    },
+    {
+      "id": "water-sprinkler-1",
+      "x": 2502,
+      "y": 926.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "water-sprinkler-2",
+      "x": 2957,
+      "y": 1383.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "fan-1",
+      "x": 1228,
+      "y": 1513.5,
+      "type": "fan",
+      "rotation": 0
+    },
+    {
+      "id": "directional-bumper-1",
+      "x": 5082.399449035813,
+      "y": 1203.5467372134037,
+      "type": "directionalBumper",
+      "rotation": 3.141592653589793
+    },
+    {
+      "id": "directional-bumper-2",
+      "x": 4813.600550964187,
+      "y": 1016.4532627865962,
+      "type": "directionalBumper",
+      "rotation": 0
+    },
+    {
+      "id": "box-1",
+      "x": 1321,
+      "y": 1415,
+      "type": "staticMetalBox",
+      "width": 334,
+      "height": 50,
+      "rotation": 0
+    },
+    {
+      "id": "box-2",
+      "x": 2883,
+      "y": 835,
+      "type": "staticMetalBox",
+      "width": 334,
+      "height": 50,
+      "rotation": 0
+    }
+  ]
+}

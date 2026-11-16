@@ -11,10 +11,22 @@ function weighted(weights: Record<string, number>, name: string, rolls: CrateRew
   rolls.push({ name, random: sample, weights: { ...weights }, selected });
   return selected;
 }
-export function rollCrateReward(lives: number, random: () => number = Math.random): CrateRewardResult {
+export function rollCrateReward(lives: number, random: () => number = Math.random, activeEffect: BallEffectSelection = "none"): CrateRewardResult {
   const count = Math.max(1, Math.min(5, Math.trunc(lives))) as 1|2|3|4|5;
   const rolls: Array<{ name: string; random: number; weights: Record<string, number>; selected: string }> = [];
-  const kind = weighted(CRATE_REWARDS.primaryRewardByLives[count], "primary", rolls, random) as CrateRewardResult["kind"];
+  const powerupKeys = { "high-power": "highPower", invincible: "invincible", ghost: "ghost" } as const;
+  const isPoweredUp = activeEffect === "high-power" || activeEffect === "invincible" || activeEffect === "ghost";
+  const original = CRATE_REWARDS.primaryRewardByLives[count];
+  let primary: Record<string, number> = { ...original };
+  if (isPoweredUp) {
+    const lifeChance = CRATE_REWARDS.poweredUpExtraLifeChanceByLives[count];
+    const excluded = powerupKeys[activeEffect];
+    const remaining = Object.entries(original).filter(([key]) => key !== "extraLives" && key !== excluded);
+    const remainingTotal = remaining.reduce((sum, [, weight]) => sum + weight, 0);
+    primary = { extraLives: lifeChance };
+    for (const [key, weight] of remaining) primary[key] = (100 - lifeChance) * weight / remainingTotal;
+  }
+  const kind = weighted(primary, "primary", rolls, random) as CrateRewardResult["kind"];
   let rawLifeAmount = 0, grantedLives = 0;
   let debuff: CrateRewardResult["debuff"] = null;
   let effect: BallEffectSelection = "none";
@@ -23,6 +35,8 @@ export function rollCrateReward(lives: number, random: () => number = Math.rando
     const selected = weighted(amountWeights, "lifeAmount", rolls, random);
     rawLifeAmount = Number(selected.replace("plus", ""));
     grantedLives = Math.min(rawLifeAmount, CRATE_REWARDS.maxLives - count);
+    // Life pickups never replace or remove an existing effect.
+    if (activeEffect !== "none") return { kind, livesBefore: count, rawLifeAmount, grantedLives, debuff, effect: activeEffect, rolls };
     const activation = Math.max(0, Math.min(0.999999999999, random()));
     rolls.push({ name: "debuffActivation", random: activation, weights: { activate: 80, none: 20 }, selected: activation < CRATE_REWARDS.extraLivesDebuff.activationChance ? "activate" : "none" });
     if (activation < CRATE_REWARDS.extraLivesDebuff.activationChance) {

@@ -2354,8 +2354,8 @@ export class World {
                             this.notifyBumperImpactAudio({
                                 bumperId: event.colliderId,
                                 objectId: "ball",
-                                x: event.contactX ?? this.ball.getX(),
-                                y: event.contactY ?? this.ball.getY(),
+                                x: event.contactX ?? this.ball!.getX(),
+                                y: event.contactY ?? this.ball!.getY(),
                                 speed: event.normalImpactSpeed ?? event.impactSpeed,
                             });
                         }
@@ -3311,7 +3311,7 @@ export class World {
         // HC-1: steer before the ball integrates, not after capture detection.
         if (this.ball && this.hole && !this.ball.isDeathPhysicsLocked &&
             this.ball.isAvailableForInteraction() && this.hole.canAttractBall()) {
-            const definition = this.hole.getDefinition();
+            const definition = this.hole.getEffectiveDefinition();
             const delta = HoleAttractionSystem.calculateVelocityDelta(
                 definition, this.ball.getX(), this.ball.getY(),
                 this.ball.getVelocityX(), this.ball.getVelocityY(),
@@ -6619,6 +6619,14 @@ export class World {
 
         return this.club;
     }
+
+    /** Re-sync the existing club cursor with the current pointer world position. */
+    public recoverClubCursor(screenX: number, screenY: number): void {
+        if (!this.club) return;
+        const point = this.camera.viewportToWorld(screenX, screenY);
+        this.club.beginCursorReappearance(point.x, point.y);
+    }
+
 
     public beginDeathCameraFocus(): void {
         this.ballDeathFocusCameraStartX = this.camera.getPositionX();

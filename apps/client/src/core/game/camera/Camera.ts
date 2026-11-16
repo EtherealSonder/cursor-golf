@@ -17,6 +17,8 @@ import type {
 import { DEFAULT_CAMERA_COURSE_CLAMP_DEFINITION } from "../config/CameraCourseClampDefinition";
 import type { CameraCourseClampDefinition } from "../config/CameraCourseClampDefinition";
 
+import { CAMERA_MANUAL_ZOOM } from "../config/CameraManualZoomDefinition";
+
 export interface CameraPoint {
 
     readonly x:
@@ -68,6 +70,10 @@ export class Camera {
 
     private shotPreparationZoomActive =
         false;
+
+    private manualZoomActive = false;
+    private shotZoomStart = 1.25;
+
 
     // -------------------------------------------------------
     // Position and Velocity
@@ -664,6 +670,8 @@ export class Camera {
         anchorWorldY: number,
     ): void {
         this.shotPreparationZoomActive = true;
+        this.shotZoomStart = this.targetZoom;
+        this.manualZoomActive = false;
 
         if (this.definition.shotPreparationZoomMode === "DragDriven") {
             // Freeze the current viewport centre as the zoom anchor for the
@@ -679,12 +687,10 @@ export class Camera {
                 this.viewportHeight /
                 (2 * this.currentZoom);
 
-            this.targetZoom =
-                this.clamp(
-                    this.definition.zoom,
-                    this.definition.minimumZoom,
-                    this.definition.maximumZoom,
-                );
+            // Retain the current zoom when the shot starts. The drag updates
+            // the target smoothly instead of snapping back to default.
+            this.targetZoom = this.clamp(this.shotZoomStart,
+                this.definition.minimumZoom, this.definition.maximumZoom);
 
             return;
         }
@@ -713,11 +719,8 @@ export class Camera {
         );
 
         const targetZoom =
-            this.definition.zoom +
-            (
-                this.definition.shotPreparationZoom -
-                this.definition.zoom
-            ) * power;
+            this.shotZoomStart +
+            (this.definition.shotPreparationZoom - this.shotZoomStart) * power;
 
         // Keep the shot-session anchor captured on press. Only the
         // target zoom changes as drag power changes.
@@ -730,6 +733,7 @@ export class Camera {
     }
 
     public restoreNormalZoom(): void {
+        this.manualZoomActive = false;
         this.shotPreparationZoomActive = false;
         this.zoomAnchorX = null;
         this.zoomAnchorY = null;
@@ -737,6 +741,19 @@ export class Camera {
         this.setZoomTarget(
             this.definition.zoom,
         );
+    }
+
+    /** Wheel zoom changes the target, never the current zoom directly. */
+    public adjustManualZoom(wheelDirection: number): void {
+        if (!Number.isFinite(wheelDirection) || wheelDirection === 0 || this.shotPreparationZoomActive) return;
+        this.manualZoomActive = true;
+        this.setZoomTarget(this.targetZoom - wheelDirection * CAMERA_MANUAL_ZOOM.wheelStep);
+    }
+
+    /** Restore gameplay zoom and center, clearing previous camera momentum. */
+    public resetManualView(worldX: number, worldY: number): void {
+        this.restoreNormalZoom();
+        this.snapToWorldPoint(worldX, worldY);
     }
 
     public setZoomTarget(
@@ -969,7 +986,9 @@ export class Camera {
 
         const zoomingOut =
             this.targetZoom < this.currentZoom;
-        const rate = zoomingOut
+        const rate = this.manualZoomActive && !this.shotPreparationZoomActive
+            ? CAMERA_MANUAL_ZOOM.interpolationRate
+            : zoomingOut
             ? (
                 this.shotPreparationZoomActive &&
                 this.definition.shotPreparationZoomMode === "DragDriven"

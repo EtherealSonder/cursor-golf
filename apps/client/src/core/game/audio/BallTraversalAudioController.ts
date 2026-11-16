@@ -39,7 +39,7 @@ export class BallTraversalAudioController {
             this.elapsed = 10;
             this.nextDistance = interval(config.distanceMin, config.distanceMax);
             if (terrain === "water") {
-                this.emitWater(position, snapshot.speed, config.entryGain);
+                this.emitWater(position, snapshot.speed, CONFIG.water.entryGain);
                 this.elapsed = 0;
             }
         }

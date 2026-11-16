@@ -16,10 +16,10 @@ export class CrateRewardController {
     this.awarded.add(event.crateId);
     const before = this.lives.getSnapshot().currentLives;
     if (before < 1) return null;
-    const result = rollCrateReward(before);
     const previous = this.effects.getSnapshot().active;
+    const result = rollCrateReward(before, Math.random, previous);
     const actual = result.kind === "extraLives" ? this.lives.grantLives(result.grantedLives) : 0;
-    this.effects.apply(result.effect);
+    if (result.effect !== previous) this.effects.apply(result.effect);
     const lines = result.kind === "extraLives"
       ? [`+${actual} ${actual === 1 ? "ball" : "balls"}`, ...(result.debuff ? [CRATE_REWARD_LABELS[result.debuff]] : [])]
       : [CRATE_REWARD_LABELS[result.kind]];
@@ -28,6 +28,7 @@ export class CrateRewardController {
       console.log("Lives before:", before, "Lives after:", this.lives.getSnapshot().currentLives);
       for (const roll of result.rolls) console.log(roll.name, { random: roll.random, weights: roll.weights, selected: roll.selected });
       console.log("Life amount rolled:", result.rawLifeAmount, "Actual grant:", actual);
+      console.log("Reward profile:", ["high-power", "invincible", "ghost"].includes(previous) ? "powered-up" : previous === "none" ? "normal" : "debuffed");
       console.log("Previous effect:", previous, "New effect:", result.effect);
       console.groupEnd();
     }

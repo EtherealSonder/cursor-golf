@@ -10,7 +10,13 @@ import type {
     GameViewportDefinition,
 } from "../game/config/GameViewportDefinition";
 
+import { CAMERA_MANUAL_ZOOM } from "../game/config/CameraManualZoomDefinition";
+
 export class InputManager {
+    private wheelSteps = 0;
+    private cameraResetPressed = false;
+    private lastPointerClientX: number | null = null;
+    private lastPointerClientY: number | null = null;
 
     private readonly mousePosition =
         new Point();
@@ -118,6 +124,8 @@ export class InputManager {
             "mouseup",
             this.onMouseUp,
         );
+        this.target.addEventListener("wheel", this.onWheel, { passive: false });
+        window.addEventListener("keydown", this.onCameraResetKey);
     }
 
     // -------------------------------------------------------
@@ -200,6 +208,8 @@ export class InputManager {
 
         this.rightMouseReleased =
             false;
+        this.wheelSteps = 0;
+        this.cameraResetPressed = false;
     }
 
     public destroy(
@@ -236,6 +246,8 @@ export class InputManager {
             "mouseup",
             this.onMouseUp,
         );
+        this.target.removeEventListener("wheel", this.onWheel);
+        window.removeEventListener("keydown", this.onCameraResetKey);
 
         this.pointerInsideTarget =
             false;
@@ -361,6 +373,40 @@ export class InputManager {
 
         return this.wasLeftMouseReleased();
     }
+
+    public consumeWheelSteps(): number {
+        const steps = this.wheelSteps;
+        this.wheelSteps = 0;
+        return steps;
+    }
+
+    public consumeCameraReset(): boolean {
+        const pressed = this.cameraResetPressed;
+        this.cameraResetPressed = false;
+        return pressed;
+    }
+
+    public recoverPointerState(): void {
+        if (this.lastPointerClientX === null || this.lastPointerClientY === null) return;
+        const rect = this.getCoordinateElement().getBoundingClientRect();
+        this.pointerInsideTarget = this.lastPointerClientX >= rect.left &&
+            this.lastPointerClientX <= rect.right && this.lastPointerClientY >= rect.top &&
+            this.lastPointerClientY <= rect.bottom;
+        if (this.pointerInsideTarget) this.updateMousePositionFromClient(this.lastPointerClientX, this.lastPointerClientY);
+    }
+
+    private onWheel = (event: WheelEvent): void => {
+        if (!this.pointerInsideTarget) return;
+        event.preventDefault();
+        this.wheelSteps += Math.sign(event.deltaY);
+    };
+
+    private onCameraResetKey = (event: KeyboardEvent): void => {
+        if (event.code !== CAMERA_MANUAL_ZOOM.resetKey || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+        const target = event.target;
+        if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+        this.cameraResetPressed = true;
+    };
 
     // -------------------------------------------------------
     // Browser Events
@@ -525,6 +571,12 @@ export class InputManager {
             MouseEvent,
     ): void {
 
+        this.lastPointerClientX = event.clientX;
+        this.lastPointerClientY = event.clientY;
+        this.updateMousePositionFromClient(event.clientX, event.clientY);
+    }
+
+    private updateMousePositionFromClient(clientX: number, clientY: number): void {
         const coordinateElement =
             this.getCoordinateElement();
 
@@ -542,11 +594,11 @@ export class InputManager {
         }
 
         const displayedX =
-            event.clientX -
+            clientX -
             rect.left;
 
         const displayedY =
-            event.clientY -
+            clientY -
             rect.top;
 
         const logicalX =

@@ -1,0 +1,318 @@
+{
+  "version": 1,
+  "id": "level-09",
+  "name": "level_09",
+  "course": {
+    "type": "polygon",
+    "width": 4645,
+    "height": 2210,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 3718.5,
+        "y": 482
+      },
+      {
+        "x": 689,
+        "y": 510
+      },
+      {
+        "x": 689,
+        "y": 1883.5
+      },
+      {
+        "x": 1240,
+        "y": 1883.5
+      },
+      {
+        "x": 1240,
+        "y": 757
+      },
+      {
+        "x": 1522.5,
+        "y": 757
+      },
+      {
+        "x": 1534.5,
+        "y": 1907
+      },
+      {
+        "x": 3718.5,
+        "y": 1907
+      },
+      {
+        "x": 3718.5,
+        "y": 1051
+      },
+      {
+        "x": 3155.5,
+        "y": 1051
+      },
+      {
+        "x": 3155.5,
+        "y": 1699
+      },
+      {
+        "x": 2846.5,
+        "y": 1699
+      },
+      {
+        "x": 2846.5,
+        "y": 757
+      },
+      {
+        "x": 3155.5,
+        "y": 757
+      },
+      {
+        "x": 3155.5,
+        "y": 860
+      },
+      {
+        "x": 3718.5,
+        "y": 860
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 9,
+        "start": 445,
+        "end": 619
+      },
+      {
+        "edgeIndex": 7,
+        "start": 237,
+        "end": 411
+      },
+      {
+        "edgeIndex": 6,
+        "start": 1665.5,
+        "end": 2145.5
+      },
+      {
+        "edgeIndex": 2,
+        "start": 141,
+        "end": 411
+      }
+    ]
+  },
+  "ball": {
+    "x": 965,
+    "y": 1310
+  },
+  "hole": {
+    "x": 3440,
+    "y": 1200
+  },
+  "cameraPoints": [
+    {
+      "id": "camera-point-1",
+      "index": 1,
+      "x": 3440,
+      "y": 1200
+    },
+    {
+      "id": "camera-point-2",
+      "index": 2,
+      "x": 3440,
+      "y": 1796
+    },
+    {
+      "id": "camera-point-3",
+      "index": 3,
+      "x": 2158,
+      "y": 1795
+    },
+    {
+      "id": "camera-point-4",
+      "index": 4,
+      "x": 2158,
+      "y": 636
+    },
+    {
+      "id": "camera-point-5",
+      "index": 5,
+      "x": 965,
+      "y": 635
+    },
+    {
+      "id": "camera-point-6",
+      "index": 6,
+      "x": 965,
+      "y": 1305
+    }
+  ],
+  "terrain": [],
+  "objects": [
+    {
+      "id": "portal-1-1",
+      "x": 965,
+      "y": 634.5,
+      "type": "portal1",
+      "rotation": 0
+    },
+    {
+      "id": "portal-1-2",
+      "x": 3440,
+      "y": 1458.5,
+      "type": "portal1",
+      "rotation": 0
+    },
+    {
+      "id": "portal-3-1",
+      "x": 965,
+      "y": 1511.5,
+      "type": "portal3",
+      "rotation": 0
+    },
+    {
+      "id": "portal-3-2",
+      "x": 3641.5,
+      "y": 654,
+      "type": "portal3",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "conveyer-belt-bg-1",
+      "x": 964.5000000000001,
+      "y": 1035,
+      "type": "conveyorBelt",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "crate-1",
+      "x": 3440,
+      "y": 1804.5,
+      "type": "crate"
+    },
+    {
+      "id": "crate-2",
+      "x": 2146,
+      "y": 993.5,
+      "type": "crate"
+    },
+    {
+      "id": "box-1",
+      "x": 1385,
+      "y": 635,
+      "type": "staticMetalBox",
+      "width": 150,
+      "height": 150,
+      "rotation": 0
+    },
+    {
+      "id": "box-9",
+      "x": 3005,
+      "y": 1805,
+      "type": "staticMetalBox",
+      "width": 150,
+      "height": 130,
+      "rotation": 0
+    },
+    {
+      "id": "box-2",
+      "x": 2875.5,
+      "y": 575.5,
+      "type": "staticMetalBox",
+      "width": 557,
+      "height": 51,
+      "rotation": 0
+    },
+    {
+      "id": "box-6",
+      "x": 2369.5,
+      "y": 925.5,
+      "type": "staticMetalBox",
+      "width": 557,
+      "height": 51,
+      "rotation": 0
+    },
+    {
+      "id": "box-7",
+      "x": 2461,
+      "y": 1065.5,
+      "type": "staticMetalBox",
+      "width": 740,
+      "height": 51,
+      "rotation": 0
+    },
+    {
+      "id": "box-3",
+      "x": 2967,
+      "y": 709.5,
+      "type": "staticMetalBox",
+      "width": 374,
+      "height": 51,
+      "rotation": 0
+    },
+    {
+      "id": "box-4",
+      "x": 2805.5,
+      "y": 884.5,
+      "type": "staticMetalBox",
+      "width": 51,
+      "height": 311,
+      "rotation": 0
+    },
+    {
+      "id": "box-8",
+      "x": 2065.5,
+      "y": 995.5,
+      "type": "staticMetalBox",
+      "width": 51,
+      "height": 191,
+      "rotation": 0
+    },
+    {
+      "id": "box-5",
+      "x": 2622.5,
+      "y": 755.5,
+      "type": "staticMetalBox",
+      "width": 51,
+      "height": 309,
+      "rotation": 0
+    },
+    {
+      "id": "proximity-mine-1",
+      "x": 965,
+      "y": 1768,
+      "type": "proximityMine"
+    },
+    {
+      "id": "proximity-mine-2",
+      "x": 3308,
+      "y": 654,
+      "type": "proximityMine"
+    },
+    {
+      "id": "bush-1",
+      "x": 1688,
+      "y": 1438,
+      "type": "bush"
+    },
+    {
+      "id": "bush-2",
+      "x": 2698,
+      "y": 1438,
+      "type": "bush"
+    },
+    {
+      "id": "fire-robot-1",
+      "x": 1982.5,
+      "y": 707.5,
+      "type": "fireRobot"
+    },
+    {
+      "id": "water-robot-1",
+      "x": 2219,
+      "y": 1222,
+      "type": "waterRobot"
+    },
+    {
+      "id": "wind-robot-1",
+      "x": 2145.734,
+      "y": 1772.5,
+      "type": "windRobot"
+    }
+  ]
+}

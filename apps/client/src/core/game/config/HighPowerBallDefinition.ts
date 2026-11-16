@@ -1,6 +1,13 @@
 /** P-1 tuning. Distance is measured under baseline rolling deceleration. */
 export const HIGH_POWER_BALL = Object.freeze({
     travelDistanceMultiplier: 1.5,
+    /** Keep precision shots identical to the normal ball up to this drag fraction. */
+    precisionDragFraction: 0.35,
+    /** Separate capture assistance for high-speed approaches. */
+    holeMinimumCaptureSpeed: 450,
+    holeMaximumCaptureSpeed: 750,
+    holeCaptureAssistMargin: 18,
+    holeAttractionRadius: 130,
     maximumBaselineShotDistance: 2000,
     maximumLaunchSpeed: 1600,
     maximumMovementSpeed: 1500,

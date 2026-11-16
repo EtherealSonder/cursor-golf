@@ -230,7 +230,7 @@ export const DEFAULT_CAMERA_DEFINITION:
 
     // About 1.47x more world span than the normal 1.25 zoom.
     minimumZoom:
-        0.80,
+        0.55,
 
     maximumZoom:
         1.25,

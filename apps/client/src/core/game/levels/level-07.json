@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "id": "level-07",
+  "name": "level_07",
+  "course": {
+    "type": "polygon",
+    "width": 1495,
+    "height": 1768,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 1120,
+        "y": 245
+      },
+      {
+        "x": 340,
+        "y": 245
+      },
+      {
+        "x": 340,
+        "y": 1595
+      },
+      {
+        "x": 1120,
+        "y": 1595
+      }
+    ],
+    "openings": []
+  },
+  "ball": {
+    "x": 742,
+    "y": 380
+  },
+  "hole": {
+    "x": 750,
+    "y": 1418
+  },
+  "cameraPoints": [
+    {
+      "id": "camera-point-1",
+      "index": 1,
+      "x": 748,
+      "y": 1418
+    },
+    {
+      "id": "camera-point-2",
+      "index": 2,
+      "x": 745,
+      "y": 380
+    }
+  ],
+  "terrain": [],
+  "objects": [
+    {
+      "id": "fan-1",
+      "x": 489.50000000000006,
+      "y": 380,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "fan-2",
+      "x": 994.5,
+      "y": 380,
+      "type": "fan",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "fan-3",
+      "x": 998.5,
+      "y": 1418,
+      "type": "fan",
+      "rotation": -1.5707963267948966
+    },
+    {
+      "id": "fan-4",
+      "x": 489.5,
+      "y": 1418,
+      "type": "fan",
+      "rotation": -1.5707963267948966
+    },
+    {
+      "id": "proximity-mine-1",
+      "x": 742,
+      "y": 938,
+      "type": "proximityMine"
+    },
+    {
+      "id": "proximity-mine-2",
+      "x": 490,
+      "y": 938,
+      "type": "proximityMine"
+    },
+    {
+      "id": "proximity-mine-3",
+      "x": 994,
+      "y": 938,
+      "type": "proximityMine"
+    },
+    {
+      "id": "crate-1",
+      "x": 748,
+      "y": 1516.5,
+      "type": "crate"
+    },
+    {
+      "id": "water-sprinkler-2",
+      "x": 613,
+      "y": 1196.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "water-sprinkler-1",
+      "x": 887,
+      "y": 1196.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "water-sprinkler-3",
+      "x": 887,
+      "y": 633.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "water-sprinkler-4",
+      "x": 613,
+      "y": 633.5,
+      "type": "sprinkler",
+      "rotation": 0
+    }
+  ]
+}

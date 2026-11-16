@@ -16,7 +16,7 @@ export class RobotAStarPathfinder {
         this.visited=new Uint32Array(size);this.closed=new Uint32Array(size);
     }
     public getLastExpanded():number{return this.lastExpanded;}
-    public findPath(start:RobotGridCell,goal:RobotGridCell,maxExpanded=ROBOT_PATHFINDING_DEFINITION.maxExpandedCells):RobotGridCell[]|null{
+    public findPath(start:RobotGridCell,goal:RobotGridCell,maxExpanded:number=ROBOT_PATHFINDING_DEFINITION.maxExpandedCells):RobotGridCell[]|null{
         this.lastExpanded=0;
         const {columns:width,rows:height}=this.grid;
         const traversable=(x:number,y:number):boolean=>this.grid.isTraversable(x,y)&&(!this.dynamicLayer||!this.dynamicLayer.isBlocked(x,y));

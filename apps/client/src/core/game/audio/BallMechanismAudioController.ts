@@ -8,7 +8,7 @@ export class BallMechanismAudioController {
     private readonly unsubscribe: Array<() => void> = [];
     private readonly cooldown = new Map<string, number>();
     private wasCapturing = false;
-    constructor(private readonly ball: Ball, private readonly world: World, private readonly audio: SpatialAudioManager) {
+    constructor(private readonly ball: Ball, world: World, private readonly audio: SpatialAudioManager) {
         this.unsubscribe.push(world.subscribeBallMechanismAudio(event => {
             if (event.kind === "bush") {
                 if (!this.ball.isStickyBallActive()) this.emit("golf-ball-bush", "bush", event.x, event.y, 1, C.bushCooldownMs);

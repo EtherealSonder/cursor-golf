@@ -1,0 +1,37 @@
+
+{
+  "version": 1,
+  "worldModifier": {
+    "mode": "disabled"
+  },
+  "procedural": {
+    "sand": {
+      "mode": "random",
+      "density": "medium",
+      "targetCoverage": {
+        "low": 0.015,
+        "medium": 0.04,
+        "high": 0.075
+      }
+    },
+    "marbles": {
+      "mode": "random",
+      "count": 0,
+      "areaPerMarble": 100000,
+      "maximum": 30,
+      "rollMultiplier": 1
+    },
+    "rocks": {
+      "mode": "random",
+      "boulderCount": 0,
+      "smallRockCount": 0,
+      "areaPerRock": 180000,
+      "maximum": 20,
+      "boulderRatio": 0,
+      "smallRockRadius": {
+        "min": 4,
+        "max": 20
+      }
+    }
+  }
+}

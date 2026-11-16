@@ -8,7 +8,7 @@ interface Emitter { position: { x: number; y: number }; voice: AudioVoiceHandle 
 /** One spatial loop per contiguous fire region, bounded by a shared voice budget. */
 export class GroundFireAudioController {
     private readonly emitters: Emitter[] = [];
-    private elapsed = FIRE_AUDIO.ground.updateSeconds;
+    private elapsed: number = FIRE_AUDIO.ground.updateSeconds;
     constructor(private readonly world: World, private readonly audio: SpatialAudioManager) {}
     public update(deltaTime: number): void {
         this.elapsed += Math.max(0, deltaTime);

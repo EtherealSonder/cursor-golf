@@ -922,7 +922,7 @@ export class Game {
     }
 
     private bindWorldDeathReporter(world: World): void {
-        this.world.setBallDeathReporter(
+        world.setBallDeathReporter(
             (cause) => {
                 const event =
                     this.ballDeathController
@@ -1030,7 +1030,7 @@ export class Game {
             console.warn("[LCT-F1] No alternate playable level available; holding blackout.");
             return;
         }
-        this.gameSession.capture(this.ballDeathController, this.ballEffectController);
+        this.gameSession.capture(this.ballDeathController);
         this.ballDeathTransitionController.prepareForNewLevel();
         this.disposeWorldRuntime();
         this.levelRuntime.dispose(previous);
@@ -1044,7 +1044,8 @@ export class Game {
         next.setBallEffectController(this.ballEffectController);
         next.setCrateRewardListener(event => this.crateRewardController?.award(event)?.lines ?? null);
         this.bindWorldDeathReporter(next);
-        this.gameSession.restore(this.ballDeathController, this.ballEffectController);
+        this.ballEffectController.clear();
+        this.gameSession.restore(this.ballDeathController);
         this.installWorldControls(next, true);
         this.installWorldOverlays(next);
         // World initialization appends new stage layers; keep the blackout and HUD on top.
@@ -1342,6 +1343,26 @@ export class Game {
                 !this.shotCameraFollow.isActive(),
             );
         this.cameraController?.setShotFollowLocked(this.shotCameraFollow.isActive());
+
+        // Manual camera inspection is available only during interactive play.
+        const cameraInputAllowed = !this.levelCompletionTransition.isActive &&
+            !this.ballDeathTransitionController.isActive() &&
+            !this.shotCameraFollow.isActive() &&
+            !(this.shotController?.isPreparingShot() ?? false);
+        const wheelSteps = this.inputManager.consumeWheelSteps();
+        const resetCamera = this.inputManager.consumeCameraReset();
+        if (cameraInputAllowed && this.world) {
+            if (wheelSteps !== 0) this.world.getCamera().adjustManualZoom(wheelSteps);
+            if (resetCamera) {
+                const ball = this.world.getBallWorldPosition();
+                if (ball) {
+                    this.world.getCamera().resetManualView(ball.x, ball.y);
+                    this.inputManager.recoverPointerState();
+                    this.world.recoverClubCursor(this.inputManager.getMouseX(), this.inputManager.getMouseY());
+                    this.golfClubForeground?.recover();
+                }
+            }
+        }
 
         this.cameraController
             ?.update();

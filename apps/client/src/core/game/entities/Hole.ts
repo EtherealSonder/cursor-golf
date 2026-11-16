@@ -1,3 +1,4 @@
+import { HIGH_POWER_BALL } from "../config/HighPowerBallDefinition";
 import {
     Graphics,
 } from "pixi.js";
@@ -447,6 +448,7 @@ export class Hole extends Entity {
         entryRatio: number,
     ): number {
 
+        const profile = this.getEffectiveDefinition();
         const validEntryRange =
             1 -
             this.definition
@@ -472,11 +474,9 @@ export class Hole extends Entity {
             );
 
         return this.interpolateNumber(
-            this.definition
-                .minimumCaptureSpeed,
+            profile.minimumCaptureSpeed,
 
-            this.definition
-                .maximumCaptureSpeed,
+            profile.maximumCaptureSpeed,
 
             curvedEntryQuality,
         );
@@ -485,10 +485,8 @@ export class Hole extends Entity {
     private updateCaptureGeometry(): void {
 
         this.effectiveCaptureRadius =
-            this.definition
-                .visualRadius +
-            this.definition
-                .captureAssistMargin;
+            this.definition.visualRadius +
+            this.getEffectiveDefinition().captureAssistMargin;
 
         this.combinedCaptureDistance =
             this.effectiveCaptureRadius +
@@ -665,6 +663,17 @@ export class Hole extends Entity {
     public canAttractBall(): boolean {
         return this.entryState !== HoleEntryState.Capturing &&
             this.entryState !== HoleEntryState.Holed;
+    }
+
+    public getEffectiveDefinition(): HoleDefinition {
+        if (!this.ball.isHighPowerEnabled()) return this.definition;
+        return {
+            ...this.definition,
+            captureAssistMargin: Math.max(this.definition.captureAssistMargin, HIGH_POWER_BALL.holeCaptureAssistMargin),
+            attractionRadius: Math.max(this.definition.attractionRadius, HIGH_POWER_BALL.holeAttractionRadius),
+            minimumCaptureSpeed: Math.max(this.definition.minimumCaptureSpeed, HIGH_POWER_BALL.holeMinimumCaptureSpeed),
+            maximumCaptureSpeed: Math.max(this.definition.maximumCaptureSpeed, HIGH_POWER_BALL.holeMaximumCaptureSpeed),
+        };
     }
 
     public getDefinition():

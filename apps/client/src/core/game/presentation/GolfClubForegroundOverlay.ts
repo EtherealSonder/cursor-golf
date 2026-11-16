@@ -20,19 +20,34 @@ export class GolfClubForegroundOverlay {
         host.appendChild(this.element);
     }
 
+    private isWorldVisible(sprite: Sprite): boolean {
+        let node: Sprite["parent"] | Sprite | null = sprite;
+        while (node) {
+            if (!node.visible || !node.renderable) return false;
+            node = node.parent;
+        }
+        return true;
+    }
+
+    /** Re-enable the authoritative sprite before rebuilding the DOM presentation. */
+    public recover(): void {
+        if (this.currentSprite && !this.currentSprite.destroyed) this.currentSprite.alpha = 1;
+        this.element.style.display = "none";
+    }
+
     public update(sprite: Sprite | null, viewportWidth: number, viewportHeight: number): void {
         if (this.currentSprite !== sprite) {
             if (this.currentSprite && !this.currentSprite.destroyed) this.currentSprite.alpha = 1;
             this.currentSprite = sprite;
         }
-        if (!sprite || sprite.destroyed || !sprite.worldVisible || !sprite.visible || !sprite.renderable) {
-            this.element.style.display = "none";
+        if (!sprite || sprite.destroyed || !this.isWorldVisible(sprite) || !sprite.visible || !sprite.renderable) {
+            this.recover();
             return;
         }
         const width = sprite.texture.width;
         const height = sprite.texture.height;
         if (!(width > 0 && height > 0 && viewportWidth > 0 && viewportHeight > 0)) {
-            this.element.style.display = "none";
+            this.recover();
             return;
         }
         const t = sprite.worldTransform;

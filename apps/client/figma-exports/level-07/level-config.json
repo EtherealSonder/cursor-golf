@@ -1,0 +1,27 @@
+
+{
+  "version": 1,
+  "worldModifier": {
+    "mode": "disabled"
+  },
+  "procedural": {
+    "sand": {
+      "mode": "disabled"
+    },
+    "marbles": {
+      "mode": "random",
+      "minimum": 11,
+      "maximum": 45
+    },
+    "rocks": {
+      "mode": "random",
+      "areaPerRock": 250000,
+      "maximum": 4,
+      "boulderRatio": 0,
+      "smallRockRadius": {
+        "min": 5,
+        "max": 15
+      }
+    }
+  }
+}

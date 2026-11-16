@@ -11,7 +11,7 @@ export class SpatialAudioManager {
     private readonly buffers = new Map<AudioSoundId, AudioBuffer>();
     private readonly loading = new Map<AudioSoundId, Promise<AudioBuffer | null>>();
     private readonly voices = new Set<Voice>();
-    private volume = AUDIO_CONFIG.masterVolume;
+    private volume: number = AUDIO_CONFIG.masterVolume;
     private muted = false;
     private disposed = false;
     private camera: Camera | null = null;
