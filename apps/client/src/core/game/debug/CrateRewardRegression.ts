@@ -12,7 +12,7 @@ export function assertCrateRewardRegression(): void {
   const rewardKey: Record<string, string> = { "high-power": "highPower", invincible: "invincible", ghost: "ghost" };
   for (const lives of [1, 2, 3, 4, 5] as const) {
     const original = CRATE_REWARDS.primaryRewardByLives[lives];
-    assert(Math.abs(Object.values(original).reduce((a, b) => a + b, 0) - 100) < 1e-8, "Original reward weights must sum to 100");
+    assert(Math.abs(Object.values(original).reduce<number>((a, b) => a + b, 0) - 100) < 1e-8, "Original reward weights must sum to 100");
     for (const effect of effects) {
       for (const sample of [0, 0.01, 0.1, 0.3, 0.54, 0.7, 0.9, 0.99, 0.999999]) {
         const result = rollCrateReward(lives, () => sample, effect);

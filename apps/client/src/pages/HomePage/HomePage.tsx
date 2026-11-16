@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { WindState } from "../../core/game/environment/WindManager";
+import { LevelInfoHud } from "../../components/hud/LevelInfoHud";
 import { WorldModifierHud } from "../../components/hud/WorldModifierHud";
 import { BallEffectDebugPanel } from "../../components/hud/BallEffectDebugPanel";
 import type { BallEffectSnapshot, BallEffectSelection } from "../../core/game/ball-effects/BallEffectDefinition";
@@ -21,6 +22,7 @@ function HomePage() {
     const [ballEffect, setBallEffect] = useState<BallEffectSnapshot>({ active: "none", revision: 0 });
     const [showBallEffectDebug, setShowBallEffectDebug] = useState(false);
     const selectBallEffect = (effect: BallEffectSelection) => gameRef.current?.debugSetBallEffect(effect);
+    const [levelId, setLevelId] = useState("level-01");
     const [modifierState, setModifierState] = useState<WorldModifierResolvedState | null>(null);
     const selectWorldModifier = (selection: WorldModifierDebugSelection) => {
         gameRef.current?.debugSetWorldModifier(selection, WorldModifierDebugController.newSeed());
@@ -62,6 +64,7 @@ function HomePage() {
             let unsubscribeWind: (() => void) | null = null;
             const unsubscribeWorldChanged = game.subscribeToWorldChanged(() => {
                 unsubscribeWind?.();
+                setLevelId(game.getLevelId() ?? "level-01");
                 unsubscribeWind = game.subscribeToWindState(setWindState);
                 setShowBallEffectDebug(import.meta.env.DEV && game.getLevelId() === "level-test");
                 setModifierHudPhase(phase => phase === "exiting" ? "hidden" : phase);
@@ -77,6 +80,7 @@ function HomePage() {
                     }
 
                     setShowBallEffectDebug(import.meta.env.DEV && game.getLevelId() === "level-test");
+                    setLevelId(game.getLevelId() ?? "level-01");
 
                     game.setFireSourceDebugVisible(
                         false,
@@ -112,7 +116,8 @@ function HomePage() {
                 className="game-container game-container--club-foreground"
                 aria-label="Cursor Golf gameplay"
             >
-                <div className="wm2-hud-slot">
+                <div className="left-hud-stack">
+                    <LevelInfoHud levelId={levelId} />
                     <WorldModifierHud key={modifierHudRevision} state={modifierState} windState={windState} phase={modifierHudPhase} />
                 </div>
                 {showBallEffectDebug && <BallEffectDebugPanel snapshot={ballEffect} onSelect={selectBallEffect} modifierState={modifierState} onSelectModifier={selectWorldModifier} />}

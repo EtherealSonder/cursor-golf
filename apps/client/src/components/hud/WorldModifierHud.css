@@ -1,57 +1,75 @@
-/* The capsule uses the active modifier's pre-colored holder PNG. */
+/* Compact modifier tab. cqw is relative to the 1200px game viewport. */
 .wm2-hud {
-    position: absolute; top: 18px; left: 18px; z-index: 35;
-    display: flex; align-items: center; min-height: 56px;
-    pointer-events: none; font-family: system-ui, sans-serif;
+    position: relative;
+    width: 21.666667cqw; /* 260 logical px, matching Level Info. */
+    aspect-ratio: 260 / 72; /* Match the Level Info holder footprint. */
+    flex: none;
+    pointer-events: none;
+    font-family: system-ui, sans-serif;
+    color: #35192e;
     filter: drop-shadow(0 3px 6px #25142740);
-    --wm-outline: #35192e;
 }
 .wm2-hud__tab {
-    position: relative; isolation: isolate; box-sizing: border-box;
-    height: 56px; min-height: 56px; margin-left: -11px;
-    display: flex; align-items: center; gap: 7px;
-    padding: 0 18px 0 25px; white-space: nowrap;
-    color: var(--wm-outline); text-transform: uppercase;
-    letter-spacing: .055em; font-size: 12px; font-weight: 800;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45cqw;
+    box-sizing: border-box;
+    /* Reserve room for the independently overlaid circular badge. */
+    padding: 0 .7cqw 0 5.416667cqw; /* Keep text clear of the fully inset badge. */
+    white-space: nowrap;
+    letter-spacing: .025em;
+    font-size: 1.833333cqw;
+    font-weight: 800;
+    isolation: isolate;
 }
-/* Preserve the original holder artwork, including its colored interior and endcaps. */
-.wm2-hud__tab::before {
-    content: ""; position: absolute; inset: 0; z-index: -1;
-    border: 17px solid transparent;
-    border-image-source: var(--wm-holder-image);
-    border-image-slice: 47 95 47 95 fill;
-    border-image-width: 17px 31px;
-    border-image-repeat: stretch;
+.wm2-hud__holder {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
 }
+.wm2-hud__label { min-width: 0; }
 .wm2-hud__badge {
-    position: relative; z-index: 1; flex: 0 0 56px;
-    width: 56px; height: 56px; box-sizing: border-box;
-    border: 3px solid var(--wm-outline); border-radius: 50%;
-    background: white; overflow: hidden; display: grid; place-items: center;
+    position: absolute;
+    z-index: 2;
+    left: 1cqw; /* 12 logical px inset, including the badge border. */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4cqw; /* 48 logical px; stays circular when resized. */
+    height: 4cqw;
+    box-sizing: border-box;
+    border: .23cqw solid #35192e;
+    border-radius: 50%;
+    background: white;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
 }
 .wm2-hud__icon { width: 100%; height: 100%; display: block; object-fit: contain; }
 .wm2-hud__direction {
-    flex: 0 0 19px; width: 19px; height: 19px;
-    transform-origin: center; transition: transform 200ms ease-out;
+    flex: 0 0 1.5cqw;
+    width: 1.5cqw;
+    height: 1.5cqw;
+    transform-origin: center;
+    transition: transform 200ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) { .wm2-hud__direction { transition: none; } }
-
-/* LCT-1: shrink the modifier when hole entry begins. */
-.wm2-hud--completion-exit { transform-origin: 28px 28px; animation: wm2-completion-exit 450ms ease-in forwards; }
+/* Animate the entire assembled badge and tab as one unit. */
+.wm2-hud--completion-exit {
+    transform-origin: 2.7cqw 3cqw;
+    animation: wm2-completion-exit 450ms ease-in forwards;
+}
 @keyframes wm2-completion-exit { from { transform: scale(1); opacity: 1; } to { transform: scale(0); opacity: 0; } }
-
-/* LCT-3: entrance runs only after the flyover unlocks gameplay. */
 .wm2-hud--completion-entrance {
-    transform-origin: 28px 28px;
+    transform-origin: 2.7cqw 3cqw;
     animation: wm2-completion-entrance 550ms cubic-bezier(.2,.85,.25,1) both;
 }
-@keyframes wm2-completion-entrance {
-    from { transform: scale(.55) translateY(-12px); opacity: 0; }
-    to { transform: scale(1) translateY(0); opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .wm2-hud--completion-entrance { animation-duration: 1ms; }
-}
-
-/* A hidden modifier must not inherit a stale exit animation. */
+@keyframes wm2-completion-entrance { from { transform: scale(.55) translateY(-1cqw); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wm2-hud--completion-entrance { animation-duration: 1ms; } }
 .wm2-hud--completion-hidden { transform: scale(0); opacity: 0; animation: none; }

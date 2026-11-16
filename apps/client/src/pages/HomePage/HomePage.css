@@ -23,6 +23,7 @@
  */
 .game-container {
     position: relative;
+    container-type: inline-size;
     width: min(100vw, calc(100dvh * 5 / 3));
     height: min(100dvh, calc(100vw * 3 / 5));
     flex: none;
@@ -41,3 +42,13 @@
 
 /* Club overlay is browser-level so it can cross above the React HUD. */
 .game-container > .golf-club-foreground { z-index: 1000; pointer-events: none; }
+
+/* Aligns with the Ball Lives HUD top/left insets.
+   Both compact left HUD holders occupy 260 x 72 logical pixels. */
+.left-hud-stack {
+    position: absolute; z-index: 35;
+    top: 1.5cqw; left: 2cqw;
+    width: 21.666667cqw;
+    display: flex; flex-direction: column; gap: .75cqw;
+    pointer-events: none;
+}

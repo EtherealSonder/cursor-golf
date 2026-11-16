@@ -1,0 +1,17 @@
+.level-info-hud {
+    position: relative;
+    width: 21.666667cqw; /* 260 logical px, matching the modifier tab. */
+    aspect-ratio: 260 / 72; /* Both left HUD holders use the same display footprint. */
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    filter: drop-shadow(0 3px 6px #25142740);
+}
+.level-info-hud__holder { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+.level-info-hud__label {
+    position: relative; z-index: 1;
+    color: #35192e; font-family: system-ui, sans-serif;
+    font-size: 1.833333cqw; font-weight: 900; letter-spacing: .025em;
+    white-space: nowrap;
+    transform: translateY(-.1cqw);
+}
