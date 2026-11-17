@@ -1,0 +1,38 @@
+
+{
+  "version": 1,
+  "worldModifier": {
+    "mode": "random",
+    "activationChance": 1,
+    "eligible": [
+      "gale-force"
+    ],
+    "weights": {
+      "gale-force": 100
+    }
+  },
+  "procedural": {
+    "sand": {
+      "mode": "disabled"
+    },
+    "marbles": {
+      "mode": "random",
+      "count": 0,
+      "areaPerMarble": 100000,
+      "maximum": 30,
+      "rollMultiplier": 1
+    },
+    "rocks": {
+      "mode": "random",
+      "boulderCount": 0,
+      "smallRockCount": 0,
+      "areaPerRock": 180000,
+      "maximum": 20,
+      "boulderRatio": 0,
+      "smallRockRadius": {
+        "min": 4,
+        "max": 20
+      }
+    }
+  }
+}

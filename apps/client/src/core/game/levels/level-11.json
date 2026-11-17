@@ -1,0 +1,327 @@
+{
+  "version": 1,
+  "id": "level-11",
+  "name": "level_11",
+  "course": {
+    "type": "polygon",
+    "width": 3464,
+    "height": 1893,
+    "baseSurface": "grass",
+    "vertices": [
+      {
+        "x": 2686,
+        "y": 1250
+      },
+      {
+        "x": 2686,
+        "y": 948
+      },
+      {
+        "x": 2953.5,
+        "y": 948
+      },
+      {
+        "x": 2953.5,
+        "y": 1074
+      },
+      {
+        "x": 3191,
+        "y": 1074
+      },
+      {
+        "x": 3191,
+        "y": 730.5
+      },
+      {
+        "x": 2953.5,
+        "y": 730.5
+      },
+      {
+        "x": 2953.5,
+        "y": 919
+      },
+      {
+        "x": 2686,
+        "y": 919
+      },
+      {
+        "x": 2686,
+        "y": 604
+      },
+      {
+        "x": 910.5,
+        "y": 604
+      },
+      {
+        "x": 910.5,
+        "y": 1490
+      },
+      {
+        "x": 2702,
+        "y": 1490
+      },
+      {
+        "x": 2702,
+        "y": 1440.5
+      },
+      {
+        "x": 2953.5,
+        "y": 1440.5
+      },
+      {
+        "x": 2953.5,
+        "y": 1590
+      },
+      {
+        "x": 3187,
+        "y": 1590
+      },
+      {
+        "x": 3191,
+        "y": 1250
+      },
+      {
+        "x": 2953.5,
+        "y": 1250
+      },
+      {
+        "x": 2953.5,
+        "y": 1386
+      },
+      {
+        "x": 2702,
+        "y": 1386
+      },
+      {
+        "x": 2702,
+        "y": 1352.5
+      },
+      {
+        "x": 1690.5,
+        "y": 1352.5
+      },
+      {
+        "x": 1690.5,
+        "y": 774
+      },
+      {
+        "x": 2507.5,
+        "y": 774
+      },
+      {
+        "x": 2507.5,
+        "y": 1100
+      },
+      {
+        "x": 2013,
+        "y": 1100
+      },
+      {
+        "x": 2013,
+        "y": 1250
+      }
+    ],
+    "openings": [
+      {
+        "edgeIndex": 7,
+        "start": 8.5,
+        "end": 258.5
+      },
+      {
+        "edgeIndex": 1,
+        "start": 9,
+        "end": 258
+      },
+      {
+        "edgeIndex": 21,
+        "start": 248,
+        "end": 502
+      },
+      {
+        "edgeIndex": 11,
+        "start": 1289.5,
+        "end": 1543.5
+      },
+      {
+        "edgeIndex": 9,
+        "start": 46,
+        "end": 190
+      },
+      {
+        "edgeIndex": 8,
+        "start": 142,
+        "end": 286
+      }
+    ]
+  },
+  "ball": {
+    "x": 2105,
+    "y": 1183
+  },
+  "hole": {
+    "x": 2612,
+    "y": 1420
+  },
+  "cameraPoints": [
+    {
+      "id": "camera-point-1",
+      "index": 1,
+      "x": 2612,
+      "y": 1420
+    },
+    {
+      "id": "camera-point-2",
+      "index": 2,
+      "x": 1276,
+      "y": 1395
+    },
+    {
+      "id": "camera-point-3",
+      "index": 3,
+      "x": 1276,
+      "y": 730
+    },
+    {
+      "id": "camera-point-4",
+      "index": 4,
+      "x": 2587,
+      "y": 730
+    },
+    {
+      "id": "camera-point-5",
+      "index": 5,
+      "x": 2587,
+      "y": 1173
+    },
+    {
+      "id": "camera-point-6",
+      "index": 6,
+      "x": 2105,
+      "y": 1183
+    }
+  ],
+  "terrain": [],
+  "objects": [
+    {
+      "id": "conveyer-belt-bg-2",
+      "x": 2020,
+      "y": 671.5,
+      "type": "conveyorBelt",
+      "rotation": 0
+    },
+    {
+      "id": "conveyer-belt-bg-3",
+      "x": 1980,
+      "y": 1425.5,
+      "type": "conveyorBelt",
+      "rotation": 0
+    },
+    {
+      "id": "conveyer-belt-bg-1",
+      "x": 2295,
+      "y": 703.4999999999999,
+      "type": "conveyorBelt",
+      "rotation": 3.141592653589793
+    },
+    {
+      "id": "portal-1-1",
+      "x": 3091.5,
+      "y": 910,
+      "type": "portal1",
+      "rotation": 1.5707963267948966
+    },
+    {
+      "id": "portal-1-2",
+      "x": 3088.5,
+      "y": 1420,
+      "type": "portal1",
+      "rotation": -1.5707963267948966
+    },
+    {
+      "id": "water-sprinkler-1",
+      "x": 1037,
+      "y": 1086.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "water-sprinkler-2",
+      "x": 1593,
+      "y": 1086.5,
+      "type": "sprinkler",
+      "rotation": 0
+    },
+    {
+      "id": "box-1",
+      "x": 1720,
+      "y": 687.5,
+      "type": "staticMetalBox",
+      "width": 60,
+      "height": 75,
+      "rotation": 0
+    },
+    {
+      "id": "box-6",
+      "x": 1718,
+      "y": 1426,
+      "type": "staticMetalBox",
+      "width": 50,
+      "height": 56,
+      "rotation": 0
+    },
+    {
+      "id": "box-2",
+      "x": 1195,
+      "y": 1086.5,
+      "type": "staticMetalBox",
+      "width": 30,
+      "height": 115,
+      "rotation": 0
+    },
+    {
+      "id": "box-3",
+      "x": 1393,
+      "y": 1086.5,
+      "type": "staticMetalBox",
+      "width": 30,
+      "height": 115,
+      "rotation": 0
+    },
+    {
+      "id": "box-4",
+      "x": 1297.5,
+      "y": 1005,
+      "type": "staticMetalBox",
+      "width": 115,
+      "height": 30,
+      "rotation": 0
+    },
+    {
+      "id": "box-5",
+      "x": 1297.5,
+      "y": 1168,
+      "type": "staticMetalBox",
+      "width": 115,
+      "height": 30,
+      "rotation": 0
+    },
+    {
+      "id": "wind-robot-1",
+      "x": 1309.734,
+      "y": 734.5,
+      "type": "windRobot"
+    },
+    {
+      "id": "crate-1",
+      "x": 1294,
+      "y": 1086.5,
+      "type": "crate"
+    },
+    {
+      "id": "water-robot-1",
+      "x": 1301,
+      "y": 1362,
+      "type": "waterRobot"
+    }
+  ]
+}
